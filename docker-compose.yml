@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  # GitLab CE
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    hostname: gitlab.local
+    container_name: gitlabex-gitlab
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2222:22"
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        gitlab_rails['initial_root_password'] = 'password123'
+        gitlab_rails['gitlab_signup_enabled'] = true
+        nginx['listen_port'] = 80
+    networks:
+      - gitlabex-network
+
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:15
+    container_name: gitlabex-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gitlabex
+      POSTGRES_USER: gitlabex
+      POSTGRES_PASSWORD: password123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - gitlabex-network
+
+  # Redis缓存
+  redis:
+    image: redis:7-alpine
+    container_name: gitlabex-redis
+    restart: unless-stopped
+    command: redis-server --requirepass password123
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - gitlabex-network
+
+  # OnlyOffice Document Server
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: gitlabex-onlyoffice
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    ports:
+      - "8000:80"
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_logs:/var/log/onlyoffice
+      - onlyoffice_cache:/var/lib/onlyoffice/documentserver/App_Data/cache/files
+      - onlyoffice_forgotten:/var/lib/onlyoffice/documentserver/App_Data/cache/forgotten
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=gitlabex-jwt-secret-2024
+      - JWT_HEADER=Authorization
+      - JWT_IN_BODY=true
+      - WOPI_ENABLED=false
+      - USE_UNAUTHORIZED_STORAGE=false
+    networks:
+      - gitlabex-network
+
+  # 后端服务（开发阶段暂时注释）
+  # backend:
+  #   build: ./backend
+  #   container_name: gitlabex-backend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     - postgres
+  #     - redis
+  #     - gitlab
+  #     - onlyoffice
+  #   environment:
+  #     - DATABASE_URL=postgres://gitlabex:password123@postgres:5432/gitlabex?sslmode=disable
+  #     - REDIS_URL=redis://:password123@redis:6379/0
+  #     - GITLAB_URL=http://gitlab
+  #     - ONLYOFFICE_URL=http://onlyoffice
+  #     - ONLYOFFICE_JWT_SECRET=gitlabex-jwt-secret-2024
+  #     - JWT_SECRET=gitlabex-app-jwt-secret-2024
+  #   volumes:
+  #     - ./backend:/app
+  #   networks:
+  #     - gitlabex-network
+
+  # 前端服务（开发阶段暂时注释）
+  # frontend:
+  #   build: ./frontend
+  #   container_name: gitlabex-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:80"
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - gitlabex-network
+
+  # Nginx反向代理（开发阶段暂时注释）
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: gitlabex-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+  #     - ./ssl:/etc/nginx/ssl
+  #   depends_on:
+  #     - frontend
+  #     - backend
+  #   networks:
+  #     - gitlabex-network
+
+volumes:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+  postgres_data:
+  redis_data:
+  onlyoffice_data:
+  onlyoffice_logs:
+  onlyoffice_cache:
+  onlyoffice_forgotten:
+
+networks:
+  gitlabex-network:
+    driver: bridge
