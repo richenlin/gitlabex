@@ -143,7 +143,7 @@ show_access_info() {
     echo "🔗 访问信息"
     echo "===================="
     echo "服务访问地址："
-    echo "  🌐 GitLab:     http://localhost"
+    echo "  🌐 GitLab:     http://localhost:8081"
     echo "  📄 OnlyOffice: http://localhost:8000"
     echo "  🗄️  PostgreSQL: localhost:5432"
     echo "  🔴 Redis:      localhost:6379"

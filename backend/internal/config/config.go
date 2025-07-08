@@ -3,235 +3,141 @@ package config
 import (
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
-	"time"
 
-	"github.com/spf13/viper"
+	"github.com/joho/godotenv"
 )
 
 // Config 应用程序配置
 type Config struct {
-	Server     ServerConfig     `mapstructure:"server"`
-	Database   DatabaseConfig   `mapstructure:"database"`
-	Redis      RedisConfig      `mapstructure:"redis"`
-	GitLab     GitLabConfig     `mapstructure:"gitlab"`
-	OnlyOffice OnlyOfficeConfig `mapstructure:"onlyoffice"`
-	JWT        JWTConfig        `mapstructure:"jwt"`
-	Log        LogConfig        `mapstructure:"log"`
+	Database   DatabaseConfig
+	Redis      RedisConfig
+	Server     ServerConfig
+	OnlyOffice OnlyOfficeConfig
+	GitLab     GitLabConfig
+	JWT        JWTConfig
 }
 
 // ServerConfig 服务器配置
 type ServerConfig struct {
-	Host string `mapstructure:"host"`
-	Port int    `mapstructure:"port"`
-	Mode string `mapstructure:"mode"` // debug, release, test
+	Port string
+	Mode string
 }
 
 // DatabaseConfig 数据库配置
 type DatabaseConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
-	DBName   string `mapstructure:"dbname"`
-	SSLMode  string `mapstructure:"sslmode"`
-	Timezone string `mapstructure:"timezone"`
+	Host     string
+	Port     string
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
 }
 
 // RedisConfig Redis配置
 type RedisConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
+	Host     string
+	Port     string
+	Password string
+	DB       int
 }
 
 // GitLabConfig GitLab配置
 type GitLabConfig struct {
-	URL          string `mapstructure:"url"`
-	ClientID     string `mapstructure:"client_id"`
-	ClientSecret string `mapstructure:"client_secret"`
-	RedirectURL  string `mapstructure:"redirect_url"`
-	Token        string `mapstructure:"token"`
+	URL          string
+	ClientID     string
+	ClientSecret string
+	RedirectURI  string
 }
 
 // OnlyOfficeConfig OnlyOffice配置
 type OnlyOfficeConfig struct {
-	DocumentServerURL string `mapstructure:"document_server_url"`
-	JWTSecret         string `mapstructure:"jwt_secret"`
-	CallbackURL       string `mapstructure:"callback_url"`
-	MaxFileSize       int64  `mapstructure:"max_file_size"`
+	BaseURL     string
+	JWTSecret   string
+	CallbackURL string
 }
 
 // JWTConfig JWT配置
 type JWTConfig struct {
-	Secret     string        `mapstructure:"secret"`
-	ExpireTime time.Duration `mapstructure:"expire_time"`
+	Secret string
 }
 
-// LogConfig 日志配置
-type LogConfig struct {
-	Level      string `mapstructure:"level"`
-	Format     string `mapstructure:"format"`
-	Output     string `mapstructure:"output"`
-	MaxSize    int    `mapstructure:"max_size"`
-	MaxAge     int    `mapstructure:"max_age"`
-	MaxBackups int    `mapstructure:"max_backups"`
-}
-
-// LoadConfig 加载配置
-func LoadConfig(path string) (*Config, error) {
-	viper.AddConfigPath(path)
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-
-	// 环境变量支持
-	viper.AutomaticEnv()
-	viper.SetEnvPrefix("GITLABEX")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-
-	if err := viper.ReadInConfig(); err != nil {
-		// 如果没有配置文件，使用默认配置
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			return loadDefaultConfig(), nil
-		}
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+func LoadConfig() (*Config, error) {
+	// 尝试加载.env文件
+	if err := godotenv.Load(); err != nil {
+		fmt.Println("No .env file found, using environment variables")
 	}
 
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-
-	// 从环境变量覆盖配置
-	overrideFromEnv(&config)
-
-	return &config, nil
-}
-
-// loadDefaultConfig 加载默认配置
-func loadDefaultConfig() *Config {
 	config := &Config{
-		Server: ServerConfig{
-			Host: "0.0.0.0",
-			Port: 8080,
-			Mode: "debug",
-		},
 		Database: DatabaseConfig{
-			Host:     "localhost",
-			Port:     5432,
-			User:     "postgres",
-			Password: "password",
-			DBName:   "gitlabex",
-			SSLMode:  "disable",
-			Timezone: "UTC",
+			Host:     getEnv("DB_HOST", "localhost"),
+			Port:     getEnv("DB_PORT", "5432"),
+			User:     getEnv("DB_USER", "gitlabex"),
+			Password: getEnv("DB_PASSWORD", "password123"),
+			DBName:   getEnv("DB_NAME", "gitlabex"),
+			SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		},
 		Redis: RedisConfig{
-			Host:     "localhost",
-			Port:     6379,
-			Password: "",
+			Host:     getEnv("REDIS_HOST", "localhost"),
+			Port:     getEnv("REDIS_PORT", "6379"),
+			Password: getEnv("REDIS_PASSWORD", "password123"),
 			DB:       0,
 		},
-		GitLab: GitLabConfig{
-			URL:          "http://localhost",
-			ClientID:     "",
-			ClientSecret: "",
-			RedirectURL:  "http://localhost:8080/auth/callback",
-			Token:        "",
+		Server: ServerConfig{
+			Port: getEnv("SERVER_PORT", "8080"),
+			Mode: getEnv("GIN_MODE", "debug"),
 		},
 		OnlyOffice: OnlyOfficeConfig{
-			DocumentServerURL: "http://localhost:8000",
-			JWTSecret:         "your-secret-key",
-			CallbackURL:       "http://localhost:8080/api/onlyoffice/callback",
-			MaxFileSize:       50 * 1024 * 1024, // 50MB
+			BaseURL:     getEnv("ONLYOFFICE_URL", "http://localhost:8000"),
+			JWTSecret:   getEnv("ONLYOFFICE_JWT_SECRET", "your-jwt-secret"),
+			CallbackURL: getEnv("ONLYOFFICE_CALLBACK_URL", "http://localhost:8080/api/documents/callback"),
+		},
+		GitLab: GitLabConfig{
+			URL:          getEnv("GITLAB_URL", "http://localhost"),
+			ClientID:     getEnv("GITLAB_CLIENT_ID", ""),
+			ClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
+			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:8080/api/auth/gitlab/callback"),
 		},
 		JWT: JWTConfig{
-			Secret:     "your-jwt-secret",
-			ExpireTime: 24 * time.Hour,
-		},
-		Log: LogConfig{
-			Level:      "info",
-			Format:     "json",
-			Output:     "stdout",
-			MaxSize:    100,
-			MaxAge:     30,
-			MaxBackups: 3,
+			Secret: getEnv("JWT_SECRET", "your-jwt-secret-key"),
 		},
 	}
 
-	// 从环境变量覆盖配置
-	overrideFromEnv(config)
+	// 验证必要的配置
+	if config.GitLab.ClientID == "" || config.GitLab.ClientSecret == "" {
+		fmt.Println("Warning: GitLab OAuth configuration is missing. Authentication will not work properly.")
+	}
 
-	return config
+	return config, nil
 }
 
-// overrideFromEnv 从环境变量覆盖配置
-func overrideFromEnv(config *Config) {
-	if host := os.Getenv("SERVER_HOST"); host != "" {
-		config.Server.Host = host
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
-	if port := os.Getenv("SERVER_PORT"); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			config.Server.Port = p
-		}
-	}
-
-	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
-		// 解析数据库URL
-		// 格式: postgres://user:password@host:port/dbname?sslmode=disable
-		// 简化实现，实际项目中应该使用专门的URL解析库
-		config.Database.Host = "postgres"
-		config.Database.User = "community"
-		config.Database.Password = "password"
-		config.Database.DBName = "community"
-	}
-
-	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
-		config.Redis.Host = "redis"
-		config.Redis.Port = 6379
-	}
-
-	if gitlabURL := os.Getenv("GITLAB_URL"); gitlabURL != "" {
-		config.GitLab.URL = gitlabURL
-	}
-
-	if clientID := os.Getenv("GITLAB_CLIENT_ID"); clientID != "" {
-		config.GitLab.ClientID = clientID
-	}
-
-	if clientSecret := os.Getenv("GITLAB_CLIENT_SECRET"); clientSecret != "" {
-		config.GitLab.ClientSecret = clientSecret
-	}
-
-	if onlyOfficeURL := os.Getenv("ONLYOFFICE_URL"); onlyOfficeURL != "" {
-		config.OnlyOffice.DocumentServerURL = onlyOfficeURL
-	}
-
-	if jwtSecret := os.Getenv("ONLYOFFICE_JWT_SECRET"); jwtSecret != "" {
-		config.OnlyOffice.JWTSecret = jwtSecret
-	}
+	return defaultValue
 }
 
-// GetDatabaseDSN 获取数据库连接字符串
 func (c *Config) GetDatabaseDSN() string {
-	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s TimeZone=%s",
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=Asia/Shanghai",
 		c.Database.Host,
+		c.Database.Port,
 		c.Database.User,
 		c.Database.Password,
 		c.Database.DBName,
-		c.Database.Port,
 		c.Database.SSLMode,
-		c.Database.Timezone,
 	)
 }
 
-// GetRedisAddr 获取Redis地址
 func (c *Config) GetRedisAddr() string {
-	return fmt.Sprintf("%s:%d", c.Redis.Host, c.Redis.Port)
+	return fmt.Sprintf("%s:%s", c.Redis.Host, c.Redis.Port)
 }
 
 // GetServerAddr 获取服务器地址
 func (c *Config) GetServerAddr() string {
-	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
+	return fmt.Sprintf(":%s", c.Server.Port)
+}
+
+// GetBaseURL 获取GitLab基础URL
+func (g *GitLabConfig) GetBaseURL() string {
+	return g.URL
 }

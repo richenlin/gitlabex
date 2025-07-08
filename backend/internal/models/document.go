@@ -2,171 +2,102 @@ package models
 
 import (
 	"time"
-
-	"gorm.io/gorm"
 )
 
-// Document 文档模型
-type Document struct {
-	ID         uint           `gorm:"primaryKey" json:"id"`
-	ProjectID  int            `gorm:"not null;index" json:"project_id"`
-	Slug       string         `gorm:"not null;size:255;index" json:"slug"`
-	Title      string         `gorm:"not null;size:255" json:"title"`
-	Content    string         `gorm:"type:text" json:"content"`
-	Format     string         `gorm:"size:50;default:markdown" json:"format"`
-	FileName   string         `gorm:"size:255" json:"file_name"`
-	FilePath   string         `gorm:"size:500" json:"file_path"`
-	FileSize   int64          `gorm:"default:0" json:"file_size"`
-	CategoryID *uint          `gorm:"index" json:"category_id"`
-	IsPublic   bool           `gorm:"default:true" json:"is_public"`
-	ViewCount  int            `gorm:"default:0" json:"view_count"`
-	CreatedBy  uint           `gorm:"not null;index" json:"created_by"`
-	UpdatedBy  uint           `gorm:"index" json:"updated_by"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
-	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+// DocumentAttachment 文档附件模型 - 只存储OnlyOffice编辑会话信息
+type DocumentAttachment struct {
+	ID           uint       `gorm:"primaryKey" json:"id"`
+	UserID       int        `gorm:"not null" json:"user_id"`
+	ProjectID    *int       `gorm:"default:null" json:"project_id"`
+	WikiPageSlug string     `gorm:"default:null" json:"wiki_page_slug"`
+	FileName     string     `gorm:"not null" json:"file_name"`
+	FileURL      string     `gorm:"default:null" json:"file_url"`
+	FilePath     string     `gorm:"not null" json:"file_path"`
+	FileType     string     `gorm:"not null" json:"file_type"` // docx, xlsx, pptx
+	DocumentKey  string     `gorm:"unique;not null" json:"document_key"`
+	EditMode     string     `gorm:"not null;default:'edit'" json:"edit_mode"` // edit, view
+	Status       string     `gorm:"not null;default:'editing'" json:"status"` // editing, saving, closed, error
+	LastEditedBy *uint      `gorm:"default:null" json:"last_edited_by"`
+	LastEditedAt *time.Time `gorm:"default:null" json:"last_edited_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 
 	// 关联关系
-	Category *DocumentCategory `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"category,omitempty"`
-	Creator  *User             `gorm:"foreignKey:CreatedBy;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"creator,omitempty"`
-	Updater  *User             `gorm:"foreignKey:UpdatedBy;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"updater,omitempty"`
-	Tags     []Tag             `gorm:"many2many:document_tags;" json:"tags,omitempty"`
-	Sessions []DocumentSession `gorm:"foreignKey:DocumentID" json:"-"`
-	Comments []DocumentComment `gorm:"foreignKey:DocumentID" json:"comments,omitempty"`
+	LastEditor *User `gorm:"foreignKey:LastEditedBy;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"last_editor,omitempty"`
 }
 
 // TableName 指定表名
-func (Document) TableName() string {
-	return "documents"
+func (DocumentAttachment) TableName() string {
+	return "document_attachments"
 }
 
-// DocumentCategory 文档分类
-type DocumentCategory struct {
-	ID          uint      `gorm:"primaryKey" json:"id"`
-	Name        string    `gorm:"not null;size:255" json:"name"`
-	Description string    `gorm:"type:text" json:"description"`
-	ParentID    *uint     `gorm:"index" json:"parent_id"`
-	Sort        int       `gorm:"default:0" json:"sort"`
-	IsActive    bool      `gorm:"default:true" json:"is_active"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-
-	// 关联关系
-	Parent    *DocumentCategory  `gorm:"constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"parent,omitempty"`
-	Children  []DocumentCategory `gorm:"foreignKey:ParentID" json:"children,omitempty"`
-	Documents []Document         `gorm:"foreignKey:CategoryID" json:"-"`
+// IsEditableType 检查是否是可编辑的文件类型
+func (d *DocumentAttachment) IsEditableType() bool {
+	switch d.FileType {
+	case "docx", "xlsx", "pptx":
+		return true
+	default:
+		return false
+	}
 }
 
-// TableName 指定表名
-func (DocumentCategory) TableName() string {
-	return "document_categories"
+// GetDocumentType 获取OnlyOffice文档类型
+func (d *DocumentAttachment) GetDocumentType() string {
+	switch d.FileType {
+	case "docx":
+		return "text"
+	case "xlsx":
+		return "spreadsheet"
+	case "pptx":
+		return "presentation"
+	default:
+		return "text"
+	}
 }
 
-// Tag 标签
-type Tag struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Name      string    `gorm:"unique;not null;size:100" json:"name"`
-	Color     string    `gorm:"size:7;default:#007bff" json:"color"` // 十六进制颜色
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-
-	// 关联关系
-	Documents []Document `gorm:"many2many:document_tags;" json:"-"`
+// MarkAsEdited 标记为已编辑
+func (d *DocumentAttachment) MarkAsEdited(userID uint) {
+	now := time.Now()
+	d.LastEditedBy = &userID
+	d.LastEditedAt = &now
 }
 
-// TableName 指定表名
-func (Tag) TableName() string {
-	return "tags"
+// DocumentSummary 文档摘要信息 - 用于API响应
+type DocumentSummary struct {
+	ID           uint       `json:"id"`
+	UserID       int        `json:"user_id"`
+	ProjectID    *int       `json:"project_id"`
+	Title        string     `json:"title"` // Wiki页面标题
+	FileName     string     `json:"file_name"`
+	FileType     string     `json:"file_type"`
+	FileURL      string     `json:"file_url"`
+	FilePath     string     `json:"file_path"`
+	WikiSlug     string     `json:"wiki_slug"`
+	EditMode     string     `json:"edit_mode"`
+	Status       string     `json:"status"`
+	LastEditedBy *uint      `json:"last_edited_by"`
+	LastEditedAt *time.Time `json:"last_edited_at"`
+	CanEdit      bool       `json:"can_edit"`
+	LastEditor   *User      `json:"last_editor,omitempty"`
 }
 
-// DocumentSession OnlyOffice文档会话
-type DocumentSession struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	DocumentID uint      `gorm:"not null;index" json:"document_id"`
-	UserID     uint      `gorm:"not null;index" json:"user_id"`
-	Key        string    `gorm:"unique;not null;size:255" json:"key"`
-	Mode       string    `gorm:"size:20;default:edit" json:"mode"` // edit, view, comment
-	ExpiresAt  time.Time `gorm:"not null" json:"expires_at"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-
-	// 关联关系
-	Document Document `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"document,omitempty"`
-	User     User     `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
-}
-
-// TableName 指定表名
-func (DocumentSession) TableName() string {
-	return "document_sessions"
-}
-
-// IsExpired 检查会话是否过期
-func (s *DocumentSession) IsExpired() bool {
-	return time.Now().After(s.ExpiresAt)
-}
-
-// DocumentComment 文档评论
-type DocumentComment struct {
-	ID         uint           `gorm:"primaryKey" json:"id"`
-	DocumentID uint           `gorm:"not null;index" json:"document_id"`
-	UserID     uint           `gorm:"not null;index" json:"user_id"`
-	ParentID   *uint          `gorm:"index" json:"parent_id"` // 回复评论的ID
-	Content    string         `gorm:"type:text;not null" json:"content"`
-	IsResolved bool           `gorm:"default:false" json:"is_resolved"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
-	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
-
-	// 关联关系
-	Document Document          `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
-	User     User              `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
-	Parent   *DocumentComment  `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"parent,omitempty"`
-	Replies  []DocumentComment `gorm:"foreignKey:ParentID" json:"replies,omitempty"`
-}
-
-// TableName 指定表名
-func (DocumentComment) TableName() string {
-	return "document_comments"
-}
-
-// DocumentVersion 文档版本
-type DocumentVersion struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	DocumentID uint      `gorm:"not null;index" json:"document_id"`
-	Version    string    `gorm:"not null;size:100" json:"version"`
-	Title      string    `gorm:"not null;size:255" json:"title"`
-	Content    string    `gorm:"type:text" json:"content"`
-	ChangeLog  string    `gorm:"type:text" json:"change_log"`
-	CreatedBy  uint      `gorm:"not null;index" json:"created_by"`
-	CreatedAt  time.Time `json:"created_at"`
-
-	// 关联关系
-	Document Document `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
-	Creator  User     `gorm:"foreignKey:CreatedBy;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;" json:"creator,omitempty"`
-}
-
-// TableName 指定表名
-func (DocumentVersion) TableName() string {
-	return "document_versions"
-}
-
-// DocumentPermission 文档权限
-type DocumentPermission struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	DocumentID uint      `gorm:"not null;index" json:"document_id"`
-	UserID     *uint     `gorm:"index" json:"user_id"`               // 用户ID，为空表示所有用户
-	TeamID     *uint     `gorm:"index" json:"team_id"`               // 团队ID
-	Permission string    `gorm:"not null;size:20" json:"permission"` // read, write, admin
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-
-	// 关联关系
-	Document Document `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"-"`
-	User     *User    `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
-	Team     *Team    `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"team,omitempty"`
-}
-
-// TableName 指定表名
-func (DocumentPermission) TableName() string {
-	return "document_permissions"
+// ToSummary 转换为摘要信息
+func (d *DocumentAttachment) ToSummary(title string, canEdit bool) *DocumentSummary {
+	return &DocumentSummary{
+		ID:           d.ID,
+		UserID:       d.UserID,
+		ProjectID:    d.ProjectID,
+		Title:        title,
+		FileName:     d.FileName,
+		FileType:     d.FileType,
+		FileURL:      d.FileURL,
+		FilePath:     d.FilePath,
+		WikiSlug:     d.WikiPageSlug,
+		EditMode:     d.EditMode,
+		Status:       d.Status,
+		LastEditedBy: d.LastEditedBy,
+		LastEditedAt: d.LastEditedAt,
+		CanEdit:      canEdit,
+		LastEditor:   d.LastEditor,
+	}
 }

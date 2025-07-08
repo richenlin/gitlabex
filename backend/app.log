@@ -1,0 +1,145 @@
+nohup: ignoring input
+2025/07/08 14:34:12 Database connected and migrated successfully
+2025/07/08 14:34:12 Redis connected successfully
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] Loaded HTML Templates (4): 
+	- simple.html
+	- 
+	- editor.html
+	- index.html
+
+[GIN-debug] GET    /api/health               --> main.setupRoutes.func1 (4 handlers)
+[GIN-debug] GET    /api/users/health         --> gitlabex/internal/handlers.(*UserHandler).HealthCheck-fm (4 handlers)
+[GIN-debug] GET    /api/users/active         --> gitlabex/internal/handlers.(*UserHandler).ListActiveUsers-fm (4 handlers)
+[GIN-debug] GET    /api/users/:id            --> gitlabex/internal/handlers.(*UserHandler).GetUserByID-fm (4 handlers)
+[GIN-debug] GET    /api/users/me             --> gitlabex/internal/handlers.(*UserHandler).GetCurrentUser-fm (4 handlers)
+[GIN-debug] PUT    /api/users/me             --> gitlabex/internal/handlers.(*UserHandler).UpdateUser-fm (4 handlers)
+[GIN-debug] GET    /api/users/me/dashboard   --> gitlabex/internal/handlers.(*UserHandler).GetUserDashboard-fm (4 handlers)
+[GIN-debug] POST   /api/users/sync/:gitlab_id --> gitlabex/internal/handlers.(*UserHandler).SyncUserFromGitLab-fm (4 handlers)
+[GIN-debug] POST   /api/documents/upload     --> gitlabex/internal/handlers.(*DocumentHandler).UploadDocument-fm (4 handlers)
+[GIN-debug] GET    /api/documents/test       --> gitlabex/internal/handlers.(*DocumentHandler).TestUpload-fm (4 handlers)
+[GIN-debug] GET    /api/documents/:id/editor --> gitlabex/internal/handlers.(*DocumentHandler).GetDocumentEditor-fm (4 handlers)
+[GIN-debug] GET    /api/documents/:id/config --> gitlabex/internal/handlers.(*DocumentHandler).GetDocumentConfig-fm (4 handlers)
+[GIN-debug] GET    /api/documents/:id/content --> gitlabex/internal/handlers.(*DocumentHandler).GetDocumentContent-fm (4 handlers)
+[GIN-debug] POST   /api/documents/:id/callback --> gitlabex/internal/handlers.(*DocumentHandler).HandleCallback-fm (4 handlers)
+[GIN-debug] GET    /                         --> main.setupRoutes.func2 (4 handlers)
+2025/07/08 14:34:12 Server starting on 0.0.0.0:8080
+[GIN] 2025/07/08 - 14:34:18 | 200 |     371.128µs |       127.0.0.1 | GET      "/"
+
+2025/07/08 14:34:25 [31;1m/home/richen/Workspace/go/src/gitlabex/backend/internal/services/user.go:117 [35;1mrecord not found
+[0m[33m[3.526ms] [34;1m[rows:0][0m SELECT * FROM "users" WHERE gitlab_id = 1 ORDER BY "users"."id" LIMIT 1
+[GIN] 2025/07/08 - 14:34:25 | 200 |   20.551139ms |       127.0.0.1 | GET      "/api/users/me"
+[GIN] 2025/07/08 - 14:34:49 | 200 |       90.48µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:34:52 | 200 |    3.709689ms |       127.0.0.1 | GET      "/api/users/active"
+[GIN] 2025/07/08 - 14:35:15 | 500 |  522.218321ms |       127.0.0.1 | GET      "/api/users/me/dashboard"
+[GIN] 2025/07/08 - 14:35:19 | 200 |      63.639µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:35:23 | 500 |   86.018448ms |       127.0.0.1 | GET      "/api/users/me/dashboard"
+[GIN] 2025/07/08 - 14:35:28 | 500 |  171.575582ms |       127.0.0.1 | GET      "/api/users/me/dashboard"
+[GIN] 2025/07/08 - 14:35:30 | 500 |  251.170202ms |       127.0.0.1 | GET      "/api/users/me/dashboard"
+[GIN] 2025/07/08 - 14:36:25 | 500 |   94.833951ms |       127.0.0.1 | GET      "/api/users/me/dashboard"
+[GIN] 2025/07/08 - 14:36:27 | 200 |      31.087µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:36:49 | 200 |      38.733µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:37:19 | 200 |      48.711µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:37:49 | 200 |      50.042µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:38:19 | 200 |      46.994µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:39:03 | 200 |     108.125µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:39:06 | 200 |     534.805µs |       127.0.0.1 | GET      "/"
+[GIN] 2025/07/08 - 14:39:07 | 200 |     418.353µs |       127.0.0.1 | GET      "/"
+[GIN] 2025/07/08 - 14:39:10 | 200 |    1.305299ms |       127.0.0.1 | GET      "/"
+[GIN] 2025/07/08 - 14:39:12 | 200 |    5.009295ms |       127.0.0.1 | GET      "/api/documents/3/editor"
+[GIN] 2025/07/08 - 14:39:13 | 200 |    2.964135ms |       127.0.0.1 | GET      "/api/documents/3/config"
+[GIN] 2025/07/08 - 14:39:41 | 200 |      59.041µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:40:11 | 200 |      58.193µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:40:41 | 200 |      61.658µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:41:08 | 200 |      60.393µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:41:39 | 201 |    8.816801ms |       127.0.0.1 | GET      "/api/documents/test"
+[GIN] 2025/07/08 - 14:41:42 | 200 |      57.874µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:41:44 | 200 |    3.097702ms |       127.0.0.1 | GET      "/api/documents/3/editor"
+[GIN] 2025/07/08 - 14:42:05 | 200 |    3.011239ms |       127.0.0.1 | GET      "/api/users/active"
+[GIN] 2025/07/08 - 14:42:08 | 200 |      35.818µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:42:09 | 200 |      24.047µs |       127.0.0.1 | GET      "/api/users/health"
+[GIN] 2025/07/08 - 14:42:12 | 500 |   58.039673ms |       127.0.0.1 | GET      "/api/users/me/dashboard"
+[GIN] 2025/07/08 - 14:42:38 | 200 |     111.711µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:43:09 | 200 |     364.406µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:44:05 | 200 |      55.333µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:45:05 | 200 |      57.501µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:45:55 | 200 |      55.289µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:45:57 | 200 |     888.519µs |       127.0.0.1 | GET      "/"
+[GIN] 2025/07/08 - 14:45:59 | 200 |     546.928µs |       127.0.0.1 | GET      "/"
+[GIN] 2025/07/08 - 14:46:31 | 200 |      44.574µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:47:01 | 200 |      45.696µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:47:31 | 200 |      60.217µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:48:01 | 200 |      68.127µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:48:31 | 200 |     167.055µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:48:43 | 200 |     516.511µs |       127.0.0.1 | GET      "/"
+[GIN] 2025/07/08 - 14:49:13 | 200 |     117.959µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:49:44 | 200 |      72.428µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:50:14 | 200 |      70.799µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:50:44 | 200 |      56.147µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:51:14 | 200 |      84.308µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:51:44 | 200 |       52.12µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:52:14 | 200 |      70.987µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:53:03 | 200 |     277.303µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:54:03 | 200 |      53.166µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:55:03 | 200 |      66.422µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:56:03 | 200 |      63.495µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:57:03 | 200 |      84.495µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:57:43 | 200 |      68.687µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:57:44 | 200 |     403.392µs |       127.0.0.1 | GET      "/"
+[GIN] 2025/07/08 - 14:58:15 | 200 |      91.701µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:58:45 | 200 |      68.787µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:59:15 | 200 |      55.454µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 14:59:45 | 200 |      55.784µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:00:16 | 200 |      70.612µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:00:46 | 200 |     345.254µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:01:16 | 200 |      53.771µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:02:04 | 200 |       51.01µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:03:04 | 200 |      53.606µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:03:40 | 200 |       55.29µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:03:45 | 200 |      36.016µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:04:14 | 200 |      372.37µs |       127.0.0.1 | GET      "/"
+[GIN] 2025/07/08 - 15:04:45 | 200 |      95.001µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:04:48 | 200 |      52.846µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:05:15 | 200 |     274.102µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:05:45 | 200 |      49.657µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:06:15 | 200 |      68.952µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:06:16 | 200 |      38.491µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:06:45 | 200 |      49.579µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:07:15 | 200 |      49.832µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:07:45 | 200 |      53.595µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:08:43 | 200 |      52.583µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:09:13 | 200 |      59.293µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:09:42 | 200 |      61.823µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:10:12 | 200 |       55.19µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:11:04 | 200 |     109.676µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:12:04 | 200 |      66.455µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:13:05 | 200 |      74.881µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:13:47 | 200 |      35.466µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:14:02 | 404 |       4.015µs |       127.0.0.1 | GET      "/api/auth/gitlab"
+[GIN] 2025/07/08 - 15:14:05 | 200 |      48.216µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:15:05 | 200 |     119.005µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:16:05 | 200 |     123.481µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:17:05 | 200 |      94.572µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:18:05 | 200 |     128.917µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:18:25 | 200 |      64.343µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:18:43 | 200 |      63.969µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:19:04 | 404 |       3.311µs |       127.0.0.1 | GET      "/health"
+[GIN] 2025/07/08 - 15:19:13 | 200 |      58.281µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:19:56 | 200 |      74.419µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:20:02 | 200 |      42.066µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:20:02 | 200 |      52.803µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:21:02 | 200 |      81.812µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:22:02 | 200 |      79.138µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:23:02 | 200 |      72.593µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:24:03 | 200 |      56.125µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:24:46 | 200 |     110.183µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:24:56 | 200 |      62.913µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:25:03 | 200 |      64.343µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:26:03 | 200 |      72.153µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:27:03 | 200 |      61.879µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:27:52 | 200 |      49.778µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:28:02 | 200 |      58.556µs |       127.0.0.1 | GET      "/api/health"
+[GIN] 2025/07/08 - 15:28:18 | 200 |      37.974µs |       127.0.0.1 | GET      "/api/health"

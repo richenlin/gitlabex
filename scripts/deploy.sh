@@ -159,7 +159,7 @@ check_services() {
     
     # 检查GitLab
     print_info "检查GitLab状态..."
-    if curl -s http://localhost/-/health > /dev/null 2>&1; then
+    if curl -s http://localhost:8081/-/health > /dev/null 2>&1; then
         print_success "✓ GitLab运行正常"
     else
         print_warning "⚠ GitLab可能需要更多时间启动"
@@ -172,7 +172,7 @@ show_access_info() {
     echo "🎉 部署完成！"
     echo "=============================="
     echo "访问地址："
-    echo "  🌐 GitLab:     http://localhost"
+    echo "  🌐 GitLab:     http://localhost:8081"
     echo "  📄 OnlyOffice: http://localhost:8000"
     echo "  🗄️  PostgreSQL: localhost:5432"
     echo "  🔴 Redis:      localhost:6379"

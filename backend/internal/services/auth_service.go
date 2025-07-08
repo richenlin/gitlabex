@@ -1,0 +1,351 @@
+package services
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"gitlabex/internal/config"
+	"gitlabex/internal/models"
+
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
+)
+
+type AuthService struct {
+	db     *gorm.DB
+	config *config.Config
+}
+
+type GitLabOAuthConfig struct {
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	RedirectURI  string `json:"redirect_uri"`
+	GitLabURL    string `json:"gitlab_url"`
+}
+
+type GitLabUser struct {
+	ID        int    `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url"`
+	WebURL    string `json:"web_url"`
+	State     string `json:"state"`
+}
+
+type GitLabToken struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	CreatedAt    int64  `json:"created_at"`
+	Scope        string `json:"scope"`
+}
+
+type JWTClaims struct {
+	UserID   uint   `json:"user_id"`
+	GitLabID int    `json:"gitlab_id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Name     string `json:"name"`
+	Role     int    `json:"role"`
+	jwt.RegisteredClaims
+}
+
+func NewAuthService(db *gorm.DB, config *config.Config) *AuthService {
+	return &AuthService{
+		db:     db,
+		config: config,
+	}
+}
+
+// GetGitLabOAuthURL 获取GitLab OAuth认证URL
+func (s *AuthService) GetGitLabOAuthURL(state string) string {
+	return fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=read_user+read_repository+write_repository&state=%s",
+		s.config.GitLab.URL,
+		s.config.GitLab.ClientID,
+		s.config.GitLab.RedirectURI,
+		state,
+	)
+}
+
+// HandleGitLabCallback 处理GitLab OAuth回调
+func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
+	code := c.Query("code")
+	_ = c.Query("state") // state用于防止CSRF攻击，这里暂时忽略
+
+	if code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Authorization code is required"})
+		return
+	}
+
+	// 交换访问令牌
+	token, err := s.exchangeCodeForToken(code)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to exchange code for token"})
+		return
+	}
+
+	// 获取用户信息
+	gitlabUser, err := s.fetchGitLabUser(token.AccessToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user info"})
+		return
+	}
+
+	// 同步用户到本地数据库
+	user, err := s.syncUserFromGitLab(gitlabUser)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to sync user"})
+		return
+	}
+
+	// 生成JWT令牌
+	jwtToken, err := s.generateJWTToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate JWT token"})
+		return
+	}
+
+	// 返回认证结果
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login successful",
+		"token":   jwtToken,
+		"user": gin.H{
+			"id":       user.ID,
+			"username": user.Username,
+			"email":    user.Email,
+			"name":     user.Name,
+			"avatar":   user.Avatar,
+			"role":     user.Role,
+		},
+	})
+}
+
+// exchangeCodeForToken 交换认证码为访问令牌
+func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
+	tokenURL := fmt.Sprintf("%s/oauth/token", s.config.GitLab.URL)
+
+	formData := map[string][]string{
+		"client_id":     {s.config.GitLab.ClientID},
+		"client_secret": {s.config.GitLab.ClientSecret},
+		"code":          {code},
+		"grant_type":    {"authorization_code"},
+		"redirect_uri":  {s.config.GitLab.RedirectURI},
+	}
+
+	resp, err := http.PostForm(tokenURL, formData)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to exchange token: %s", resp.Status)
+	}
+
+	var token GitLabToken
+	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+		return nil, err
+	}
+
+	return &token, nil
+}
+
+// fetchGitLabUser 从GitLab API获取用户信息
+func (s *AuthService) fetchGitLabUser(accessToken string) (*GitLabUser, error) {
+	userURL := fmt.Sprintf("%s/api/v4/user", s.config.GitLab.URL)
+
+	req, err := http.NewRequest("GET", userURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch user: %s", resp.Status)
+	}
+
+	var gitlabUser GitLabUser
+	if err := json.NewDecoder(resp.Body).Decode(&gitlabUser); err != nil {
+		return nil, err
+	}
+
+	return &gitlabUser, nil
+}
+
+// syncUserFromGitLab 同步GitLab用户到本地数据库
+func (s *AuthService) syncUserFromGitLab(gitlabUser *GitLabUser) (*models.User, error) {
+	var user models.User
+
+	// 查找现有用户
+	err := s.db.Where("gitlab_id = ?", gitlabUser.ID).First(&user).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	// 更新用户信息
+	user.GitLabID = gitlabUser.ID
+	user.Username = gitlabUser.Username
+	user.Email = gitlabUser.Email
+	user.Name = gitlabUser.Name
+	user.Avatar = gitlabUser.AvatarURL
+	user.LastSyncAt = time.Now()
+	user.Active = true
+
+	// 如果是新用户，设置默认角色
+	if user.ID == 0 {
+		user.Role = 2 // 默认学生角色
+	}
+
+	// 保存到数据库
+	if err := s.db.Save(&user).Error; err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// generateJWTToken 生成JWT令牌
+func (s *AuthService) generateJWTToken(user *models.User) (string, error) {
+	claims := JWTClaims{
+		UserID:   user.ID,
+		GitLabID: user.GitLabID,
+		Username: user.Username,
+		Email:    user.Email,
+		Name:     user.Name,
+		Role:     user.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "gitlabex",
+			Subject:   fmt.Sprintf("user_%d", user.ID),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(s.config.JWT.Secret))
+}
+
+// ValidateJWTToken 验证JWT令牌
+func (s *AuthService) ValidateJWTToken(tokenString string) (*JWTClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(s.config.JWT.Secret), nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
+}
+
+// GetUserByID 根据ID获取用户
+func (s *AuthService) GetUserByID(userID uint) (*models.User, error) {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// RefreshUserFromGitLab 从GitLab刷新用户信息
+func (s *AuthService) RefreshUserFromGitLab(userID uint, accessToken string) (*models.User, error) {
+	// 获取GitLab用户信息
+	gitlabUser, err := s.fetchGitLabUser(accessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// 同步到本地数据库
+	return s.syncUserFromGitLab(gitlabUser)
+}
+
+// Logout 用户登出
+func (s *AuthService) Logout(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
+}
+
+// GetCurrentUser 获取当前用户
+func (s *AuthService) GetCurrentUser(c *gin.Context) {
+	// 从上下文获取用户信息（通过中间件设置）
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	user, err := s.GetUserByID(userID.(uint))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Success",
+		"data": gin.H{
+			"id":           user.ID,
+			"gitlab_id":    user.GitLabID,
+			"username":     user.Username,
+			"email":        user.Email,
+			"name":         user.Name,
+			"avatar":       user.Avatar,
+			"role":         user.Role,
+			"last_sync_at": user.LastSyncAt,
+			"is_active":    user.Active,
+		},
+	})
+}
+
+// AuthMiddleware JWT认证中间件
+func (s *AuthService) AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is required"})
+			c.Abort()
+			return
+		}
+
+		// 移除 "Bearer " 前缀
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+
+		claims, err := s.ValidateJWTToken(token)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+
+		// 设置用户信息到上下文
+		c.Set("user_id", claims.UserID)
+		c.Set("gitlab_id", claims.GitLabID)
+		c.Set("username", claims.Username)
+		c.Set("email", claims.Email)
+		c.Set("name", claims.Name)
+		c.Set("role", claims.Role)
+
+		c.Next()
+	}
+}

@@ -8,8 +8,8 @@ services:
     container_name: gitlabex-gitlab
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "8081:80"
+      - "4431:443"
       - "2222:22"
     volumes:
       - gitlab_config:/etc/gitlab
@@ -17,9 +17,9 @@ services:
       - gitlab_data:/var/opt/gitlab
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://localhost'
+        external_url 'http://localhost:8081'
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
-        gitlab_rails['initial_root_password'] = 'password123'
+        gitlab_rails['initial_root_password'] = 'GitLab@2024#SecurePass!'
         gitlab_rails['gitlab_signup_enabled'] = true
         nginx['listen_port'] = 80
     networks:
