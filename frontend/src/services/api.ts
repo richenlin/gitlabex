@@ -12,7 +12,7 @@ const api = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('authToken')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -33,7 +33,7 @@ api.interceptors.response.use(
       switch (error.response.status) {
         case 401:
           // 未授权，清除token并跳转到登录页
-          localStorage.removeItem('token')
+          localStorage.removeItem('authToken')
           window.location.href = '/login'
           break
         case 403:
@@ -159,6 +159,21 @@ export class ApiService {
   static async getUserById(id: number): Promise<User> {
     const response = await api.get(`/api/users/${id}`)
     return response.data.data
+  }
+
+  // 认证相关API
+  static async getGitLabOAuthUrl(): Promise<{ url: string }> {
+    const response = await api.get('/api/auth/gitlab')
+    return response.data
+  }
+
+  static async handleOAuthCallback(code: string, state?: string): Promise<{ token: string, user: User }> {
+    const response = await api.post('/api/auth/gitlab/callback', { code, state })
+    return response.data
+  }
+
+  static async logout(): Promise<void> {
+    await api.post('/api/auth/logout')
   }
 
   // 文档相关API

@@ -134,20 +134,31 @@ services:
       - onlyoffice
       - gitlab-init
     environment:
+      # 数据库配置
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=gitlabex
       - DB_PASSWORD=password123
       - DB_NAME=gitlabex
       - DB_SSLMODE=disable
+      # Redis配置
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password123
-      - GITLAB_URL=http://gitlab
+      # GitLab配置
+      - GITLAB_URL=http://localhost:8000/gitlab
+      - GITLAB_INTERNAL_URL=http://gitlab
+      - GITLAB_REDIRECT_URI=http://localhost:8000/api/auth/gitlab/callback
+      - GITLAB_OAUTH_CONFIG_PATH=/shared/gitlab-oauth.env
+      # OnlyOffice配置
       - ONLYOFFICE_URL=http://onlyoffice
       - ONLYOFFICE_JWT_SECRET=gitlabex-jwt-secret-2024
+      - ONLYOFFICE_CALLBACK_URL=http://localhost:8000/api/documents/callback
+      # JWT配置
       - JWT_SECRET=gitlabex-app-jwt-secret-2024
-      - GITLAB_OAUTH_CONFIG_PATH=/shared/gitlab-oauth.env
+      # 服务器配置
+      - SERVER_PORT=8080
+      - GIN_MODE=release
     volumes:
       - gitlab_oauth_config:/shared:ro
     networks:

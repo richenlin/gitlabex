@@ -32,8 +32,12 @@ WORKDIR /app
 COPY --from=builder /app/main .
 COPY --from=builder /app/templates ./templates/
 
+# 复制启动脚本
+COPY start.sh .
+RUN chmod +x start.sh
+
 # 暴露端口
 EXPOSE 8080
 
-# 运行应用
-CMD ["./main"] 
+# 使用启动脚本运行应用
+CMD ["./start.sh"] 

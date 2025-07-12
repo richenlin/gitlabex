@@ -43,7 +43,8 @@ type RedisConfig struct {
 
 // GitLabConfig GitLab配置
 type GitLabConfig struct {
-	URL          string
+	URL          string // 外部访问URL，用于OAuth授权
+	InternalURL  string // 内部访问URL，用于API调用
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
@@ -122,6 +123,7 @@ func LoadConfig() (*Config, error) {
 		},
 		GitLab: GitLabConfig{
 			URL:          getEnv("GITLAB_URL", "http://localhost:8000/gitlab"),
+			InternalURL:  getEnv("GITLAB_INTERNAL_URL", "http://gitlab"),
 			ClientID:     getEnv("GITLAB_CLIENT_ID", ""),
 			ClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
 			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:8000/api/auth/gitlab/callback"),

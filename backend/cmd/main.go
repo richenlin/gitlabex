@@ -169,6 +169,7 @@ func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHa
 				c.JSON(200, gin.H{"url": url})
 			})
 			auth.GET("/gitlab/callback", authService.HandleGitLabCallback)
+			auth.POST("/gitlab/callback", authService.HandleGitLabCallback)
 			auth.POST("/logout", authService.Logout)
 		}
 

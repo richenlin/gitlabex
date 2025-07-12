@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ApiService, type User } from './services/api'
+import { useAuthStore } from './stores/auth'
 import {
   Star,
   House,
@@ -21,9 +22,10 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 
 // 响应式数据
-const currentUser = ref<User | null>(null)
+const currentUser = computed(() => authStore.user)
 
 // 计算属性
 const activeIndex = computed(() => {
@@ -37,32 +39,18 @@ const showNavigation = computed(() => {
 
 // 生命周期
 onMounted(() => {
-  loadCurrentUser()
+  // 路由守卫已经处理了用户认证，这里不需要再次加载
+  // 如果需要，可以调用authStore.updateUserInfo()刷新用户信息
 })
 
 // 方法
 const loadCurrentUser = async () => {
   try {
-    // 调用真实的API获取当前用户信息
-    const response = await ApiService.getCurrentUser()
-    currentUser.value = response
+    await authStore.updateUserInfo()
     console.log('当前用户:', currentUser.value)
   } catch (error) {
     console.error('获取用户信息失败:', error)
     ElMessage.error('获取用户信息失败')
-    
-    // 如果API调用失败，使用默认用户作为后备
-    currentUser.value = {
-      id: 1,
-      name: '演示用户',
-      username: 'demo',
-      email: 'demo@example.com',
-      avatar: '',
-      role: 2,
-      gitlab_id: 1,
-      is_active: true,
-      last_sync_at: new Date().toISOString()
-    }
   }
 }
 
@@ -86,11 +74,11 @@ const handleUserMenuCommand = (command: string) => {
 
 const logout = async () => {
   try {
-    // 这里应该调用退出登录API
-    // await ApiService.logout()
+    // 调用后端退出登录API
+    await ApiService.logout()
     
-    // 清除本地存储
-    localStorage.removeItem('authToken')
+    // 清除本地状态
+    authStore.logout()
     
     // 重定向到登录页面
     router.push('/login')
@@ -98,6 +86,11 @@ const logout = async () => {
     ElMessage.success('已退出登录')
   } catch (error) {
     console.error('退出登录失败:', error)
+    
+    // 即使API调用失败，也要清除本地状态
+    authStore.logout()
+    router.push('/login')
+    
     ElMessage.error('退出登录失败')
   }
 }

@@ -100,7 +100,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Lock,
@@ -112,8 +112,11 @@ import {
   Platform
 } from '@element-plus/icons-vue'
 import { ApiService } from '../services/api'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
+const authStore = useAuthStore()
 
 // 响应式数据
 const isLoading = ref(false)
@@ -135,13 +138,7 @@ const loginWithGitLab = async () => {
   isLoading.value = true
   try {
     // 获取GitLab OAuth URL
-    const response = await fetch('/api/auth/gitlab')
-    
-    if (!response.ok) {
-      throw new Error('Failed to get GitLab OAuth URL')
-    }
-    
-    const data = await response.json()
+    const data = await ApiService.getGitLabOAuthUrl()
     
     if (data.url) {
       // 跳转到GitLab OAuth页面
@@ -183,36 +180,57 @@ const checkSystemStatus = async () => {
   }
 }
 
-const checkExistingAuth = () => {
-  // 检查本地存储的token
-  const token = localStorage.getItem('authToken')
-  if (token) {
-    // TODO: 验证token有效性
-    // 如果有效，直接跳转到仪表板
-    // router.push('/dashboard')
+const checkExistingAuth = async () => {
+  // 检查本地存储的token并验证有效性
+  const isLoggedIn = await authStore.checkAuth()
+  
+  if (isLoggedIn) {
+    // 如果已经登录，跳转到目标页面或首页
+    const redirect = route.query.redirect as string
+    router.push(redirect || '/')
+    return
   }
 
   // 检查URL参数，处理OAuth回调
-  const urlParams = new URLSearchParams(window.location.search)
-  const code = urlParams.get('code')
-  const state = urlParams.get('state')
+  const code = route.query.code as string
+  const state = route.query.state as string
   
   if (code) {
-    handleOAuthCallback(code, state)
+    await handleOAuthCallback(code, state)
   }
 }
 
-const handleOAuthCallback = async (code: string, state: string | null) => {
+const handleOAuthCallback = async (code: string, state?: string) => {
+  isLoading.value = true
   try {
-    // 这里应该通过后端处理OAuth回调
-    // 由于我们在登录页面，GitLab会重定向到后端的callback URL
-    // 这个函数主要用于处理可能的前端回调场景
-    ElMessage.info('正在处理GitLab认证回调...')
+    // 调用后端处理OAuth回调
+    const data = await ApiService.handleOAuthCallback(code, state)
+    
+    // 登录成功
+    const loginResult = await authStore.login(data.token)
+    
+    if (loginResult.success) {
+      ElMessage.success('登录成功！')
+      
+      // 清除URL参数
+      const cleanUrl = window.location.origin + window.location.pathname
+      window.history.replaceState({}, '', cleanUrl)
+      
+      // 跳转到目标页面或首页
+      const redirect = route.query.redirect as string
+      router.push(redirect || '/')
+    } else {
+      throw new Error('登录失败')
+    }
   } catch (error) {
-    console.error('OAuth callback handling failed:', error)
-    ElMessage.error('认证回调处理失败')
+    console.error('OAuth回调处理失败:', error)
+    ElMessage.error('登录失败，请重试')
+  } finally {
+    isLoading.value = false
   }
 }
+
+
 </script>
 
 <style scoped>

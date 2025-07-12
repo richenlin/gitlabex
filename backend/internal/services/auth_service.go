@@ -74,8 +74,28 @@ func (s *AuthService) GetGitLabOAuthURL(state string) string {
 
 // HandleGitLabCallback 处理GitLab OAuth回调
 func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
-	code := c.Query("code")
-	_ = c.Query("state") // state用于防止CSRF攻击，这里暂时忽略
+	var code, state string
+
+	// 支持GET和POST两种方式
+	if c.Request.Method == "GET" {
+		code = c.Query("code")
+		state = c.Query("state")
+	} else if c.Request.Method == "POST" {
+		// 从JSON body中获取code和state
+		var requestBody struct {
+			Code  string `json:"code"`
+			State string `json:"state"`
+		}
+		if err := c.ShouldBindJSON(&requestBody); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+		code = requestBody.Code
+		state = requestBody.State
+	}
+
+	// TODO: 验证state参数以防止CSRF攻击
+	_ = state
 
 	if code == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Authorization code is required"})
@@ -127,7 +147,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 
 // exchangeCodeForToken 交换认证码为访问令牌
 func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
-	tokenURL := fmt.Sprintf("%s/oauth/token", s.config.GitLab.URL)
+	tokenURL := fmt.Sprintf("%s/oauth/token", s.config.GitLab.InternalURL)
 
 	formData := map[string][]string{
 		"client_id":     {s.config.GitLab.ClientID},
@@ -157,7 +177,7 @@ func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
 
 // fetchGitLabUser 从GitLab API获取用户信息
 func (s *AuthService) fetchGitLabUser(accessToken string) (*GitLabUser, error) {
-	userURL := fmt.Sprintf("%s/api/v4/user", s.config.GitLab.URL)
+	userURL := fmt.Sprintf("%s/api/v4/user", s.config.GitLab.InternalURL)
 
 	req, err := http.NewRequest("GET", userURL, nil)
 	if err != nil {
