@@ -52,12 +52,15 @@ func main() {
 	wikiHandler := handlers.NewWikiHandler(gitlabSvc, onlyOfficeService, documentService)
 	educationTestHandler := handlers.NewEducationTestHandler(educationServiceSimplified)
 	educationHandler := handlers.NewEducationHandler(educationServiceSimplified, userService)
+	learningProgressHandler := handlers.NewLearningProgressHandler(gitlabSvc)
+	notificationHandler := handlers.NewNotificationHandler(gitlabSvc)
+	educationReportHandler := handlers.NewEducationReportHandler(gitlabSvc)
 
 	// 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
 	// 初始化路由
-	router := setupRoutes(authService, userHandler, documentHandler, wikiHandler, educationTestHandler, educationHandler)
+	router := setupRoutes(authService, userHandler, documentHandler, wikiHandler, educationTestHandler, educationHandler, learningProgressHandler, notificationHandler, educationReportHandler)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -133,7 +136,7 @@ func autoMigrate(db *gorm.DB) error {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHandler, documentHandler *handlers.DocumentHandler, wikiHandler *handlers.WikiHandler, educationTestHandler *handlers.EducationTestHandler, educationHandler *handlers.EducationHandler) *gin.Engine {
+func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHandler, documentHandler *handlers.DocumentHandler, wikiHandler *handlers.WikiHandler, educationTestHandler *handlers.EducationTestHandler, educationHandler *handlers.EducationHandler, learningProgressHandler *handlers.LearningProgressHandler, notificationHandler *handlers.NotificationHandler, educationReportHandler *handlers.EducationReportHandler) *gin.Engine {
 	router := gin.New()
 
 	// 加载HTML模板
@@ -204,6 +207,15 @@ func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHa
 
 			// 教育管理路由
 			educationHandler.RegisterRoutes(protected)
+
+			// 学习进度跟踪路由
+			learningProgressHandler.RegisterRoutes(protected)
+
+			// 通知系统路由
+			notificationHandler.RegisterRoutes(protected)
+
+			// 教育报表路由
+			educationReportHandler.RegisterRoutes(protected)
 		}
 	}
 

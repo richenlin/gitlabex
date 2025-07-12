@@ -135,7 +135,7 @@ const loginWithGitLab = async () => {
   isLoading.value = true
   try {
     // 获取GitLab OAuth URL
-    const response = await fetch('http://localhost:8080/api/auth/gitlab')
+    const response = await fetch('/api/auth/gitlab')
     
     if (!response.ok) {
       throw new Error('Failed to get GitLab OAuth URL')
@@ -160,12 +160,12 @@ const loginWithGitLab = async () => {
 const checkSystemStatus = async () => {
   try {
     // 检查后端状态
-    const backendResponse = await fetch('http://localhost:8080/api/health')
+    const backendResponse = await fetch('/api/health')
     systemStatus.value.backend = backendResponse.ok
 
     // 检查GitLab状态（通过后端代理检查）
     try {
-      const gitlabResponse = await fetch('http://localhost:8080/api/auth/gitlab')
+      const gitlabResponse = await fetch('/api/auth/gitlab')
       systemStatus.value.gitlab = gitlabResponse.ok
     } catch {
       systemStatus.value.gitlab = false
@@ -173,7 +173,7 @@ const checkSystemStatus = async () => {
 
     // 检查OnlyOffice状态
     try {
-      const onlyofficeResponse = await fetch('http://localhost:8000/healthcheck')
+      const onlyofficeResponse = await fetch('/onlyoffice/healthcheck')
       systemStatus.value.onlyoffice = onlyofficeResponse.ok
     } catch {
       systemStatus.value.onlyoffice = false
@@ -222,52 +222,58 @@ const handleOAuthCallback = async (code: string, state: string | null) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 20px;
+  padding: 40px;
   position: relative;
 }
 
 .login-card {
   background: white;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.12);
   overflow: hidden;
   width: 100%;
-  max-width: 450px;
-  min-height: 600px;
-  display: flex;
-  flex-direction: column;
+  max-width: 900px;
+  min-height: 650px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr auto;
 }
 
 .login-header {
   background: linear-gradient(135deg, #409eff 0%, #36c 100%);
   color: white;
-  padding: 40px 30px;
+  padding: 60px 50px;
   text-align: center;
+  grid-column: 1 / 3;
 }
 
 .login-icon {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .login-title {
-  margin: 0 0 8px 0;
-  font-size: 24px;
-  font-weight: 600;
+  margin: 0 0 12px 0;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
 }
 
 .login-subtitle {
   margin: 0;
   opacity: 0.9;
-  font-size: 14px;
+  font-size: 18px;
+  font-weight: 300;
 }
 
 .login-content {
-  flex: 1;
-  padding: 30px;
+  padding: 50px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .login-description {
-  margin-bottom: 30px;
+  margin-bottom: 40px;
 }
 
 .login-form {
@@ -276,26 +282,36 @@ const handleOAuthCallback = async (code: string, state: string | null) => {
 
 .gitlab-login-btn {
   width: 100%;
-  height: 50px;
-  font-size: 16px;
+  height: 60px;
+  font-size: 18px;
   font-weight: 600;
-  margin-bottom: 30px;
+  margin-bottom: 40px;
   background: linear-gradient(135deg, #fc6d26 0%, #e24329 100%);
   border: none;
+  border-radius: 12px;
+  transition: all 0.3s ease;
 }
 
 .gitlab-login-btn:hover {
   background: linear-gradient(135deg, #e24329 0%, #c7371e 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(252, 109, 38, 0.3);
 }
 
 .login-features {
   text-align: left;
+  padding: 50px;
+  background: #f8f9fa;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .login-features h3 {
-  margin: 0 0 16px 0;
+  margin: 0 0 30px 0;
   color: #2c3e50;
-  font-size: 16px;
+  font-size: 22px;
+  font-weight: 600;
 }
 
 .feature-list {
@@ -307,53 +323,65 @@ const handleOAuthCallback = async (code: string, state: string | null) => {
 .feature-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  gap: 15px;
+  padding: 15px 0;
   color: #5f6368;
-  font-size: 14px;
+  font-size: 16px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.feature-list li:last-child {
+  border-bottom: none;
 }
 
 .feature-list li .el-icon {
   color: #409eff;
-  font-size: 16px;
+  font-size: 20px;
+  background: #e3f2fd;
+  padding: 8px;
+  border-radius: 8px;
 }
 
 .login-footer {
-  background: #f8f9fa;
-  padding: 20px 30px;
+  background: #f1f3f4;
+  padding: 30px 50px;
   text-align: center;
   border-top: 1px solid #e4e7ed;
+  grid-column: 1 / 3;
 }
 
 .footer-text {
   margin: 0;
   color: #7f8c8d;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .system-status {
   position: absolute;
-  top: 20px;
-  right: 20px;
-  min-width: 200px;
+  top: 30px;
+  right: 30px;
+  min-width: 250px;
 }
 
 .status-card {
   background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(15px);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .status-title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-weight: 600;
   color: #2c3e50;
+  font-size: 16px;
 }
 
 .status-grid {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 
 .status-item {
@@ -362,19 +390,68 @@ const handleOAuthCallback = async (code: string, state: string | null) => {
 }
 
 /* 响应式设计 */
+@media (max-width: 1200px) {
+  .login-card {
+    max-width: 700px;
+  }
+  
+  .login-header,
+  .login-content,
+  .login-features {
+    padding: 40px;
+  }
+}
+
 @media (max-width: 768px) {
   .login-container {
-    padding: 10px;
+    padding: 20px;
   }
   
   .login-card {
+    grid-template-columns: 1fr;
+    max-width: 500px;
     min-height: auto;
+  }
+  
+  .login-header {
+    grid-column: 1;
+    padding: 40px 30px;
+  }
+  
+  .login-title {
+    font-size: 24px;
+  }
+  
+  .login-subtitle {
+    font-size: 16px;
+  }
+  
+  .login-content,
+  .login-features {
+    padding: 30px;
+  }
+  
+  .login-features {
+    background: white;
   }
   
   .system-status {
     position: static;
     margin-top: 20px;
     min-width: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-container {
+    padding: 10px;
+  }
+  
+  .login-header,
+  .login-content,
+  .login-features,
+  .login-footer {
+    padding: 20px;
   }
 }
 </style> 

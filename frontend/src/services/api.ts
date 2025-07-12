@@ -1,12 +1,9 @@
-import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
-
-// API基础配置
-const API_BASE_URL = 'http://localhost:8080/api'
+import axios from 'axios'
 
 // 创建axios实例
-const api: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
+const api = axios.create({
+  baseURL: import.meta.env.PROD ? 'http://localhost:8000' : '/',
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -15,37 +12,46 @@ const api: AxiosInstance = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    // 这里可以添加认证token
-    // const token = localStorage.getItem('token')
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`
-    // }
-    console.log('API Request:', config.method?.toUpperCase(), config.url)
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
     return config
   },
   (error) => {
-    console.error('Request Error:', error)
     return Promise.reject(error)
   }
 )
 
 // 响应拦截器
 api.interceptors.response.use(
-  (response: AxiosResponse) => {
-    console.log('API Response:', response.status, response.config.url)
-    return response
+  (response) => {
+    return response.data
   },
   (error) => {
-    console.error('Response Error:', error.response?.status, error.response?.data)
-    
-    // 处理常见错误
-    if (error.response?.status === 401) {
-      // 未授权，可以重定向到登录页
-      console.error('Unauthorized access')
-    } else if (error.response?.status === 500) {
-      console.error('Server error')
+    if (error.response) {
+      switch (error.response.status) {
+        case 401:
+          // 未授权，清除token并跳转到登录页
+          localStorage.removeItem('token')
+          window.location.href = '/login'
+          break
+        case 403:
+          // 权限不足
+          console.error('权限不足')
+          break
+        case 404:
+          // 资源不存在
+          console.error('请求的资源不存在')
+          break
+        case 500:
+          // 服务器错误
+          console.error('服务器错误')
+          break
+        default:
+          console.error('请求失败:', error.response.data)
+      }
     }
-    
     return Promise.reject(error)
   }
 )
@@ -130,39 +136,39 @@ export class ApiService {
   
   // 健康检查
   static async healthCheck(): Promise<any> {
-    const response = await api.get('/health')
-    return response.data
+    const response = await api.get('/api/health')
+    return response
   }
 
   // 用户相关API
   static async getCurrentUser(): Promise<User> {
-    const response = await api.get('/users/me')
+    const response = await api.get('/api/users/me')
     return response.data.data
   }
 
   static async getActiveUsers(): Promise<{ data: User[], total: number }> {
-    const response = await api.get('/users/active')
+    const response = await api.get('/api/users/active')
     return response.data
   }
 
   static async getUserDashboard(): Promise<UserDashboard> {
-    const response = await api.get('/users/me/dashboard')
-    return response.data.data
+    const response = await api.get('/api/users/me/dashboard')
+    return response.data
   }
 
   static async getUserById(id: number): Promise<User> {
-    const response = await api.get(`/users/${id}`)
+    const response = await api.get(`/api/users/${id}`)
     return response.data.data
   }
 
   // 文档相关API
   static async createTestDocument(): Promise<Document> {
-    const response = await api.get('/documents/test')
+    const response = await api.get('/api/documents/test')
     return response.data
   }
 
   static async getDocumentConfig(id: number): Promise<DocumentConfig> {
-    const response = await api.get(`/documents/${id}/config`)
+    const response = await api.get(`/api/documents/${id}/config`)
     return response.data
   }
 
@@ -171,7 +177,7 @@ export class ApiService {
     formData.append('file', file)
     formData.append('mode', mode)
     
-    const response = await api.post('/documents/upload', formData, {
+    const response = await api.post('/api/documents/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -181,12 +187,65 @@ export class ApiService {
 
   // 获取文档编辑器URL
   static getDocumentEditorUrl(id: number): string {
-    return `${API_BASE_URL.replace('/api', '')}/api/documents/${id}/editor`
+    return `/api/documents/${id}/editor`
   }
 
   // 获取文档内容URL
   static getDocumentContentUrl(id: number): string {
-    return `${API_BASE_URL.replace('/api', '')}/api/documents/${id}/content`
+    return `/api/documents/${id}/content`
+  }
+
+  // 学习进度跟踪相关API
+  static async getLearningProgressUsers(): Promise<any> {
+    const response = await api.get('/api/learning-progress/users')
+    return response.data.data
+  }
+
+  static async getLearningProgress(userId: number): Promise<any> {
+    const response = await api.get(`/api/learning-progress/user/${userId}`)
+    return response.data.data
+  }
+
+  // 通知系统相关API
+  static async getNotifications(params?: { type?: string; read?: string }): Promise<any> {
+    const response = await api.get('/api/notifications', { params })
+    return response.data.data
+  }
+
+  static async markNotificationAsRead(notificationId: number): Promise<any> {
+    const response = await api.put(`/api/notifications/${notificationId}/read`)
+    return response.data
+  }
+
+  static async markAllNotificationsAsRead(): Promise<any> {
+    const response = await api.put('/api/notifications/read-all')
+    return response.data
+  }
+
+  static async deleteNotification(notificationId: number): Promise<any> {
+    const response = await api.delete(`/api/notifications/${notificationId}`)
+    return response.data
+  }
+
+  static async deleteNotifications(ids: number[]): Promise<any> {
+    const response = await api.delete('/api/notifications', { data: { ids } })
+    return response.data
+  }
+
+  // 教育报表相关API
+  static async getEducationReports(params?: { time_range?: string; class?: string }): Promise<any> {
+    const response = await api.get('/api/education-reports', { params })
+    return response.data.data
+  }
+
+  static async getEducationReportClasses(): Promise<any> {
+    const response = await api.get('/api/education-reports/classes')
+    return response.data.data
+  }
+
+  static async exportEducationReport(params?: { format?: string; time_range?: string; class?: string }): Promise<any> {
+    const response = await api.post('/api/education-reports/export', null, { params })
+    return response.data
   }
 }
 

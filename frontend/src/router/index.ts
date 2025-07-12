@@ -71,6 +71,24 @@ const router = createRouter({
       meta: { title: '个人资料' }
     },
     {
+      path: '/learning-progress',
+      name: 'learning-progress',
+      component: () => import('../views/LearningProgressView.vue'),
+      meta: { title: '学习进度跟踪' }
+    },
+    {
+      path: '/notifications',
+      name: 'notifications',
+      component: () => import('../views/NotificationsView.vue'),
+      meta: { title: '通知系统' }
+    },
+    {
+      path: '/education-reports',
+      name: 'education-reports',
+      component: () => import('../views/EducationReportsView.vue'),
+      meta: { title: '教育报表' }
+    },
+    {
       path: '/about',
       name: 'about',
       component: () => import('../views/AboutView.vue'),

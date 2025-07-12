@@ -119,8 +119,8 @@ const viewDocuments = () => {
 }
 
 const checkSystemStatus = async () => {
+  // 检查后端状态
   try {
-    // 检查后端状态
     const healthResponse = await ApiService.healthCheck()
     if (healthResponse.status === 'ok') {
       systemStatus.value[0].status = 'running'
@@ -128,8 +128,42 @@ const checkSystemStatus = async () => {
       systemStatus.value[0].status = 'error'
     }
   } catch (error) {
-    console.error('检查系统状态失败:', error)
+    console.error('检查后端状态失败:', error)
     systemStatus.value[0].status = 'error'
+  }
+
+  // 检查GitLab状态
+  try {
+    const gitlabResponse = await fetch('/api/auth/gitlab')
+    if (gitlabResponse.ok) {
+      systemStatus.value[1].status = 'running'
+    } else {
+      systemStatus.value[1].status = 'error'
+    }
+  } catch (error) {
+    console.error('检查GitLab状态失败:', error)
+    systemStatus.value[1].status = 'error'
+  }
+
+  // 检查OnlyOffice状态
+  try {
+    const onlyofficeResponse = await fetch('/onlyoffice/healthcheck')
+    if (onlyofficeResponse.ok) {
+      systemStatus.value[2].status = 'running'
+    } else {
+      systemStatus.value[2].status = 'error'
+    }
+  } catch (error) {
+    console.error('检查OnlyOffice状态失败:', error)
+    systemStatus.value[2].status = 'error'
+  }
+
+  // PostgreSQL状态通过后端健康检查间接确认
+  // 如果后端能正常响应，说明数据库连接正常
+  if (systemStatus.value[0].status === 'running') {
+    systemStatus.value[3].status = 'running'
+  } else {
+    systemStatus.value[3].status = 'error'
   }
 }
 </script>

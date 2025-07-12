@@ -14,7 +14,9 @@ import {
   SwitchButton,
   School,
   Notebook,
-  FolderOpened
+  FolderOpened,
+  Bell,
+  TrendCharts
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -26,6 +28,11 @@ const currentUser = ref<User | null>(null)
 // 计算属性
 const activeIndex = computed(() => {
   return route.path
+})
+
+// 是否显示导航栏（登录页面不显示）
+const showNavigation = computed(() => {
+  return route.path !== '/login'
 })
 
 // 生命周期
@@ -98,25 +105,68 @@ const logout = async () => {
 
 <template>
   <el-container class="app-container">
-    <!-- 顶部导航栏 -->
-    <el-header class="app-header">
-      <div class="header-content">
-        <!-- Logo和标题 -->
-        <div class="logo-section">
-          <router-link to="/" class="logo-link">
-            <el-icon class="logo-icon" size="32"><Star /></el-icon>
-            <span class="logo-text">GitLabEx</span>
-          </router-link>
-        </div>
+    <!-- 登录页面：全屏显示 -->
+    <div v-if="!showNavigation" class="login-layout">
+      <router-view />
+    </div>
+    
+    <!-- 其他页面：带导航栏布局 -->
+    <template v-else>
+      <!-- 顶部导航栏 -->
+      <el-header class="app-header">
+        <div class="header-content">
+          <!-- Logo和标题 -->
+          <div class="logo-section">
+            <router-link to="/" class="logo-link">
+              <el-icon class="logo-icon" size="32"><Star /></el-icon>
+              <span class="logo-text">GitLabEx</span>
+            </router-link>
+          </div>
 
-        <!-- 导航菜单 -->
+          <!-- 占位符，保持header布局 -->
+          <div class="header-spacer"></div>
+
+          <!-- 用户菜单 -->
+          <div class="user-section">
+            <el-dropdown @command="handleUserMenuCommand">
+              <span class="user-info">
+                <el-avatar :size="32" :src="currentUser?.avatar">
+                  <el-icon><User /></el-icon>
+                </el-avatar>
+                <span class="username">{{ currentUser?.name || '用户' }}</span>
+                <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
+              </span>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="profile">
+                    <el-icon><User /></el-icon>
+                    个人资料
+                  </el-dropdown-item>
+                  <el-dropdown-item command="settings">
+                    <el-icon><Setting /></el-icon>
+                    设置
+                  </el-dropdown-item>
+                  <el-dropdown-item divided command="logout">
+                    <el-icon><SwitchButton /></el-icon>
+                    退出登录
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+        </div>
+      </el-header>
+
+      <!-- 主内容区域 -->
+      <el-container class="app-body">
+        <!-- 左侧菜单 -->
+        <el-aside class="app-aside">
         <el-menu
           :default-active="activeIndex"
-          class="header-menu"
-          mode="horizontal"
+          class="sidebar-menu"
           @select="handleMenuSelect"
-          background-color="transparent"
-          text-color="#fff"
+          background-color="#ffffff"
+          text-color="#333333"
           active-text-color="#409EFF"
         >
           <el-menu-item index="/">
@@ -139,6 +189,18 @@ const logout = async () => {
             <el-icon><Notebook /></el-icon>
             <span>作业管理</span>
           </el-menu-item>
+          <el-menu-item index="/learning-progress">
+            <el-icon><DataBoard /></el-icon>
+            <span>学习进度跟踪</span>
+          </el-menu-item>
+          <el-menu-item index="/notifications">
+            <el-icon><Bell /></el-icon>
+            <span>通知系统</span>
+          </el-menu-item>
+          <el-menu-item index="/education-reports">
+            <el-icon><TrendCharts /></el-icon>
+            <span>教育报表</span>
+          </el-menu-item>
           <el-menu-item index="/documents">
             <el-icon><Document /></el-icon>
             <span>文档</span>
@@ -152,71 +214,54 @@ const logout = async () => {
             <span>用户</span>
           </el-menu-item>
         </el-menu>
+      </el-aside>
 
-        <!-- 用户菜单 -->
-        <div class="user-section">
-          <el-dropdown @command="handleUserMenuCommand">
-            <span class="user-info">
-              <el-avatar :size="32" :src="currentUser?.avatar">
-                <el-icon><User /></el-icon>
-              </el-avatar>
-              <span class="username">{{ currentUser?.name || '用户' }}</span>
-              <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="profile">
-                  <el-icon><User /></el-icon>
-                  个人资料
-                </el-dropdown-item>
-                <el-dropdown-item command="settings">
-                  <el-icon><Setting /></el-icon>
-                  设置
-                </el-dropdown-item>
-                <el-dropdown-item divided command="logout">
-                  <el-icon><SwitchButton /></el-icon>
-                  退出登录
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </div>
-    </el-header>
+        <!-- 主内容区域 -->
+        <el-main class="app-main">
+          <router-view />
+        </el-main>
+      </el-container>
 
-    <!-- 主内容区域 -->
-    <el-main class="app-main">
-      <router-view />
-    </el-main>
-
-    <!-- 底部 -->
-    <el-footer class="app-footer">
-      <div class="footer-content">
-        <div class="footer-info">
-          <span>&copy; 2024 GitLabEx - 基于 GitLab + OnlyOffice 的教育协作平台</span>
+      <!-- 底部 -->
+      <el-footer class="app-footer">
+        <div class="footer-content">
+          <div class="footer-info">
+            <span>&copy; 2024 GitLabEx - 基于 GitLab + OnlyOffice 的教育协作平台</span>
+          </div>
+          <div class="footer-links">
+            <el-link href="/about" :underline="false">关于</el-link>
+            <el-divider direction="vertical" />
+            <el-link href="https://github.com" target="_blank" :underline="false">GitHub</el-link>
+            <el-divider direction="vertical" />
+            <el-link href="https://gitlab.com" target="_blank" :underline="false">GitLab</el-link>
+          </div>
         </div>
-        <div class="footer-links">
-          <el-link href="/about" :underline="false">关于</el-link>
-          <el-divider direction="vertical" />
-          <el-link href="https://github.com" target="_blank" :underline="false">GitHub</el-link>
-          <el-divider direction="vertical" />
-          <el-link href="https://gitlab.com" target="_blank" :underline="false">GitLab</el-link>
-        </div>
-      </div>
-    </el-footer>
+      </el-footer>
+    </template>
   </el-container>
 </template>
 
 <style scoped>
 .app-container {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.login-layout {
+  min-height: 100vh;
+  width: 100%;
 }
 
 .app-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #fff;
   padding: 0;
-  height: 60px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  height: 64px;
+  border-bottom: 1px solid #e6e6e6;
+  position: fixed;
+  width: 100%;
+  top: 0;
+  z-index: 1000;
 }
 
 .header-content {
@@ -224,53 +269,79 @@ const logout = async () => {
   align-items: center;
   justify-content: space-between;
   height: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 24px;
 }
 
 .logo-section {
   display: flex;
   align-items: center;
+  min-width: 200px;
 }
 
 .logo-link {
   display: flex;
   align-items: center;
   text-decoration: none;
-  color: white;
-  gap: 8px;
+  color: #333;
+  gap: 12px;
 }
 
 .logo-icon {
-  color: white;
+  color: #409EFF;
 }
 
 .logo-text {
-  font-size: 24px;
-  font-weight: bold;
-  color: white;
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
 }
 
-.header-menu {
+.header-spacer {
   flex: 1;
-  margin: 0 40px;
-  border-bottom: none;
 }
 
-.header-menu .el-menu-item {
-  border-bottom: none !important;
-  color: rgba(255, 255, 255, 0.8);
+.app-body {
+  flex: 1;
+  margin-top: 64px;
+  display: flex;
 }
 
-.header-menu .el-menu-item:hover {
-  color: #fff;
-  background-color: rgba(255, 255, 255, 0.1);
+.app-aside {
+  width: 256px;
+  background-color: #fff;
+  border-right: 1px solid #e6e6e6;
+  position: fixed;
+  top: 64px;
+  bottom: 0;
+  overflow-y: auto;
 }
 
-.header-menu .el-menu-item.is-active {
+.sidebar-menu {
+  height: calc(100vh - 64px);
+  border-right: none;
+  padding-top: 16px;
+}
+
+.sidebar-menu .el-menu-item {
+  height: 48px;
+  line-height: 48px;
+  margin: 4px 16px;
+  border-radius: 4px;
+  border: none;
+}
+
+.sidebar-menu .el-menu-item:hover {
+  background-color: #f5f7fa;
+}
+
+.sidebar-menu .el-menu-item.is-active {
+  background-color: #ecf5ff;
   color: #409EFF;
-  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-menu .el-menu-item .el-icon {
+  margin-right: 12px;
+  font-size: 18px;
 }
 
 .user-section {
@@ -281,36 +352,42 @@ const logout = async () => {
 .user-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   cursor: pointer;
-  color: white;
-  padding: 8px 12px;
-  border-radius: 6px;
-  transition: background-color 0.3s;
+  color: #333;
+  padding: 8px 16px;
+  border-radius: 4px;
+  transition: all 0.3s;
 }
 
 .user-info:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #f5f7fa;
 }
 
 .username {
   font-size: 14px;
+  color: #333;
 }
 
 .dropdown-icon {
   font-size: 12px;
+  color: #909399;
 }
 
 .app-main {
-  padding: 0;
+  flex: 1;
+  margin-left: 256px;
+  padding: 24px;
   background-color: #f5f7fa;
+  min-height: calc(100vh - 124px);
 }
 
 .app-footer {
   background-color: #fff;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid #e6e6e6;
   height: 60px;
   padding: 0;
+  margin-left: 256px;
 }
 
 .footer-content {
@@ -318,9 +395,7 @@ const logout = async () => {
   align-items: center;
   justify-content: space-between;
   height: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 24px;
 }
 
 .footer-info {
@@ -331,36 +406,13 @@ const logout = async () => {
 .footer-links {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
 }
 
 .footer-links .el-link {
   font-size: 14px;
-  color: #909399;
-}
-
-@media (max-width: 768px) {
-  .header-content {
-    padding: 0 16px;
+  color: #606266;
   }
   
-  .header-menu {
-    margin: 0 20px;
-  }
-  
-  .username {
-    display: none;
-  }
-  
-  .footer-content {
-    flex-direction: column;
-    gap: 8px;
-    padding: 16px;
-  }
-  
-  .footer-info,
-  .footer-links {
-    font-size: 12px;
-  }
-}
+/* 移除移动端适配 */
 </style>

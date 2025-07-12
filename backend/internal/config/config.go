@@ -72,6 +72,30 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	// 尝试加载GitLab OAuth配置文件
+	oauthConfigPath := getEnv("GITLAB_OAUTH_CONFIG_PATH", "")
+	fmt.Printf("OAuth config path: %s\n", oauthConfigPath)
+	if oauthConfigPath != "" {
+		// 检查文件是否存在
+		if _, err := os.Stat(oauthConfigPath); os.IsNotExist(err) {
+			fmt.Printf("Warning: OAuth config file does not exist: %s\n", oauthConfigPath)
+		} else {
+			fmt.Printf("OAuth config file exists: %s\n", oauthConfigPath)
+			if err := godotenv.Load(oauthConfigPath); err != nil {
+				fmt.Printf("Warning: Could not load GitLab OAuth config from %s: %v\n", oauthConfigPath, err)
+			} else {
+				fmt.Printf("Successfully loaded GitLab OAuth config from %s\n", oauthConfigPath)
+				// 验证是否加载成功
+				clientID := os.Getenv("GITLAB_CLIENT_ID")
+				if clientID != "" {
+					fmt.Printf("OAuth Client ID loaded: %s\n", clientID[:10]+"...")
+				} else {
+					fmt.Printf("Warning: OAuth Client ID not found after loading config\n")
+				}
+			}
+		}
+	}
+
 	config := &Config{
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -97,10 +121,10 @@ func LoadConfig() (*Config, error) {
 			CallbackURL: getEnv("ONLYOFFICE_CALLBACK_URL", "http://localhost:8080/api/documents/callback"),
 		},
 		GitLab: GitLabConfig{
-			URL:          getEnv("GITLAB_URL", "http://localhost"),
+			URL:          getEnv("GITLAB_URL", "http://localhost:8000/gitlab"),
 			ClientID:     getEnv("GITLAB_CLIENT_ID", ""),
 			ClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
-			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:8080/api/auth/gitlab/callback"),
+			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:8000/api/auth/gitlab/callback"),
 			Token:        getEnv("GITLAB_TOKEN", ""),
 		},
 		JWT: JWTConfig{

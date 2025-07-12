@@ -245,183 +245,63 @@
         </el-button>
       </template>
     </el-dialog>
-
-    <!-- Wiki页面详情对话框 -->
-    <el-dialog 
-      v-model="wikiDetailDialogVisible" 
-      :title="selectedWikiPage?.title" 
-      width="1000px"
-      :destroy-on-close="true"
-    >
-      <div v-if="selectedWikiPage" class="wiki-detail-content">
-        <el-tabs v-model="activeDetailTab">
-          <!-- Wiki内容 -->
-          <el-tab-pane label="Wiki内容" name="content">
-            <div class="wiki-content-display">
-              <div class="content-text" v-html="renderMarkdown(selectedWikiPage.content)"></div>
-            </div>
-          </el-tab-pane>
-
-          <!-- 可编辑附件 -->
-          <el-tab-pane label="文档附件" name="attachments">
-            <div class="editable-attachments">
-              <div class="attachments-header">
-                <h4>可编辑的文档附件</h4>
-                <el-button 
-                  type="primary" 
-                  size="small" 
-                  @click="showUploadAttachmentDialog(selectedWikiPage)"
-                >
-                  <el-icon><Plus /></el-icon>
-                  添加附件
-                </el-button>
-              </div>
-              
-              <el-table :data="wikiAttachments" style="width: 100%">
-                <el-table-column prop="file_name" label="文件名" />
-                <el-table-column prop="file_type" label="类型" width="100">
-                  <template #default="{ row }">
-                    <el-tag :type="getFileTypeTagType(row.file_type)" size="small">
-                      {{ row.file_type.toUpperCase() }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="last_edited_at" label="最后编辑" width="180">
-                  <template #default="{ row }">
-                    {{ row.last_edited_at ? formatDate(row.last_edited_at) : '-' }}
-                  </template>
-                </el-table-column>
-                <el-table-column prop="last_edited_by" label="编辑者" width="120" />
-                <el-table-column label="操作" width="200">
-                  <template #default="{ row }">
-                    <el-button-group size="small">
-                      <el-button 
-                        type="primary"
-                        @click="editAttachmentWithOnlyOffice(row)"
-                        :disabled="!row.can_edit"
-                      >
-                        <el-icon><Edit /></el-icon>
-                        在线编辑
-                      </el-button>
-                      <el-button 
-                        @click="downloadAttachment(row)"
-                      >
-                        <el-icon><Download /></el-icon>
-                        下载
-                      </el-button>
-                    </el-button-group>
-                  </template>
-                </el-table-column>
-              </el-table>
-              
-              <div v-if="wikiAttachments.length === 0" class="no-attachments">
-                <el-empty description="该Wiki页面暂无可编辑的文档附件" />
-              </div>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </el-dialog>
-
-    <!-- OnlyOffice编辑器对话框 -->
-    <el-dialog 
-      v-model="onlyOfficeDialogVisible" 
-      :title="`编辑文档 - ${currentEditingAttachment?.file_name}`" 
-      width="95%" 
-      fullscreen
-      :before-close="handleOnlyOfficeClose"
-    >
-      <div ref="onlyOfficeContainer" style="height: 100vh;"></div>
-    </el-dialog>
   </div>
 </template>
 
-<script setup>
-import { ref, reactive, onMounted, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { 
-  Document, 
-  Plus, 
-  Refresh, 
-  FolderOpened, 
-  View, 
-  Upload, 
-  Edit,
-  Memo,
-  UploadFilled,
-  Download
-} from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
+<script setup lang="ts">
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Document, Plus, Refresh, FolderOpened, Memo, View, Upload, Edit, UploadFilled } from '@element-plus/icons-vue'
+import type { FormInstance, UploadInstance, UploadUserFile } from 'element-plus'
+import { formatDate } from '@/utils/date'
+import type { Project, WikiPage, WikiAttachment } from '../types/wiki'
+import api from '@/services/api'
 
 // 响应式数据
-const projects = ref([])
-const selectedProjectId = ref(null)
-const wikiPages = ref([])
-const wikiAttachments = ref([])
-
+const selectedProjectId = ref<number | null>(null)
+const projects = ref<Project[]>([])
+const wikiPages = ref<WikiPage[]>([])
+const wikiAttachments = ref<WikiAttachment[]>([])
 const isLoading = ref(false)
+const createWikiDialogVisible = ref(false)
+const uploadAttachmentDialogVisible = ref(false)
+const selectedWikiPage = ref<WikiPage | null>(null)
 const createWikiLoading = ref(false)
 const uploadAttachmentLoading = ref(false)
 
-const createWikiDialogVisible = ref(false)
-const uploadAttachmentDialogVisible = ref(false)
-const wikiDetailDialogVisible = ref(false)
-const onlyOfficeDialogVisible = ref(false)
-
-const selectedWikiPage = ref(null)
-const currentEditingAttachment = ref(null)
-const activeDetailTab = ref('content')
-
-let currentDocEditor = null
+// 表单引用
+const createWikiFormRef = ref<FormInstance>()
+const uploadAttachmentFormRef = ref<FormInstance>()
+const createWikiUploadRef = ref<UploadInstance>()
+const uploadAttachmentUploadRef = ref<UploadInstance>()
 
 // 表单数据
 const createWikiForm = reactive({
   title: '',
   content: '',
-  attachments: []
+  attachments: [] as UploadUserFile[]
 })
 
 const uploadAttachmentForm = reactive({
-  files: []
+  files: [] as UploadUserFile[]
 })
-
-// 表单引用
-const createWikiFormRef = ref()
-const uploadAttachmentFormRef = ref()
-const createWikiUploadRef = ref()
-const uploadAttachmentUploadRef = ref()
-const onlyOfficeContainer = ref()
 
 // 表单验证规则
 const createWikiRules = {
   title: [
-    { required: true, message: '请输入Wiki页面标题', trigger: 'blur' }
+    { required: true, message: '请输入页面标题', trigger: 'blur' },
+    { min: 2, max: 50, message: '标题长度应在2-50个字符之间', trigger: 'blur' }
   ],
   content: [
-    { required: true, message: '请输入Wiki页面内容', trigger: 'blur' }
+    { required: true, message: '请输入页面内容', trigger: 'blur' }
   ]
 }
-
-// 页面初始化
-onMounted(() => {
-  loadProjects()
-})
 
 // 加载项目列表
 const loadProjects = async () => {
   try {
-    const response = await fetch('/api/projects', {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    
-    if (response.ok) {
-      const data = await response.json()
-      projects.value = data.data || []
-    }
+    const response = await api.get('/projects')
+    projects.value = response.data || []
   } catch (error) {
     console.error('加载项目列表失败:', error)
     ElMessage.error('加载项目列表失败')
@@ -434,36 +314,8 @@ const loadWikiPages = async () => {
   
   isLoading.value = true
   try {
-    const response = await fetch(`/api/projects/${selectedProjectId.value}/wiki`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    
-    if (response.ok) {
-      const data = await response.json()
-      wikiPages.value = data.data || []
-    } else {
-      // 使用模拟数据
-      wikiPages.value = [
-        {
-          id: 1,
-          title: '项目文档',
-          slug: 'project-docs',
-          content: '# 项目文档\n\n这是项目的主要文档页面。',
-          updated_at: new Date().toISOString(),
-          editableAttachments: 2
-        },
-        {
-          id: 2,
-          title: '开发指南',
-          slug: 'dev-guide',
-          content: '# 开发指南\n\n本页面包含开发相关的指导信息。',
-          updated_at: new Date(Date.now() - 86400000).toISOString(),
-          editableAttachments: 1
-        }
-      ]
-    }
+    const response = await api.get(`/projects/${selectedProjectId.value}/wiki`)
+    wikiPages.value = response.data || []
   } catch (error) {
     console.error('加载Wiki页面失败:', error)
     ElMessage.error('加载Wiki页面失败')
@@ -472,56 +324,39 @@ const loadWikiPages = async () => {
   }
 }
 
-// 显示创建Wiki对话框
-const showCreateWikiDialog = () => {
-  createWikiDialogVisible.value = true
-  Object.assign(createWikiForm, {
-    title: '',
-    content: '',
-    attachments: []
-  })
-}
-
-// 处理创建Wiki文件选择
-const handleCreateWikiFileChange = (file) => {
-  createWikiForm.attachments = createWikiUploadRef.value.fileList
+// 处理创建Wiki页面的文件变更
+const handleCreateWikiFileChange = (file: UploadUserFile) => {
+  createWikiForm.attachments = createWikiUploadRef.value?.fileList || []
 }
 
 // 创建Wiki页面
 const createWikiPage = async () => {
   if (!createWikiFormRef.value) return
   
-  const valid = await createWikiFormRef.value.validate()
+  await createWikiFormRef.value.validate(async (valid) => {
   if (!valid) return
   
   createWikiLoading.value = true
   
   try {
     const formData = new FormData()
-    formData.append('project_id', selectedProjectId.value)
     formData.append('title', createWikiForm.title)
     formData.append('content', createWikiForm.content)
     
-    // 添加附件
-    createWikiForm.attachments.forEach(file => {
+      createWikiForm.attachments.forEach((file) => {
+        if (file.raw) {
       formData.append('attachments', file.raw)
+        }
     })
     
-    const response = await fetch(`/api/projects/${selectedProjectId.value}/wiki`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: formData
-    })
+      const response = await api.post(`/projects/${selectedProjectId.value}/wiki`, formData)
     
-    if (response.ok) {
+      if (response.status === 200) {
       ElMessage.success('Wiki页面创建成功')
       createWikiDialogVisible.value = false
       loadWikiPages()
     } else {
-      const errorData = await response.json()
-      ElMessage.error(errorData.error || '创建Wiki页面失败')
+        ElMessage.error(response.data.error || '创建Wiki页面失败')
     }
   } catch (error) {
     console.error('创建Wiki页面失败:', error)
@@ -529,103 +364,72 @@ const createWikiPage = async () => {
   } finally {
     createWikiLoading.value = false
   }
+  })
+}
+
+// 显示创建Wiki页面对话框
+const showCreateWikiDialog = () => {
+  createWikiForm.title = ''
+  createWikiForm.content = ''
+  createWikiForm.attachments = []
+  createWikiDialogVisible.value = true
 }
 
 // 查看Wiki页面
-const viewWikiPage = async (wikiPage) => {
+const viewWikiPage = async (wikiPage: WikiPage) => {
   selectedWikiPage.value = wikiPage
-  wikiDetailDialogVisible.value = true
-  activeDetailTab.value = 'content'
-  
-  // 加载Wiki页面的可编辑附件
   await loadWikiAttachments(wikiPage.slug)
 }
 
-// 加载Wiki附件
-const loadWikiAttachments = async (wikiSlug) => {
+// 加载Wiki附件列表
+const loadWikiAttachments = async (wikiSlug: string) => {
   try {
-    const response = await fetch(`/api/projects/${selectedProjectId.value}/wiki/${wikiSlug}/attachments`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    
-    if (response.ok) {
-      const data = await response.json()
-      wikiAttachments.value = data.data || []
-    } else {
-      // 使用模拟数据
-      wikiAttachments.value = [
-        {
-          id: 1,
-          file_name: '需求文档.docx',
-          file_type: 'docx',
-          last_edited_at: new Date().toISOString(),
-          last_edited_by: '张老师',
-          can_edit: true
-        },
-        {
-          id: 2,
-          file_name: '数据分析.xlsx',
-          file_type: 'xlsx',
-          last_edited_at: new Date(Date.now() - 3600000).toISOString(),
-          last_edited_by: '李同学',
-          can_edit: true
-        }
-      ]
-    }
+    const response = await api.get(`/projects/${selectedProjectId.value}/wiki/${wikiSlug}/attachments`)
+    wikiAttachments.value = response.data || []
   } catch (error) {
     console.error('加载Wiki附件失败:', error)
-    wikiAttachments.value = []
+    ElMessage.error('加载Wiki附件失败')
   }
 }
 
 // 显示上传附件对话框
-const showUploadAttachmentDialog = (wikiPage) => {
+const showUploadAttachmentDialog = (wikiPage: WikiPage) => {
   selectedWikiPage.value = wikiPage
-  uploadAttachmentDialogVisible.value = true
   uploadAttachmentForm.files = []
+  uploadAttachmentDialogVisible.value = true
 }
 
-// 处理上传附件文件选择
-const handleUploadAttachmentFileChange = (file) => {
-  uploadAttachmentForm.files = uploadAttachmentUploadRef.value.fileList
+// 处理上传附件的文件变更
+const handleUploadAttachmentFileChange = (file: UploadUserFile) => {
+  uploadAttachmentForm.files = uploadAttachmentUploadRef.value?.fileList || []
 }
 
 // 上传附件
 const uploadAttachment = async () => {
-  if (uploadAttachmentForm.files.length === 0) {
-    ElMessage.warning('请选择要上传的文件')
-    return
-  }
+  if (!selectedWikiPage.value) return
   
   uploadAttachmentLoading.value = true
   
   try {
     const formData = new FormData()
-    formData.append('project_id', selectedProjectId.value)
-    formData.append('wiki_slug', selectedWikiPage.value.slug)
-    
-    uploadAttachmentForm.files.forEach(file => {
-      formData.append('attachments', file.raw)
+    uploadAttachmentForm.files.forEach((file) => {
+      if (file.raw) {
+        formData.append('files', file.raw)
+      }
     })
     
-    const response = await fetch(`/api/projects/${selectedProjectId.value}/wiki/${selectedWikiPage.value.slug}/attachments`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      },
-      body: formData
-    })
+    const response = await api.post(
+      `/projects/${selectedProjectId.value}/wiki/${selectedWikiPage.value.slug}/attachments`,
+      formData
+    )
     
-    if (response.ok) {
+    if (response.status === 200) {
       ElMessage.success('附件上传成功')
       uploadAttachmentDialogVisible.value = false
       // 重新加载附件列表
       await loadWikiAttachments(selectedWikiPage.value.slug)
     } else {
-      const errorData = await response.json()
-      ElMessage.error(errorData.error || '上传附件失败')
+      ElMessage.error(response.data.error || '上传附件失败')
     }
   } catch (error) {
     console.error('上传附件失败:', error)
@@ -635,167 +439,65 @@ const uploadAttachment = async () => {
   }
 }
 
-// 使用OnlyOffice编辑附件
-const editAttachmentWithOnlyOffice = async (attachment) => {
-  currentEditingAttachment.value = attachment
-  onlyOfficeDialogVisible.value = true
-  
-  try {
-    // 等待DOM更新
-    await nextTick()
-    
-    // 启动OnlyOffice编辑会话
-    const response = await fetch(`/api/documents/${attachment.id}/edit`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
-      }
-    })
-    
-    if (response.ok) {
-      const config = await response.json()
-      
-      // 初始化OnlyOffice编辑器
-      if (window.DocsAPI) {
-        currentDocEditor = new window.DocsAPI.DocEditor(onlyOfficeContainer.value, {
-          documentType: config.documentType,
-          document: config.document,
-          editorConfig: config.editorConfig,
-          token: config.token,
-          events: {
-            onAppReady: () => {
-              console.log('OnlyOffice编辑器已就绪')
-            },
-            onDocumentStateChange: (event) => {
-              console.log('文档状态变更:', event.data)
-            }
-          }
-        })
-      } else {
-        ElMessage.error('OnlyOffice编辑器未加载')
-      }
-    } else {
-      ElMessage.error('启动编辑器失败')
-    }
-  } catch (error) {
-    console.error('启动OnlyOffice编辑器失败:', error)
-    ElMessage.error('启动编辑器失败')
-  }
-}
-
-// 关闭OnlyOffice编辑器
-const handleOnlyOfficeClose = () => {
-  if (currentDocEditor) {
-    currentDocEditor.destroyEditor()
-    currentDocEditor = null
-  }
-  onlyOfficeDialogVisible.value = false
-  currentEditingAttachment.value = null
-  
-  // 重新加载附件信息
-  if (selectedWikiPage.value) {
-    loadWikiAttachments(selectedWikiPage.value.slug)
-  }
-}
-
-// 下载附件
-const downloadAttachment = (attachment) => {
-  const downloadUrl = `/api/documents/${attachment.id}/download`
-  window.open(downloadUrl, '_blank')
-}
-
 // 编辑Wiki内容
-const editWikiContent = (wikiPage) => {
-  // 跳转到GitLab Wiki编辑页面
-  const gitlabUrl = `${window.location.origin}/gitlab/${projects.value.find(p => p.id === selectedProjectId.value)?.path_with_namespace}/-/wikis/${wikiPage.slug}/edit`
-  window.open(gitlabUrl, '_blank')
+const editWikiContent = (wikiPage: WikiPage) => {
+  const project = projects.value.find(p => p.id === selectedProjectId.value)
+  window.open(`/gitlab/${project?.path_with_namespace}/-/wikis/${wikiPage.slug}/edit`, '_blank')
 }
 
-// 渲染Markdown
-const renderMarkdown = (content) => {
-  // 简单的Markdown渲染（生产环境建议使用专业的Markdown解析器）
-  return content
-    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.*)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*)\*/g, '<em>$1</em>')
-    .replace(/\n/g, '<br/>')
-}
-
-// 工具函数
-const getFileTypeTagType = (fileType) => {
-  switch (fileType?.toLowerCase()) {
-    case 'docx':
-    case 'doc':
-      return 'primary'
-    case 'xlsx':
-    case 'xls':
-      return 'success'
-    case 'pptx':
-    case 'ppt':
-      return 'warning'
-    default:
-      return 'info'
-  }
-}
-
-const formatDate = (dateString) => {
-  if (!dateString) return '-'
-  return new Date(dateString).toLocaleString('zh-CN')
-}
+// 生命周期钩子
+onMounted(() => {
+  loadProjects()
+})
 </script>
 
 <style scoped>
 .wiki-documents-container {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
+  padding: 20px;
 }
 
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  gap: 20px;
+  margin-bottom: 20px;
 }
 
 .header-content {
-  flex: 1;
+  margin-bottom: 20px;
 }
 
 .page-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 28px;
-  color: #303133;
-  margin: 0 0 8px 0;
-}
-
-.page-icon {
-  color: #409EFF;
-}
-
-.page-description {
-  color: #909399;
-  font-size: 16px;
+  font-size: 24px;
   margin: 0;
 }
 
+.page-icon {
+  margin-right: 10px;
+  font-size: 24px;
+}
+
+.page-description {
+  color: #666;
+  margin: 10px 0;
+}
+
 .project-selector {
-  display: flex;
-  align-items: center;
+  margin-bottom: 20px;
 }
 
 .toolbar {
   display: flex;
-  gap: 12px;
+  gap: 10px;
+  margin-bottom: 20px;
 }
 
 .wiki-content {
-  margin-top: 20px;
+  background: #fff;
+  border-radius: 4px;
+}
+
+.wiki-card {
+  margin-bottom: 20px;
 }
 
 .card-header {
@@ -808,17 +510,15 @@ const formatDate = (dateString) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
-  color: #303133;
 }
 
 .page-count {
-  color: #909399;
+  color: #666;
   font-size: 14px;
 }
 
 .wiki-table {
-  margin-top: 16px;
+  margin-top: 10px;
 }
 
 .wiki-title {
@@ -832,94 +532,27 @@ const formatDate = (dateString) => {
 }
 
 .title-text {
-  font-weight: 500;
+  color: #409EFF;
+  cursor: pointer;
+}
+
+.title-text:hover {
+  text-decoration: underline;
+}
+
+.empty-state {
+  padding: 40px;
+  text-align: center;
 }
 
 .upload-attachment-info {
-  padding: 16px;
+  margin-bottom: 20px;
+  padding: 10px;
   background: #f5f7fa;
   border-radius: 4px;
-  margin-bottom: 20px;
 }
 
 .upload-attachment-info p {
   margin: 5px 0;
-  color: #606266;
-}
-
-.wiki-detail-content {
-  min-height: 400px;
-}
-
-.wiki-content-display {
-  padding: 20px;
-  background: #fafafa;
-  border-radius: 4px;
-  min-height: 300px;
-}
-
-.content-text {
-  line-height: 1.8;
-  color: #303133;
-}
-
-.editable-attachments {
-  padding: 20px 0;
-}
-
-.attachments-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.attachments-header h4 {
-  margin: 0;
-  color: #303133;
-}
-
-.no-attachments {
-  text-align: center;
-  padding: 40px 20px;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-}
-
-@media (max-width: 1200px) {
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .project-selector {
-    order: 1;
-    margin-bottom: 12px;
-  }
-  
-  .toolbar {
-    order: 2;
-  }
-}
-
-@media (max-width: 768px) {
-  .wiki-documents-container {
-    padding: 16px;
-  }
-  
-  .page-title {
-    font-size: 24px;
-  }
-  
-  .toolbar {
-    flex-direction: column;
-  }
-  
-  .project-selector .el-select {
-    width: 100% !important;
-  }
 }
 </style> 

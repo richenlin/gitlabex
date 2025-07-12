@@ -38,7 +38,7 @@ tLab@2024#SecurePass', admin: true);  user.save; puts 'Admin user created succes
 3. 点击 **New Application**
 4. 填写应用信息：
    - **Name**: `GitLabEx`
-   - **Redirect URI**: `http://localhost:8080/api/auth/gitlab/callback`
+   - **Redirect URI**: `http://172.17.0.1:8080/api/auth/gitlab/callback`
    - **Scopes**: 选择以下权限
      - `read_user` - 读取用户信息
      - `read_repository` - 读取仓库信息
@@ -47,8 +47,8 @@ tLab@2024#SecurePass', admin: true);  user.save; puts 'Admin user created succes
      - `email` - 电子邮件地址
 5. 点击 **Save application**
 6. 记录生成的 **Application ID** 和 **Secret**
-**Application ID**： 375dbd60a3bec327790d2f7f814458a137c83e367f4246138aa2c446afa6da5c
-**Secret**：gloas-2393db14563f27fa9306c256861c13362c0d03a724850fae16c8560956031bb9
+**Application ID**： 3ebea6c37ff96533279ef2400925790fcd15af5e948fb4949392ad5f33be8f55
+**Secret**：gloas-1348e62af7177f9ef6a97b0ee28ba6863c3984b8b3949c8a6b17bb0a9bf39800
 ## 🔧 更新后端配置
 
 获得 OAuth 应用的 Application ID 和 Secret 后：

@@ -315,11 +315,22 @@ onMounted(() => {
 const loadUserData = async () => {
   isLoading.value = true
   try {
-    const dashboard: UserDashboard = await ApiService.getUserDashboard()
+    const dashboard: any = await ApiService.getUserDashboard()
     
     profileForm.value = { ...dashboard.user }
     originalProfile.value = { ...dashboard.user }
-    stats.value = dashboard.stats
+    
+    // 适配后端返回的数据结构到前端期望的格式
+    stats.value = {
+      documents_count: 0, // 暂时使用默认值
+      recent_activities: [], // 暂时使用空数组
+      project_memberships: dashboard.projects ? dashboard.projects.map((project: any) => ({
+        project_id: project.id,
+        project_name: project.name,
+        role: 'member',
+        web_url: project.web_url
+      })) : []
+    }
     
     ElMessage.success('个人资料加载成功')
   } catch (error) {
