@@ -28,32 +28,23 @@ func (h *UserHandler) GetCurrentUser(c *gin.Context) {
 	// 从上下文中获取用户信息（由中间件设置）
 	user, exists := c.Get("current_user")
 	if !exists {
-		// 如果没有认证中间件，使用测试用户
-		currentUser, err := h.userService.GetCurrentUser()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "获取用户信息失败",
-				"details": err.Error(),
-			})
-			return
-		}
-
-		// 获取用户在默认上下文中的角色（可以后续扩展）
-		role := currentUser.GetDefaultEducationRole()
-		profile := h.userService.ToProfile(currentUser, role)
-
-		c.JSON(http.StatusOK, gin.H{
-			"data": profile,
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "未登录",
 		})
 		return
 	}
 
 	currentUser := user.(*models.User)
 
-	// 获取用户在默认上下文中的角色（可以后续扩展）
-	role := currentUser.GetDefaultEducationRole()
-
-	profile := h.userService.ToProfile(currentUser, role)
+	// 获取用户详细信息
+	profile, err := h.userService.GetUserProfile(currentUser.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取用户信息失败",
+			"details": err.Error(),
+		})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": profile,
@@ -194,7 +185,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	err := h.userService.UpdateUser(user, updates)
+	err := h.userService.UpdateUserFields(user, updates)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "更新用户信息失败",

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-redis/redis/v8"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
@@ -24,43 +23,36 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// 初始化数据库连接
+	// 初始化数据库
 	db, err := initDatabase(cfg)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
-
-	// 初始化Redis连接
-	rdb := initRedis(cfg)
 
 	// 初始化服务
-	gitlabSvc, err := services.NewGitLabService(cfg, rdb, db)
-	if err != nil {
-		log.Printf("Warning: Failed to initialize GitLab service: %v", err)
-		// 继续运行，但GitLab功能将不可用
-	}
-
+	permissionService := services.NewPermissionService(db)
+	userService := services.NewUserService(db, permissionService)
+	analyticsService := services.NewAnalyticsService(db)
 	authService := services.NewAuthService(db, cfg)
-	userService := services.NewUserService(db, gitlabSvc)
-	onlyOfficeService := services.NewOnlyOfficeService(cfg, db)
-	documentService := services.NewDocumentService(db, gitlabSvc)
-	educationServiceSimplified := services.NewEducationServiceSimplified(gitlabSvc, db)
+	gitlabService, err := services.NewGitLabService(cfg, nil, db)
+	if err != nil {
+		log.Printf("Failed to initialize GitLab service: %v", err)
+	}
+	onlyofficeService := services.NewOnlyOfficeService(cfg, db)
+	documentService := services.NewDocumentService(db, gitlabService, onlyofficeService)
+	educationService := services.NewEducationServiceSimplified(gitlabService, db)
 
 	// 初始化处理器
+	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService, userService)
 	userHandler := handlers.NewUserHandler(userService)
-	documentHandler := handlers.NewDocumentHandler(onlyOfficeService)
-	wikiHandler := handlers.NewWikiHandler(gitlabSvc, onlyOfficeService, documentService)
-	educationTestHandler := handlers.NewEducationTestHandler(educationServiceSimplified)
-	educationHandler := handlers.NewEducationHandler(educationServiceSimplified, userService)
-	learningProgressHandler := handlers.NewLearningProgressHandler(gitlabSvc)
-	notificationHandler := handlers.NewNotificationHandler(gitlabSvc)
-	educationReportHandler := handlers.NewEducationReportHandler(gitlabSvc)
+	educationHandler := handlers.NewEducationHandler(educationService, userService)
+	wikiHandler := handlers.NewWikiHandler(gitlabService, onlyofficeService, documentService)
 
 	// 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
 	// 初始化路由
-	router := setupRoutes(authService, userHandler, documentHandler, wikiHandler, educationTestHandler, educationHandler, learningProgressHandler, notificationHandler, educationReportHandler)
+	router := setupRoutes(authService, analyticsHandler, userHandler, educationHandler, wikiHandler)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -107,31 +99,10 @@ func initDatabase(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-// initRedis 初始化Redis连接
-func initRedis(cfg *config.Config) *redis.Client {
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.GetRedisAddr(),
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
-
-	// 测试连接
-	ctx := rdb.Context()
-	_, err := rdb.Ping(ctx).Result()
-	if err != nil {
-		log.Printf("Warning: Failed to connect to Redis: %v", err)
-	} else {
-		log.Println("Redis connected successfully")
-	}
-
-	return rdb
-}
-
 // autoMigrate 自动迁移数据库表
 func autoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&models.User{},
-		&models.DocumentAttachment{},
 		&models.Class{},
 		&models.ClassMember{},
 		&models.Project{},
@@ -144,11 +115,8 @@ func autoMigrate(db *gorm.DB) error {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHandler, documentHandler *handlers.DocumentHandler, wikiHandler *handlers.WikiHandler, educationTestHandler *handlers.EducationTestHandler, educationHandler *handlers.EducationHandler, learningProgressHandler *handlers.LearningProgressHandler, notificationHandler *handlers.NotificationHandler, educationReportHandler *handlers.EducationReportHandler) *gin.Engine {
+func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
 	router := gin.New()
-
-	// 加载HTML模板
-	router.LoadHTMLGlob("templates/*")
 
 	// 中间件
 	router.Use(gin.Logger())
@@ -168,11 +136,11 @@ func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHa
 			})
 		})
 
-		// 认证相关路由（无需认证）
+		// 认证相关路由
 		auth := api.Group("/auth")
 		{
 			auth.GET("/gitlab", func(c *gin.Context) {
-				state := "random-state-string" // 实际应用中应该生成随机字符串
+				state := "random-state-string"
 				url := authService.GetGitLabOAuthURL(state)
 				c.JSON(200, gin.H{"url": url})
 			})
@@ -181,56 +149,46 @@ func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHa
 			auth.POST("/logout", authService.Logout)
 		}
 
-		// 需要认证的路由
-		protected := api.Group("/")
-		// protected.Use(authService.AuthMiddleware()) // 暂时注释掉，便于测试
+		// 分析统计路由
+		analytics := api.Group("/analytics")
 		{
-			// 用户相关路由
-			users := protected.Group("/users")
-			{
-				users.GET("/health", userHandler.HealthCheck)
-				users.GET("/active", userHandler.ListActiveUsers)
-				users.GET("/:id", userHandler.GetUserByID)
-				users.GET("/me", authService.GetCurrentUser)
-				users.PUT("/me", userHandler.UpdateUser)
-				users.GET("/me/dashboard", userHandler.GetUserDashboard)
-				users.POST("/sync/:gitlab_id", userHandler.SyncUserFromGitLab)
-			}
-
-			// 文档相关路由
-			documents := protected.Group("/documents")
-			{
-				documents.POST("/upload", documentHandler.UploadDocument)
-				documents.GET("/test", documentHandler.TestUpload)
-				documents.GET("/:id/editor", documentHandler.GetDocumentEditor)
-				documents.GET("/:id/config", documentHandler.GetDocumentConfig)
-				documents.GET("/:id/content", documentHandler.GetDocumentContent)
-				documents.POST("/:id/callback", documentHandler.HandleCallback)
-			}
-
-			// Wiki相关路由
-			wikiHandler.RegisterRoutes(protected)
-
-			// 教育测试路由
-			educationTestHandler.RegisterRoutes(protected)
-
-			// 教育管理路由
-			educationHandler.RegisterRoutes(protected)
-
-			// 学习进度跟踪路由
-			learningProgressHandler.RegisterRoutes(protected)
-
-			// 通知系统路由
-			notificationHandler.RegisterRoutes(protected)
-
-			// 教育报表路由
-			educationReportHandler.RegisterRoutes(protected)
+			analytics.GET("/overview", analyticsHandler.GetAnalyticsOverview)
+			analytics.GET("/project-stats", analyticsHandler.GetProjectStats)
+			analytics.GET("/student-stats", analyticsHandler.GetStudentStats)
+			analytics.GET("/assignment-stats", analyticsHandler.GetAssignmentStats)
+			analytics.GET("/submission-trend", analyticsHandler.GetSubmissionTrend)
+			analytics.GET("/project-distribution", analyticsHandler.GetProjectDistribution)
+			analytics.GET("/grade-distribution", analyticsHandler.GetGradeDistribution)
+			analytics.GET("/activity-stats", analyticsHandler.GetActivityStats)
+			analytics.GET("/dashboard-stats", analyticsHandler.GetDashboardStats)
+			analytics.GET("/recent-activities", analyticsHandler.GetRecentActivities)
 		}
+
+		// 用户管理路由
+		users := api.Group("/users")
+		{
+			users.GET("/active", userHandler.ListActiveUsers)
+			users.GET("/current", userHandler.GetCurrentUser)
+			users.GET("/:id", userHandler.GetUserByID)
+			users.PUT("/current", userHandler.UpdateUser)
+			users.GET("/dashboard", userHandler.GetUserDashboard)
+			users.POST("/sync/:gitlab_id", userHandler.SyncUserFromGitLab)
+		}
+
+		// 教育管理路由
+		educationHandler.RegisterRoutes(api)
+
+		// Wiki管理路由
+		wikiHandler.RegisterRoutes(api)
 	}
 
-	// 根路径 - 返回演示首页
+	// 根路径
 	router.GET("/", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", nil)
+		c.JSON(http.StatusOK, gin.H{
+			"message": "GitLabEx API Server",
+			"version": "1.0.0",
+			"status":  "running",
+		})
 	})
 
 	return router
@@ -241,10 +199,10 @@ func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
 
 		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
+			c.AbortWithStatus(204)
 			return
 		}
 

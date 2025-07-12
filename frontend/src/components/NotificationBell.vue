@@ -73,7 +73,7 @@
       <div class="notification-detail">
         <div class="notification-meta">
           <el-tag type="info" size="small">{{ selectedNotification?.type }}</el-tag>
-          <span class="notification-date">{{ formatFullTime(selectedNotification?.created_at) }}</span>
+          <span class="notification-date">{{ formatFullTime(selectedNotification?.created_at || '') }}</span>
         </div>
         <div class="notification-body">
           {{ selectedNotification?.content }}

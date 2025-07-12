@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"gitlabex/internal/models"
@@ -393,19 +394,99 @@ func (s *DocumentService) GetDocumentHistory(documentID uint) ([]models.Document
 
 // CreateDocumentHistory 创建文档历史记录
 func (s *DocumentService) CreateDocumentHistory(documentID uint, userID uint, content, changeNote string) error {
-	history := &models.DocumentHistory{
+	history := models.DocumentHistory{
 		DocumentID: documentID,
 		AuthorID:   userID,
 		Content:    content,
 		ChangeNote: changeNote,
-		CreatedAt:  time.Now(),
 	}
 
-	if err := s.db.Create(history).Error; err != nil {
-		return fmt.Errorf("failed to create document history: %w", err)
+	return s.db.Create(&history).Error
+}
+
+// GetWikiAttachments 获取Wiki页面附件列表
+func (s *DocumentService) GetWikiAttachments(projectID int, slug string) ([]models.DocumentAttachment, error) {
+	var attachments []models.DocumentAttachment
+
+	// 查找项目
+	var project models.Project
+	if err := s.db.Where("gitlab_project_id = ?", projectID).First(&project).Error; err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
 	}
 
-	return nil
+	// 查找文档
+	var document models.Document
+	if err := s.db.Where("project_id = ? AND slug = ?", project.ID, slug).First(&document).Error; err != nil {
+		return nil, fmt.Errorf("document not found: %w", err)
+	}
+
+	// 获取文档的附件
+	if err := s.db.Where("document_id = ?", document.ID).Find(&attachments).Error; err != nil {
+		return nil, fmt.Errorf("failed to get attachments: %w", err)
+	}
+
+	return attachments, nil
+}
+
+// CreateWikiAttachment 创建Wiki页面附件
+func (s *DocumentService) CreateWikiAttachment(userID int, projectID int, slug string, filename string, url string, content []byte) (*models.DocumentAttachment, error) {
+	// 查找项目
+	var project models.Project
+	if err := s.db.Where("gitlab_project_id = ?", projectID).First(&project).Error; err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
+	}
+
+	// 查找或创建文档
+	var document models.Document
+	if err := s.db.Where("project_id = ? AND gitlab_wiki_slug = ?", project.ID, slug).First(&document).Error; err != nil {
+		// 如果文档不存在，创建一个新的
+		document = models.Document{
+			Title:          slug,
+			Content:        "",
+			ProjectID:      project.ID,
+			AuthorID:       uint(userID),
+			Status:         "active",
+			GitLabWikiSlug: slug,
+		}
+		if err := s.db.Create(&document).Error; err != nil {
+			return nil, fmt.Errorf("failed to create document: %w", err)
+		}
+	}
+
+	// 创建附件
+	attachment := models.DocumentAttachment{
+		UserID:       userID,
+		ProjectID:    &projectID,
+		WikiPageSlug: slug,
+		FileName:     filename,
+		FileURL:      url,
+		FilePath:     url,
+		FileType:     getFileType(filename),
+		DocumentKey:  fmt.Sprintf("%d_%s_%d", projectID, slug, time.Now().Unix()),
+		Status:       "active",
+	}
+
+	if err := s.db.Create(&attachment).Error; err != nil {
+		return nil, fmt.Errorf("failed to create attachment: %w", err)
+	}
+
+	return &attachment, nil
+}
+
+// getFileType 根据文件名获取文件类型
+func getFileType(filename string) string {
+	switch {
+	case strings.HasSuffix(filename, ".doc") || strings.HasSuffix(filename, ".docx"):
+		return "document"
+	case strings.HasSuffix(filename, ".xls") || strings.HasSuffix(filename, ".xlsx"):
+		return "spreadsheet"
+	case strings.HasSuffix(filename, ".ppt") || strings.HasSuffix(filename, ".pptx"):
+		return "presentation"
+	case strings.HasSuffix(filename, ".pdf"):
+		return "pdf"
+	default:
+		return "file"
+	}
 }
 
 // 使用已定义的角色常量

@@ -17,54 +17,22 @@ const router = createRouter({
       component: HomeView,
       meta: { title: 'GitLabEx - 教育协作平台', requiresAuth: true }
     },
-    {
-      path: '/analytics',
-      name: 'analytics',
-      component: () => import('../views/AnalyticsView.vue'),
-      meta: { title: '统计分析', requiresAuth: true }
-    },
-    {
-      path: '/documents',
-      name: 'documents',
-      component: () => import('../views/DocumentsView.vue'),
-      meta: { title: '文档管理', requiresAuth: true }
-    },
-    {
-      path: '/documents/editor/:id',
-      name: 'document-editor',
-      component: () => import('../views/DocumentEditorView.vue'),
-      meta: { title: '文档编辑器', requiresAuth: true }
-    },
-    {
-      path: '/wiki',
-      name: 'wiki-documents',
-      component: () => import('../views/WikiDocumentsView.vue'),
-      meta: { title: 'Wiki文档管理', requiresAuth: true }
-    },
     
-    // 用户管理 (管理员权限)
-    {
-      path: '/users',
-      name: 'users',
-      component: () => import('../views/UsersView.vue'),
-      meta: { title: '用户管理', requiresAuth: true, requiresRole: 'admin' }
-    },
-    
-    // 班级管理
+    // 班级管理（仅老师可见）
     {
       path: '/classes',
       name: 'classes',
       component: () => import('../views/ClassesView.vue'),
-      meta: { title: '班级管理', requiresAuth: true }
+      meta: { title: '班级管理', requiresAuth: true, requiresRole: 'teacher' }
     },
     {
       path: '/classes/:id',
       name: 'class-detail',
       component: () => import('../views/ClassDetailView.vue'),
-      meta: { title: '班级详情', requiresAuth: true }
+      meta: { title: '班级详情', requiresAuth: true, requiresRole: 'teacher' }
     },
     
-    // 课题管理
+    // 课题管理（老师和学生可见）
     {
       path: '/projects',
       name: 'projects',
@@ -78,7 +46,7 @@ const router = createRouter({
       meta: { title: '课题详情', requiresAuth: true }
     },
     
-    // 作业管理
+    // 作业管理（老师和学生可见）
     {
       path: '/assignments',
       name: 'assignments',
@@ -98,26 +66,26 @@ const router = createRouter({
       meta: { title: '提交作业', requiresAuth: true, requiresRole: 'student' }
     },
     
-    // 评审管理 (老师权限)
+    // 统计分析（老师和学生可见）
     {
-      path: '/reviews',
-      name: 'reviews',
-      component: () => import('../views/ReviewsView.vue'),
-      meta: { title: '评审管理', requiresAuth: true, requiresRole: 'teacher' }
-    },
-    {
-      path: '/reviews/:id',
-      name: 'review-detail',
-      component: () => import('../views/ReviewDetailView.vue'),
-      meta: { title: '评审详情', requiresAuth: true, requiresRole: 'teacher' }
+      path: '/analytics',
+      name: 'analytics',
+      component: () => import('../views/AnalyticsView.vue'),
+      meta: { title: '统计分析', requiresAuth: true }
     },
     
-    // 通知系统
+    // 文档管理（老师和学生可见）
     {
-      path: '/notifications',
-      name: 'notifications',
-      component: () => import('../views/NotificationsView.vue'),
-      meta: { title: '通知系统', requiresAuth: true }
+      path: '/documents',
+      name: 'documents',
+      component: () => import('../views/DocumentsView.vue'),
+      meta: { title: '文档管理', requiresAuth: true }
+    },
+    {
+      path: '/documents/editor/:id',
+      name: 'document-editor',
+      component: () => import('../views/DocumentEditorView.vue'),
+      meta: { title: '文档编辑器', requiresAuth: true }
     },
     
     // 个人中心
@@ -128,8 +96,7 @@ const router = createRouter({
       meta: { title: '个人资料', requiresAuth: true }
     },
     
-
-    
+    // 其他必要路由
     {
       path: '/about',
       name: 'about',

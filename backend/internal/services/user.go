@@ -477,3 +477,169 @@ func (s *UserService) ValidateUserPermission(userID uint, permission string, res
 
 	return false, nil
 }
+
+// GetCurrentUser 获取当前用户（用于测试环境）
+func (s *UserService) GetCurrentUser() (*models.User, error) {
+	// 在生产环境中，这个方法应该从上下文中获取当前用户
+	// 这里我们返回一个测试用户
+	var user models.User
+	if err := s.db.Where("role = ?", RoleAdmin).First(&user).Error; err != nil {
+		return nil, fmt.Errorf("failed to get current user: %w", err)
+	}
+	return &user, nil
+}
+
+// GetUserDashboard 获取用户仪表板数据
+func (s *UserService) GetUserDashboard(user *models.User) (*UserDashboard, error) {
+	dashboard := &UserDashboard{
+		User: *user,
+	}
+
+	// 根据用户角色获取不同的仪表板数据
+	switch user.Role {
+	case RoleAdmin:
+		// 管理员看到所有统计数据
+		var totalUsers, totalClasses, totalProjects, totalAssignments int64
+		s.db.Model(&models.User{}).Count(&totalUsers)
+		s.db.Model(&models.Class{}).Count(&totalClasses)
+		s.db.Model(&models.Project{}).Count(&totalProjects)
+		s.db.Model(&models.Assignment{}).Count(&totalAssignments)
+
+		dashboard.TotalUsers = int(totalUsers)
+		dashboard.TotalClasses = int(totalClasses)
+		dashboard.TotalProjects = int(totalProjects)
+		dashboard.TotalAssignments = int(totalAssignments)
+
+	case RoleTeacher:
+		// 老师看到自己的班级和课题统计
+		var myClasses, myProjects, myAssignments int64
+		s.db.Model(&models.Class{}).Where("teacher_id = ?", user.ID).Count(&myClasses)
+		s.db.Model(&models.Project{}).Where("teacher_id = ?", user.ID).Count(&myProjects)
+		s.db.Model(&models.Assignment{}).Where("teacher_id = ?", user.ID).Count(&myAssignments)
+
+		dashboard.MyClasses = int(myClasses)
+		dashboard.MyProjects = int(myProjects)
+		dashboard.MyAssignments = int(myAssignments)
+
+	case RoleStudent:
+		// 学生看到自己参与的统计
+		var myClasses, myProjects, mySubmissions int64
+		s.db.Model(&models.Class{}).
+			Joins("JOIN class_members ON classes.id = class_members.class_id").
+			Where("class_members.student_id = ?", user.ID).Count(&myClasses)
+		s.db.Model(&models.Project{}).
+			Joins("JOIN project_members ON projects.id = project_members.project_id").
+			Where("project_members.student_id = ?", user.ID).Count(&myProjects)
+		s.db.Model(&models.AssignmentSubmission{}).
+			Where("student_id = ?", user.ID).Count(&mySubmissions)
+
+		dashboard.MyClasses = int(myClasses)
+		dashboard.MyProjects = int(myProjects)
+		dashboard.MySubmissions = int(mySubmissions)
+	}
+
+	return dashboard, nil
+}
+
+// ToProfile 将用户转换为用户资料
+func (s *UserService) ToProfile(user *models.User, role models.EducationRole) *UserProfile {
+	profile := &UserProfile{
+		User: *user,
+	}
+
+	// 根据角色添加相关统计信息
+	switch user.Role {
+	case RoleTeacher:
+		// 获取创建的班级
+		var classes []models.Class
+		if err := s.db.Where("teacher_id = ?", user.ID).Find(&classes).Error; err == nil {
+			profile.Classes = classes
+		}
+
+		// 获取创建的课题
+		var projects []models.Project
+		if err := s.db.Where("teacher_id = ?", user.ID).Find(&projects).Error; err == nil {
+			profile.Projects = projects
+		}
+
+		// 获取创建的作业数
+		var assignmentCount int64
+		if err := s.db.Model(&models.Assignment{}).Where("teacher_id = ?", user.ID).Count(&assignmentCount).Error; err == nil {
+			profile.AssignmentCount = int(assignmentCount)
+		}
+
+	case RoleStudent:
+		// 获取参加的班级
+		var classes []models.Class
+		if err := s.db.Preload("Teacher").
+			Joins("JOIN class_members ON classes.id = class_members.class_id").
+			Where("class_members.student_id = ? AND class_members.status = 'active'", user.ID).
+			Find(&classes).Error; err == nil {
+			profile.Classes = classes
+		}
+
+		// 获取参加的课题
+		var projects []models.Project
+		if err := s.db.Preload("Teacher").
+			Joins("JOIN project_members ON projects.id = project_members.project_id").
+			Where("project_members.student_id = ? AND project_members.status = 'active'", user.ID).
+			Find(&projects).Error; err == nil {
+			profile.Projects = projects
+		}
+
+		// 获取作业提交统计
+		var submissionCount int64
+		if err := s.db.Model(&models.AssignmentSubmission{}).
+			Where("student_id = ?", user.ID).Count(&submissionCount).Error; err == nil {
+			profile.SubmissionCount = int(submissionCount)
+		}
+
+		// 获取已评审的作业数
+		var reviewedCount int64
+		if err := s.db.Model(&models.AssignmentSubmission{}).
+			Where("student_id = ? AND status = 'graded'", user.ID).Count(&reviewedCount).Error; err == nil {
+			profile.ReviewedCount = int(reviewedCount)
+		}
+
+		// 计算平均分
+		if profile.ReviewedCount > 0 {
+			var averageScore float64
+			if err := s.db.Model(&models.AssignmentSubmission{}).
+				Where("student_id = ? AND status = 'graded'", user.ID).
+				Select("AVG(score)").Scan(&averageScore).Error; err == nil {
+				profile.AverageScore = averageScore
+			}
+		}
+	}
+
+	return profile
+}
+
+// ListActiveUsers 获取活跃用户列表
+func (s *UserService) ListActiveUsers() ([]*models.User, error) {
+	var users []*models.User
+	err := s.db.Where("active = true").Order("name ASC").Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active users: %w", err)
+	}
+	return users, nil
+}
+
+// UpdateUserFields 更新用户信息 (兼容handler期望的签名)
+func (s *UserService) UpdateUserFields(user *models.User, updates map[string]interface{}) error {
+	return s.db.Model(user).Updates(updates).Error
+}
+
+// UserDashboard 用户仪表板数据
+type UserDashboard struct {
+	User             models.User `json:"user"`
+	TotalUsers       int         `json:"total_users,omitempty"`
+	TotalClasses     int         `json:"total_classes,omitempty"`
+	TotalProjects    int         `json:"total_projects,omitempty"`
+	TotalAssignments int         `json:"total_assignments,omitempty"`
+	MyClasses        int         `json:"my_classes,omitempty"`
+	MyProjects       int         `json:"my_projects,omitempty"`
+	MyAssignments    int         `json:"my_assignments,omitempty"`
+	MySubmissions    int         `json:"my_submissions,omitempty"`
+	RecentActivities []string    `json:"recent_activities,omitempty"`
+}

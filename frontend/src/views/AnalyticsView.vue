@@ -77,8 +77,8 @@
             </template>
             <div class="chart-container">
               <SimpleChart
-                :chart-data="submissionTrendData"
-                chart-type="line"
+                :data="convertedSubmissionTrendData"
+                type="line"
                 :height="300"
               />
             </div>
@@ -93,8 +93,8 @@
             </template>
             <div class="chart-container">
               <SimpleChart
-                :chart-data="projectDistributionData"
-                chart-type="doughnut"
+                :data="convertedProjectDistributionData"
+                type="pie"
                 :height="300"
               />
             </div>
@@ -109,8 +109,8 @@
             </template>
             <div class="chart-container">
               <SimpleChart
-                :chart-data="gradeDistributionData"
-                chart-type="bar"
+                :data="convertedGradeDistributionData"
+                type="bar"
                 :height="300"
               />
             </div>
@@ -125,8 +125,8 @@
             </template>
             <div class="chart-container">
               <SimpleChart
-                :chart-data="activityData"
-                chart-type="radar"
+                :data="convertedActivityData"
+                type="bar"
                 :height="300"
               />
             </div>
@@ -345,6 +345,29 @@ const loadAnalyticsData = async () => {
     loading.value = false
   }
 }
+
+// 数据转换函数
+const convertChartDataToSimpleFormat = (chartData: any): Array<{label: string, value: number, color?: string}> => {
+  if (!chartData || !chartData.labels || !chartData.datasets || chartData.datasets.length === 0) {
+    return []
+  }
+  
+  const labels = chartData.labels
+  const dataset = chartData.datasets[0]
+  const data = dataset.data || []
+  
+  return labels.map((label: string, index: number) => ({
+    label,
+    value: data[index] || 0,
+    color: Array.isArray(dataset.backgroundColor) ? dataset.backgroundColor[index] : dataset.backgroundColor
+  }))
+}
+
+// 计算属性 - 转换后的图表数据
+const convertedSubmissionTrendData = computed(() => convertChartDataToSimpleFormat(submissionTrendData.value))
+const convertedProjectDistributionData = computed(() => convertChartDataToSimpleFormat(projectDistributionData.value))
+const convertedGradeDistributionData = computed(() => convertChartDataToSimpleFormat(gradeDistributionData.value))
+const convertedActivityData = computed(() => convertChartDataToSimpleFormat(activityData.value))
 
 const loadOverviewStats = async () => {
   try {

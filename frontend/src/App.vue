@@ -196,14 +196,6 @@ const logout = async () => {
             <el-icon><Document /></el-icon>
             <span>文档管理</span>
           </el-menu-item>
-          <el-menu-item index="/wiki">
-            <el-icon><FolderOpened /></el-icon>
-            <span>Wiki文档</span>
-          </el-menu-item>
-          <el-menu-item index="/users">
-            <el-icon><User /></el-icon>
-            <span>用户</span>
-          </el-menu-item>
         </el-menu>
       </el-aside>
 
