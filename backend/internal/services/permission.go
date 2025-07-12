@@ -343,3 +343,109 @@ func GetUserRoleName(role int) string {
 func IsValidRole(role int) bool {
 	return role >= RoleAdmin && role <= RoleGuest
 }
+
+// CanCreateDiscussion 检查用户是否能创建讨论
+func (s *PermissionService) CanCreateDiscussion(userID uint, projectID uint) bool {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false
+	}
+	return s.CanAccessProject(&user, projectID, PermissionWrite)
+}
+
+// CanViewProject 检查用户是否能查看项目
+func (s *PermissionService) CanViewProject(userID uint, projectID uint) bool {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false
+	}
+	return s.CanAccessProject(&user, projectID, PermissionRead)
+}
+
+// IsTeacherOrAdmin 检查用户是否为教师或管理员
+func (s *PermissionService) IsTeacherOrAdmin(userID uint, projectID uint) bool {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false
+	}
+	return user.Role == RoleAdmin || user.Role == RoleTeacher
+}
+
+// CanEditDiscussion 检查用户是否能编辑讨论
+func (s *PermissionService) CanEditDiscussion(userID uint, discussionID uint) bool {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false
+	}
+
+	// 管理员可以编辑所有讨论
+	if user.Role == RoleAdmin {
+		return true
+	}
+
+	// 获取讨论信息
+	var discussion models.Discussion
+	if err := s.db.First(&discussion, discussionID).Error; err != nil {
+		return false
+	}
+
+	// 作者可以编辑自己的讨论
+	if discussion.AuthorID == userID {
+		return true
+	}
+
+	// 项目的教师可以编辑讨论
+	if user.Role == RoleTeacher {
+		var project models.Project
+		if err := s.db.First(&project, discussion.ProjectID).Error; err != nil {
+			return false
+		}
+		return project.TeacherID == userID
+	}
+
+	return false
+}
+
+// CanDeleteDiscussion 检查用户是否能删除讨论
+func (s *PermissionService) CanDeleteDiscussion(userID uint, discussionID uint) bool {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false
+	}
+
+	// 管理员可以删除所有讨论
+	if user.Role == RoleAdmin {
+		return true
+	}
+
+	// 获取讨论信息
+	var discussion models.Discussion
+	if err := s.db.First(&discussion, discussionID).Error; err != nil {
+		return false
+	}
+
+	// 作者可以删除自己的讨论
+	if discussion.AuthorID == userID {
+		return true
+	}
+
+	// 项目的教师可以删除讨论
+	if user.Role == RoleTeacher {
+		var project models.Project
+		if err := s.db.First(&project, discussion.ProjectID).Error; err != nil {
+			return false
+		}
+		return project.TeacherID == userID
+	}
+
+	return false
+}
+
+// CanReplyDiscussion 检查用户是否能回复讨论
+func (s *PermissionService) CanReplyDiscussion(userID uint, projectID uint) bool {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false
+	}
+	return s.CanAccessProject(&user, projectID, PermissionRead)
+}

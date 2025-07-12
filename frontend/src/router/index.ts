@@ -88,6 +88,20 @@ const router = createRouter({
       meta: { title: '文档编辑器', requiresAuth: true }
     },
     
+    // 话题讨论（老师和学生可见）
+    {
+      path: '/discussions',
+      name: 'discussions',
+      component: () => import('../views/Discussions/DiscussionView.vue'),
+      meta: { title: '话题讨论', requiresAuth: true }
+    },
+    {
+      path: '/discussions/:id',
+      name: 'discussion-detail',
+      component: () => import('../views/Discussions/DiscussionDetail.vue'),
+      meta: { title: '话题详情', requiresAuth: true }
+    },
+    
     // 个人中心
     {
       path: '/profile',

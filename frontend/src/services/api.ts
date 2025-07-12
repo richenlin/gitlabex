@@ -312,6 +312,89 @@ export class ApiService {
     const response = await api.get('/api/analytics/recent-activities', { params })
     return response.data
   }
+
+  // 话题讨论相关API
+  static async getDiscussions(params?: { 
+    project_id?: number; 
+    page?: number; 
+    page_size?: number; 
+    category?: string; 
+    status?: string 
+  }): Promise<any> {
+    const response = await api.get('/api/discussions', { params })
+    return response.data
+  }
+
+  static async getDiscussionDetail(id: number): Promise<any> {
+    const response = await api.get(`/api/discussions/${id}`)
+    return response.data
+  }
+
+  static async createDiscussion(data: {
+    title: string;
+    content: string;
+    project_id: number;
+    category?: string;
+    tags?: string;
+    is_public?: boolean;
+  }): Promise<any> {
+    const response = await api.post('/api/discussions', data)
+    return response.data
+  }
+
+  static async updateDiscussion(id: number, data: {
+    title?: string;
+    content?: string;
+    category?: string;
+    tags?: string;
+    is_public?: boolean;
+  }): Promise<any> {
+    const response = await api.put(`/api/discussions/${id}`, data)
+    return response.data
+  }
+
+  static async deleteDiscussion(id: number): Promise<any> {
+    const response = await api.delete(`/api/discussions/${id}`)
+    return response.data
+  }
+
+  static async createReply(discussionId: number, data: {
+    content: string;
+    parent_reply_id?: number;
+  }): Promise<any> {
+    const response = await api.post(`/api/discussions/${discussionId}/replies`, data)
+    return response.data
+  }
+
+  static async likeDiscussion(id: number): Promise<any> {
+    const response = await api.post(`/api/discussions/${id}/like`)
+    return response.data
+  }
+
+  static async unlikeDiscussion(id: number): Promise<any> {
+    const response = await api.delete(`/api/discussions/${id}/like`)
+    return response.data
+  }
+
+  static async pinDiscussion(id: number): Promise<any> {
+    const response = await api.post(`/api/discussions/${id}/pin`)
+    return response.data
+  }
+
+  static async getDiscussionCategories(): Promise<any> {
+    const response = await api.get('/api/discussions/categories')
+    return response.data
+  }
+
+  static async syncDiscussionsFromGitLab(projectId: number): Promise<any> {
+    const response = await api.post(`/api/discussions/sync/${projectId}`)
+    return response.data
+  }
+
+  static async getProjects(): Promise<any> {
+    const response = await api.get('/api/projects')
+    return response.data
+  }
 }
 
 export default api 

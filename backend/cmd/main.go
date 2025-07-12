@@ -47,6 +47,7 @@ func main() {
 	onlyofficeService := services.NewOnlyOfficeService(cfg, db)
 	documentService := services.NewDocumentService(db, gitlabService, onlyofficeService)
 	educationService := services.NewEducationServiceSimplified(gitlabService, db)
+	discussionService := services.NewDiscussionService(db, permissionService, gitlabService)
 
 	// 初始化处理器
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService, userService)
@@ -55,6 +56,7 @@ func main() {
 	projectHandler := handlers.NewProjectSimpleHandler(projectService, userService)
 	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, userService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, userService)
+	discussionHandler := handlers.NewDiscussionHandler(discussionService, userService)
 	// 初始化OAuth中间件
 	oauthMiddleware := middleware.NewOAuthMiddleware(cfg, db, userService)
 
@@ -69,7 +71,7 @@ func main() {
 	gin.SetMode(cfg.Server.Mode)
 
 	// 初始化路由
-	router := setupRoutes(authService, analyticsHandler, userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler, thirdPartyHandler, educationHandler, wikiHandler)
+	router := setupRoutes(authService, analyticsHandler, userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler, discussionHandler, thirdPartyHandler, educationHandler, wikiHandler)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -142,11 +144,17 @@ func autoMigrate(db *gorm.DB) error {
 		&models.Document{},
 		&models.DocumentHistory{},
 		&models.DocumentAttachment{},
+
+		// 话题讨论相关
+		&models.Discussion{},
+		&models.DiscussionReply{},
+		&models.DiscussionView{},
+		&models.DiscussionLike{},
 	)
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectSimpleHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
+func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectSimpleHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, discussionHandler *handlers.DiscussionHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
 	router := gin.New()
 
 	// 中间件
@@ -222,6 +230,9 @@ func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.A
 
 		// 通知管理路由
 		notificationHandler.RegisterRoutes(api)
+
+		// 话题讨论路由
+		discussionHandler.RegisterRoutes(api)
 
 		// 第三方API路由
 		thirdPartyHandler.RegisterRoutes(api)

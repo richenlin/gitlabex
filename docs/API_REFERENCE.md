@@ -68,6 +68,88 @@ Content-Type: application/json
 POST /api/users/sync/{gitlab_id}
 ```
 
+## 话题讨论
+
+### 创建话题
+```http
+POST /api/discussions
+Content-Type: application/json
+
+{
+  "title": "关于项目架构的讨论",
+  "content": "我们需要讨论一下项目的整体架构设计...",
+  "project_id": 1,
+  "category": "general",
+  "tags": "架构,设计,讨论",
+  "is_public": true
+}
+```
+
+### 获取话题列表
+```http
+GET /api/discussions?project_id=1&page=1&page_size=20
+GET /api/discussions?category=question&status=open
+```
+
+### 获取话题详情
+```http
+GET /api/discussions/{id}
+```
+
+### 更新话题
+```http
+PUT /api/discussions/{id}
+Content-Type: application/json
+
+{
+  "title": "更新后的话题标题",
+  "content": "更新后的话题内容",
+  "category": "announcement",
+  "is_public": false
+}
+```
+
+### 删除话题
+```http
+DELETE /api/discussions/{id}
+```
+
+### 创建回复
+```http
+POST /api/discussions/{id}/replies
+Content-Type: application/json
+
+{
+  "content": "这是一个回复内容",
+  "parent_reply_id": 0
+}
+```
+
+### 点赞话题
+```http
+POST /api/discussions/{id}/like
+```
+
+### 取消点赞
+```http
+DELETE /api/discussions/{id}/like
+```
+
+### 置顶话题
+```http
+POST /api/discussions/{id}/pin
+```
+
+### 获取话题分类
+```http
+GET /api/discussions/categories
+```
+
+### 同步GitLab话题
+```http
+POST /api/discussions/sync/{project_id}
+```
+
 ## 班级管理
 
 ### 创建班级
