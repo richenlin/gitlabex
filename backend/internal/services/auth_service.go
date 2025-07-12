@@ -64,7 +64,7 @@ func NewAuthService(db *gorm.DB, config *config.Config) *AuthService {
 
 // GetGitLabOAuthURL 获取GitLab OAuth认证URL
 func (s *AuthService) GetGitLabOAuthURL(state string) string {
-	return fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=read_user+read_repository+write_repository&state=%s",
+	return fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=api+read_user+email+read_repository+write_repository+read_registry&state=%s",
 		s.config.GitLab.URL,
 		s.config.GitLab.ClientID,
 		s.config.GitLab.RedirectURI,

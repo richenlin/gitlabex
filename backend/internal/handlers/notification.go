@@ -9,209 +9,266 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// NotificationHandler 通知管理处理器
 type NotificationHandler struct {
-	gitlabService *services.GitLabService
+	notificationService *services.NotificationService
+	userService         *services.UserService
 }
 
-func NewNotificationHandler(gitlabService *services.GitLabService) *NotificationHandler {
+// NewNotificationHandler 创建通知管理处理器
+func NewNotificationHandler(notificationService *services.NotificationService, userService *services.UserService) *NotificationHandler {
 	return &NotificationHandler{
-		gitlabService: gitlabService,
+		notificationService: notificationService,
+		userService:         userService,
 	}
 }
 
-type Notification struct {
-	ID        int    `json:"id"`
-	Type      string `json:"type"`
-	Title     string `json:"title"`
-	Content   string `json:"content"`
-	CreatedAt string `json:"created_at"`
-	Read      bool   `json:"read"`
-	Priority  string `json:"priority"`
-	Category  string `json:"category"`
-	Actions   []struct {
-		Label  string `json:"label"`
-		Action string `json:"action"`
-		Type   string `json:"type"`
-	} `json:"actions,omitempty"`
+// RegisterRoutes 注册通知管理路由
+func (h *NotificationHandler) RegisterRoutes(router *gin.RouterGroup) {
+	notifications := router.Group("/notifications")
+	{
+		notifications.GET("", h.GetNotifications)                   // 获取通知列表
+		notifications.GET("/unread", h.GetUnreadNotifications)      // 获取未读通知
+		notifications.GET("/count", h.GetUnreadCount)               // 获取未读数量
+		notifications.GET("/stats", h.GetNotificationStats)         // 获取通知统计
+		notifications.PUT("/:id/read", h.MarkAsRead)                // 标记通知已读
+		notifications.PUT("/read-all", h.MarkAllAsRead)             // 标记全部已读
+		notifications.DELETE("/:id", h.DeleteNotification)          // 删除通知
+		notifications.DELETE("/all", h.DeleteAllNotifications)      // 删除全部通知
+		notifications.POST("", h.CreateNotification)                // 创建通知（管理员）
+		notifications.GET("/types/:type", h.GetNotificationsByType) // 按类型获取通知
+	}
 }
 
 // GetNotifications 获取通知列表
 func (h *NotificationHandler) GetNotifications(c *gin.Context) {
-	// 获取查询参数
-	filterType := c.Query("type")
-	filterRead := c.Query("read")
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
 
-	// 这里应该从数据库获取真实数据
-	// 目前返回模拟数据
-	notifications := []Notification{
-		{
-			ID:        1,
-			Type:      "assignment",
-			Title:     "作业提醒：数据结构实验",
-			Content:   "数据结构实验作业将于明天 23:59 截止，请及时提交。",
-			CreatedAt: "2024-03-15 14:30:00",
-			Read:      false,
-			Priority:  "high",
-			Category:  "作业",
-			Actions: []struct {
-				Label  string `json:"label"`
-				Action string `json:"action"`
-				Type   string `json:"type"`
-			}{
-				{Label: "查看作业", Action: "view-assignment", Type: "primary"},
-				{Label: "提交作业", Action: "submit-assignment", Type: "success"},
-			},
-		},
-		{
-			ID:        2,
-			Type:      "project",
-			Title:     "项目更新：Web开发项目",
-			Content:   "项目 \"Web开发项目\" 有新的提交，请查看最新进展。",
-			CreatedAt: "2024-03-15 10:15:00",
-			Read:      true,
-			Priority:  "medium",
-			Category:  "项目",
-			Actions: []struct {
-				Label  string `json:"label"`
-				Action string `json:"action"`
-				Type   string `json:"type"`
-			}{
-				{Label: "查看项目", Action: "view-project", Type: "primary"},
-			},
-		},
-		{
-			ID:        3,
-			Type:      "system",
-			Title:     "系统维护通知",
-			Content:   "系统将于今晚 22:00-24:00 进行维护，期间可能影响服务使用。",
-			CreatedAt: "2024-03-14 16:45:00",
-			Read:      false,
-			Priority:  "medium",
-			Category:  "系统",
-		},
-		{
-			ID:        4,
-			Type:      "reminder",
-			Title:     "课程提醒",
-			Content:   "明天上午 9:00 有 \"算法分析\" 课程，请准时参加。",
-			CreatedAt: "2024-03-14 12:00:00",
-			Read:      true,
-			Priority:  "low",
-			Category:  "提醒",
-		},
-		{
-			ID:        5,
-			Type:      "warning",
-			Title:     "作业逾期警告",
-			Content:   "您有 2 个作业已逾期，请尽快联系教师处理。",
-			CreatedAt: "2024-03-13 09:30:00",
-			Read:      false,
-			Priority:  "high",
-			Category:  "警告",
-			Actions: []struct {
-				Label  string `json:"label"`
-				Action string `json:"action"`
-				Type   string `json:"type"`
-			}{
-				{Label: "查看逾期作业", Action: "view-overdue", Type: "warning"},
-			},
-		},
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
 	}
 
-	// 应用筛选条件
-	var filteredNotifications []Notification
-	for _, notification := range notifications {
-		if filterType != "" && notification.Type != filterType {
-			continue
-		}
-		if filterRead != "" {
-			if filterRead == "read" && !notification.Read {
-				continue
-			}
-			if filterRead == "unread" && notification.Read {
-				continue
-			}
-		}
-		filteredNotifications = append(filteredNotifications, notification)
+	notifications, total, err := h.notificationService.GetNotificationsByUser(userID, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取通知列表失败",
+			"details": err.Error(),
+		})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"data":   filteredNotifications,
+		"data":      notifications,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// GetUnreadNotifications 获取未读通知
+func (h *NotificationHandler) GetUnreadNotifications(c *gin.Context) {
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
+
+	notifications, err := h.notificationService.GetUnreadNotifications(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取未读通知失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  notifications,
+		"total": len(notifications),
+	})
+}
+
+// GetUnreadCount 获取未读通知数量
+func (h *NotificationHandler) GetUnreadCount(c *gin.Context) {
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
+
+	count, err := h.notificationService.GetUnreadCount(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取未读数量失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"unread_count": count,
+	})
+}
+
+// GetNotificationStats 获取通知统计信息
+func (h *NotificationHandler) GetNotificationStats(c *gin.Context) {
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
+
+	stats, err := h.notificationService.GetNotificationStats(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取通知统计失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": stats,
 	})
 }
 
 // MarkAsRead 标记通知为已读
 func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
-	notificationIDStr := c.Param("id")
-	_, err := strconv.Atoi(notificationIDStr)
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
+
+	notificationID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid notification ID"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的通知ID",
+		})
 		return
 	}
 
-	// 这里应该更新数据库
-	// 目前返回成功响应
+	if err := h.notificationService.MarkAsRead(uint(notificationID), userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "标记已读失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
 		"message": "通知已标记为已读",
 	})
 }
 
 // MarkAllAsRead 标记所有通知为已读
 func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
-	// 这里应该更新数据库
-	// 目前返回成功响应
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
+
+	if err := h.notificationService.MarkAllAsRead(userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "标记全部已读失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
 		"message": "所有通知已标记为已读",
 	})
 }
 
 // DeleteNotification 删除通知
 func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
-	notificationIDStr := c.Param("id")
-	_, err := strconv.Atoi(notificationIDStr)
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
+
+	notificationID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid notification ID"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的通知ID",
+		})
 		return
 	}
 
-	// 这里应该从数据库删除
-	// 目前返回成功响应
+	if err := h.notificationService.DeleteNotification(uint(notificationID), userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "删除通知失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
 		"message": "通知已删除",
 	})
 }
 
-// DeleteNotifications 批量删除通知
-func (h *NotificationHandler) DeleteNotifications(c *gin.Context) {
-	var request struct {
-		IDs []int `json:"ids"`
-	}
+// DeleteAllNotifications 删除所有通知
+func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
 
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.notificationService.DeleteAllNotifications(userID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "删除全部通知失败",
+			"details": err.Error(),
+		})
 		return
 	}
 
-	// 这里应该从数据库批量删除
-	// 目前返回成功响应
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
-		"message": "通知已批量删除",
+		"message": "所有通知已删除",
 	})
 }
 
-// RegisterRoutes 注册路由
-func (h *NotificationHandler) RegisterRoutes(rg *gin.RouterGroup) {
-	notifications := rg.Group("/notifications")
-	{
-		notifications.GET("", h.GetNotifications)
-		notifications.PUT("/:id/read", h.MarkAsRead)
-		notifications.PUT("/read-all", h.MarkAllAsRead)
-		notifications.DELETE("/:id", h.DeleteNotification)
-		notifications.DELETE("", h.DeleteNotifications)
+// CreateNotification 创建通知（管理员功能）
+func (h *NotificationHandler) CreateNotification(c *gin.Context) {
+	var req services.CreateNotificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "无效的请求数据",
+			"details": err.Error(),
+		})
+		return
 	}
+
+	notification, err := h.notificationService.CreateNotificationFromRequest(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "创建通知失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "通知创建成功",
+		"data":    notification,
+	})
+}
+
+// GetNotificationsByType 按类型获取通知
+func (h *NotificationHandler) GetNotificationsByType(c *gin.Context) {
+	// TODO: 从JWT获取用户ID
+	userID := uint(1)
+
+	notificationType := c.Param("type")
+	if notificationType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "通知类型不能为空",
+		})
+		return
+	}
+
+	notifications, err := h.notificationService.GetNotificationsByType(userID, notificationType)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取通知失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  notifications,
+		"total": len(notifications),
+		"type":  notificationType,
+	})
 }

@@ -8,28 +8,33 @@ import (
 
 	"gitlabex/internal/models"
 
+	"github.com/xanzy/go-gitlab"
+
 	"gorm.io/gorm"
 )
 
-// ClassService 班级管理服务
+// ClassService 班级管理服务 - 集成GitLab Group功能
 type ClassService struct {
 	db                *gorm.DB
 	permissionService *PermissionService
+	gitlabService     *GitLabService
 	// TODO: 添加 notificationService 当实现后
 }
 
 // NewClassService 创建班级管理服务
-func NewClassService(db *gorm.DB, permissionService *PermissionService) *ClassService {
+func NewClassService(db *gorm.DB, permissionService *PermissionService, gitlabService *GitLabService) *ClassService {
 	return &ClassService{
 		db:                db,
 		permissionService: permissionService,
+		gitlabService:     gitlabService,
 	}
 }
 
 // CreateClassRequest 创建班级请求
 type CreateClassRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Description string `json:"description"`
+	Name             string `json:"name" binding:"required"`
+	Description      string `json:"description"`
+	EnableGitLabSync bool   `json:"enable_gitlab_sync"` // 是否启用GitLab同步
 }
 
 // UpdateClassRequest 更新班级请求
@@ -44,7 +49,7 @@ type JoinClassRequest struct {
 	Code string `json:"code" binding:"required"`
 }
 
-// CreateClass 创建班级（老师权限）
+// CreateClass 创建班级（老师权限）- 同时创建GitLab Group
 func (s *ClassService) CreateClass(teacherID uint, req *CreateClassRequest) (*models.Class, error) {
 	// 生成唯一的班级代码
 	code, err := s.generateClassCode()
@@ -58,10 +63,32 @@ func (s *ClassService) CreateClass(teacherID uint, req *CreateClassRequest) (*mo
 		Code:        code,
 		TeacherID:   teacherID,
 		Active:      true,
+		SyncStatus:  "pending",
 	}
 
-	if err := s.db.Create(class).Error; err != nil {
-		return nil, fmt.Errorf("failed to create class: %w", err)
+	// 开始数据库事务
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		// 创建班级记录
+		if err := tx.Create(class).Error; err != nil {
+			return fmt.Errorf("failed to create class: %w", err)
+		}
+
+		// 如果启用GitLab同步，创建GitLab Group
+		if req.EnableGitLabSync && s.gitlabService != nil {
+			if err := s.createGitLabGroup(tx, class); err != nil {
+				// 设置同步错误状态，但不阻止班级创建
+				class.SetSyncError(err)
+				if updateErr := tx.Save(class).Error; updateErr != nil {
+					return fmt.Errorf("failed to update class sync status: %w", updateErr)
+				}
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	// 预加载关联数据
@@ -70,6 +97,41 @@ func (s *ClassService) CreateClass(teacherID uint, req *CreateClassRequest) (*mo
 	}
 
 	return class, nil
+}
+
+// createGitLabGroup 创建GitLab Group
+func (s *ClassService) createGitLabGroup(tx *gorm.DB, class *models.Class) error {
+	// 生成Group路径（使用班级代码确保唯一性）
+	groupPath := fmt.Sprintf("class-%s", class.Code)
+	groupName := fmt.Sprintf("%s (%s)", class.Name, class.Code)
+
+	// 创建GitLab Group
+	group, err := s.gitlabService.CreateGroup(groupName, groupPath, class.Description, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create GitLab group: %w", err)
+	}
+
+	// 更新班级的GitLab信息
+	class.SetGitLabGroup(group.ID, group.Path, group.WebURL)
+
+	// 获取教师用户信息，将教师添加为Group Owner
+	var teacher models.User
+	if err := tx.First(&teacher, class.TeacherID).Error; err != nil {
+		return fmt.Errorf("failed to find teacher: %w", err)
+	}
+
+	// 添加教师到GitLab Group
+	if teacher.GitLabID > 0 {
+		_, _, err = s.gitlabService.client.GroupMembers.AddGroupMember(group.ID, &gitlab.AddGroupMemberOptions{
+			UserID:      gitlab.Int(teacher.GitLabID),
+			AccessLevel: gitlab.AccessLevel(gitlab.OwnerPermissions),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add teacher to GitLab group: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // GetClassByID 根据ID获取班级
@@ -161,6 +223,14 @@ func (s *ClassService) UpdateClass(classID uint, req *UpdateClassRequest) (*mode
 		class.Active = *req.Active
 	}
 
+	// 如果班级已同步到GitLab，同步更新GitLab Group
+	if class.IsGitLabSynced() && s.gitlabService != nil {
+		if err := s.updateGitLabGroup(&class, req); err != nil {
+			// 记录错误但不阻止本地更新
+			class.SetSyncError(err)
+		}
+	}
+
 	if err := s.db.Save(&class).Error; err != nil {
 		return nil, fmt.Errorf("failed to update class: %w", err)
 	}
@@ -173,9 +243,44 @@ func (s *ClassService) UpdateClass(classID uint, req *UpdateClassRequest) (*mode
 	return &class, nil
 }
 
-// DeleteClass 删除班级
+// updateGitLabGroup 更新GitLab Group信息
+func (s *ClassService) updateGitLabGroup(class *models.Class, req *UpdateClassRequest) error {
+	groupID := class.GetGitLabGroupID()
+	if groupID == 0 {
+		return fmt.Errorf("GitLab group not found")
+	}
+
+	// 构建更新参数
+	updateOpts := &gitlab.UpdateGroupOptions{}
+	if req.Name != "" {
+		updateOpts.Name = gitlab.String(fmt.Sprintf("%s (%s)", req.Name, class.Code))
+	}
+	if req.Description != "" {
+		updateOpts.Description = gitlab.String(req.Description)
+	}
+
+	// 更新GitLab Group
+	_, _, err := s.gitlabService.client.Groups.UpdateGroup(groupID, updateOpts)
+	return err
+}
+
+// DeleteClass 删除班级 - 同时删除GitLab Group
 func (s *ClassService) DeleteClass(classID uint) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		// 获取班级信息
+		var class models.Class
+		if err := tx.First(&class, classID).Error; err != nil {
+			return fmt.Errorf("class not found: %w", err)
+		}
+
+		// 如果班级已同步到GitLab，删除GitLab Group
+		if class.IsGitLabSynced() && s.gitlabService != nil {
+			if err := s.deleteGitLabGroup(&class); err != nil {
+				// 记录错误但继续删除本地数据
+				fmt.Printf("Warning: Failed to delete GitLab group: %v\n", err)
+			}
+		}
+
 		// 删除班级成员关系
 		if err := tx.Where("class_id = ?", classID).Delete(&models.ClassMember{}).Error; err != nil {
 			return fmt.Errorf("failed to delete class members: %w", err)
@@ -190,7 +295,18 @@ func (s *ClassService) DeleteClass(classID uint) error {
 	})
 }
 
-// JoinClass 学生加入班级
+// deleteGitLabGroup 删除GitLab Group
+func (s *ClassService) deleteGitLabGroup(class *models.Class) error {
+	groupID := class.GetGitLabGroupID()
+	if groupID == 0 {
+		return nil
+	}
+
+	_, err := s.gitlabService.client.Groups.DeleteGroup(groupID)
+	return err
+}
+
+// JoinClass 学生加入班级 - 同时加入GitLab Group
 func (s *ClassService) JoinClass(studentID uint, code string) (*models.Class, error) {
 	// 查找班级
 	var class models.Class
@@ -206,8 +322,14 @@ func (s *ClassService) JoinClass(studentID uint, code string) (*models.Class, er
 		if existingMember.Status == "inactive" {
 			existingMember.Status = "active"
 			existingMember.JoinedAt = time.Now()
+			existingMember.GitLabSyncStatus = "pending" // 重置同步状态
 			if err := s.db.Save(&existingMember).Error; err != nil {
 				return nil, fmt.Errorf("failed to reactivate membership: %w", err)
+			}
+
+			// 同步到GitLab Group
+			if class.IsGitLabSynced() {
+				go s.syncMemberToGitLab(&class, &existingMember)
 			}
 		}
 		return &class, nil
@@ -217,17 +339,22 @@ func (s *ClassService) JoinClass(studentID uint, code string) (*models.Class, er
 
 	// 创建新的成员关系
 	member := &models.ClassMember{
-		ClassID:   class.ID,
-		StudentID: studentID,
-		Status:    "active",
-		JoinedAt:  time.Now(),
+		ClassID:          class.ID,
+		StudentID:        studentID,
+		Status:           "active",
+		JoinedAt:         time.Now(),
+		GitLabRole:       "reporter", // 学生默认角色
+		GitLabSyncStatus: "pending",
 	}
 
 	if err := s.db.Create(member).Error; err != nil {
 		return nil, fmt.Errorf("failed to join class: %w", err)
 	}
 
-	// TODO: 发送通知给老师（待通知服务实现）
+	// 异步同步到GitLab Group
+	if class.IsGitLabSynced() {
+		go s.syncMemberToGitLab(&class, member)
+	}
 
 	// 重新加载班级数据
 	if err := s.db.Preload("Teacher").First(&class, class.ID).Error; err != nil {
@@ -237,8 +364,71 @@ func (s *ClassService) JoinClass(studentID uint, code string) (*models.Class, er
 	return &class, nil
 }
 
-// AddStudentToClass 老师添加学生到班级
+// syncMemberToGitLab 同步成员到GitLab Group
+func (s *ClassService) syncMemberToGitLab(class *models.Class, member *models.ClassMember) {
+	if s.gitlabService == nil {
+		return
+	}
+
+	// 获取学生用户信息
+	var student models.User
+	if err := s.db.First(&student, member.StudentID).Error; err != nil {
+		member.SetGitLabSyncError(fmt.Errorf("failed to find student: %w", err))
+		s.db.Save(member)
+		return
+	}
+
+	// 检查学生是否有GitLab ID
+	if student.GitLabID == 0 {
+		member.SetGitLabSyncError(fmt.Errorf("student has no GitLab ID"))
+		s.db.Save(member)
+		return
+	}
+
+	// 添加成员到GitLab Group
+	groupID := class.GetGitLabGroupID()
+	accessLevel := s.mapRoleToAccessLevel(member.GitLabRole)
+
+	gitlabMember, _, err := s.gitlabService.client.GroupMembers.AddGroupMember(groupID, &gitlab.AddGroupMemberOptions{
+		UserID:      gitlab.Int(student.GitLabID),
+		AccessLevel: gitlab.AccessLevel(accessLevel),
+	})
+
+	if err != nil {
+		member.SetGitLabSyncError(err)
+	} else {
+		member.SetGitLabMember(gitlabMember.ID, member.GitLabRole)
+	}
+
+	s.db.Save(member)
+}
+
+// mapRoleToAccessLevel 映射角色到GitLab访问级别
+func (s *ClassService) mapRoleToAccessLevel(role string) gitlab.AccessLevelValue {
+	switch role {
+	case "guest":
+		return gitlab.GuestPermissions
+	case "reporter":
+		return gitlab.ReporterPermissions
+	case "developer":
+		return gitlab.DeveloperPermissions
+	case "maintainer":
+		return gitlab.MaintainerPermissions
+	case "owner":
+		return gitlab.OwnerPermissions
+	default:
+		return gitlab.ReporterPermissions // 默认学生权限
+	}
+}
+
+// AddStudentToClass 老师添加学生到班级 - 同时添加到GitLab Group
 func (s *ClassService) AddStudentToClass(classID uint, studentID uint) error {
+	// 获取班级信息
+	var class models.Class
+	if err := s.db.First(&class, classID).Error; err != nil {
+		return fmt.Errorf("class not found: %w", err)
+	}
+
 	// 检查学生是否已经在班级中
 	var existingMember models.ClassMember
 	err := s.db.Where("class_id = ? AND student_id = ?", classID, studentID).First(&existingMember).Error
@@ -246,7 +436,16 @@ func (s *ClassService) AddStudentToClass(classID uint, studentID uint) error {
 		if existingMember.Status == "inactive" {
 			existingMember.Status = "active"
 			existingMember.JoinedAt = time.Now()
-			return s.db.Save(&existingMember).Error
+			existingMember.GitLabSyncStatus = "pending"
+
+			if err := s.db.Save(&existingMember).Error; err != nil {
+				return err
+			}
+
+			// 同步到GitLab
+			if class.IsGitLabSynced() {
+				go s.syncMemberToGitLab(&class, &existingMember)
+			}
 		}
 		return nil // 已经是活跃成员
 	} else if err != gorm.ErrRecordNotFound {
@@ -255,34 +454,69 @@ func (s *ClassService) AddStudentToClass(classID uint, studentID uint) error {
 
 	// 创建新的成员关系
 	member := &models.ClassMember{
-		ClassID:   classID,
-		StudentID: studentID,
-		Status:    "active",
-		JoinedAt:  time.Now(),
+		ClassID:          classID,
+		StudentID:        studentID,
+		Status:           "active",
+		JoinedAt:         time.Now(),
+		GitLabRole:       "reporter",
+		GitLabSyncStatus: "pending",
 	}
 
 	if err := s.db.Create(member).Error; err != nil {
 		return fmt.Errorf("failed to add student to class: %w", err)
 	}
 
-	// TODO: 发送通知给学生（待通知服务实现）
+	// 异步同步到GitLab
+	if class.IsGitLabSynced() {
+		go s.syncMemberToGitLab(&class, member)
+	}
 
 	return nil
 }
 
-// RemoveStudentFromClass 从班级移除学生
+// RemoveStudentFromClass 从班级移除学生 - 同时从GitLab Group移除
 func (s *ClassService) RemoveStudentFromClass(classID uint, studentID uint) error {
 	var member models.ClassMember
 	if err := s.db.Where("class_id = ? AND student_id = ?", classID, studentID).First(&member).Error; err != nil {
 		return fmt.Errorf("student not found in class: %w", err)
 	}
 
+	// 获取班级信息
+	var class models.Class
+	if err := s.db.First(&class, member.ClassID).Error; err != nil {
+		return fmt.Errorf("class not found: %w", err)
+	}
+
+	// 如果已同步到GitLab，从GitLab Group移除
+	if class.IsGitLabSynced() && member.IsGitLabSynced() {
+		go s.removeMemberFromGitLab(&class, &member)
+	}
+
+	// 更新本地状态
 	member.Status = "inactive"
+	member.GitLabSyncStatus = "removed"
 	if err := s.db.Save(&member).Error; err != nil {
 		return fmt.Errorf("failed to remove student from class: %w", err)
 	}
 
 	return nil
+}
+
+// removeMemberFromGitLab 从GitLab Group移除成员
+func (s *ClassService) removeMemberFromGitLab(class *models.Class, member *models.ClassMember) {
+	if s.gitlabService == nil || !member.IsGitLabSynced() {
+		return
+	}
+
+	groupID := class.GetGitLabGroupID()
+	memberID := *member.GitLabMemberID
+
+	_, err := s.gitlabService.client.GroupMembers.RemoveGroupMember(groupID, memberID, &gitlab.RemoveGroupMemberOptions{})
+	if err != nil {
+		// 记录错误但不阻止本地操作
+		member.SetGitLabSyncError(err)
+		s.db.Save(member)
+	}
 }
 
 // GetClassMembers 获取班级成员列表
@@ -300,9 +534,16 @@ func (s *ClassService) GetClassMembers(classID uint) ([]models.User, error) {
 	return students, nil
 }
 
-// GetClassStats 获取班级统计信息
+// GetClassStats 获取班级统计信息 - 包括GitLab统计
 func (s *ClassService) GetClassStats(classID uint) (*models.ClassStats, error) {
-	stats := &models.ClassStats{}
+	var class models.Class
+	if err := s.db.First(&class, classID).Error; err != nil {
+		return nil, fmt.Errorf("class not found: %w", err)
+	}
+
+	stats := &models.ClassStats{
+		GitLabGroupID: class.GetGitLabGroupID(),
+	}
 
 	// 学生数量
 	var studentCount int64
@@ -331,7 +572,66 @@ func (s *ClassService) GetClassStats(classID uint) (*models.ClassStats, error) {
 	}
 	stats.ActiveProjects = int(activeProjectCount)
 
+	// 如果班级已同步到GitLab，获取GitLab统计
+	if class.IsGitLabSynced() && s.gitlabService != nil {
+		s.addGitLabStats(stats, &class)
+	}
+
 	return stats, nil
+}
+
+// addGitLabStats 添加GitLab统计信息
+func (s *ClassService) addGitLabStats(stats *models.ClassStats, class *models.Class) {
+	groupID := class.GetGitLabGroupID()
+
+	// 获取Group项目数量
+	if projects, _, err := s.gitlabService.client.Groups.ListGroupProjects(groupID, &gitlab.ListGroupProjectsOptions{}); err == nil {
+		stats.GitLabProjectCount = len(projects)
+
+		// 统计Issues和MR数量
+		for _, project := range projects {
+			if issues, _, err := s.gitlabService.client.Issues.ListProjectIssues(project.ID, &gitlab.ListProjectIssuesOptions{}); err == nil {
+				stats.GitLabIssueCount += len(issues)
+			}
+			if mrs, _, err := s.gitlabService.client.MergeRequests.ListProjectMergeRequests(project.ID, &gitlab.ListProjectMergeRequestsOptions{}); err == nil {
+				stats.GitLabMRCount += len(mrs)
+			}
+		}
+	}
+}
+
+// SyncClassToGitLab 手动同步班级到GitLab Group
+func (s *ClassService) SyncClassToGitLab(classID uint) error {
+	var class models.Class
+	if err := s.db.First(&class, classID).Error; err != nil {
+		return fmt.Errorf("class not found: %w", err)
+	}
+
+	// 如果还未同步，创建GitLab Group
+	if !class.IsGitLabSynced() {
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			return s.createGitLabGroup(tx, &class)
+		})
+	}
+
+	// 如果已同步，同步成员信息
+	return s.syncClassMembers(&class)
+}
+
+// syncClassMembers 同步班级成员到GitLab Group
+func (s *ClassService) syncClassMembers(class *models.Class) error {
+	var members []models.ClassMember
+	if err := s.db.Where("class_id = ? AND status = 'active'", class.ID).Find(&members).Error; err != nil {
+		return fmt.Errorf("failed to get class members: %w", err)
+	}
+
+	for _, member := range members {
+		if member.GitLabSyncStatus != "synced" {
+			go s.syncMemberToGitLab(class, &member)
+		}
+	}
+
+	return nil
 }
 
 // generateClassCode 生成唯一的班级代码

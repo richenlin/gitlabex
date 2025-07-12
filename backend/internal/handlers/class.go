@@ -4,369 +4,344 @@ import (
 	"net/http"
 	"strconv"
 
-	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
 
-// ClassHandler 班级处理器
+// ClassHandler 班级管理处理器
 type ClassHandler struct {
-	classService      *services.ClassService
-	permissionService *services.PermissionService
+	classService *services.ClassService
+	userService  *services.UserService
 }
 
-// NewClassHandler 创建班级处理器
-func NewClassHandler(classService *services.ClassService, permissionService *services.PermissionService) *ClassHandler {
+// NewClassHandler 创建班级管理处理器
+func NewClassHandler(classService *services.ClassService, userService *services.UserService) *ClassHandler {
 	return &ClassHandler{
-		classService:      classService,
-		permissionService: permissionService,
+		classService: classService,
+		userService:  userService,
+	}
+}
+
+// RegisterRoutes 注册班级管理路由
+func (h *ClassHandler) RegisterRoutes(router *gin.RouterGroup) {
+	classes := router.Group("/classes")
+	{
+		// 班级基本操作
+		classes.POST("", h.CreateClass)       // 创建班级
+		classes.GET("", h.ListClasses)        // 获取班级列表
+		classes.GET("/:id", h.GetClass)       // 获取班级详情
+		classes.PUT("/:id", h.UpdateClass)    // 更新班级信息
+		classes.DELETE("/:id", h.DeleteClass) // 删除班级
+
+		// 班级成员管理
+		classes.POST("/join", h.JoinClass)                      // 学生加入班级
+		classes.POST("/:id/members", h.AddMember)               // 添加成员
+		classes.DELETE("/:id/members/:user_id", h.RemoveMember) // 移除成员
+		classes.GET("/:id/members", h.GetMembers)               // 获取成员列表
+
+		// 班级统计和同步
+		classes.GET("/:id/stats", h.GetClassStats) // 获取班级统计
+		classes.POST("/:id/sync", h.SyncToGitLab)  // 同步到GitLab
 	}
 }
 
 // CreateClass 创建班级
 func (h *ClassHandler) CreateClass(c *gin.Context) {
-	user, exists := c.Get("current_user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-		})
-		return
-	}
-
-	currentUser := user.(*models.User)
+	// TODO: 从JWT获取用户ID，这里暂时使用测试用户
+	teacherID := uint(1)
 
 	var req services.CreateClassRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request body",
+			"error":   "无效的请求数据",
 			"details": err.Error(),
 		})
 		return
 	}
 
-	class, err := h.classService.CreateClass(currentUser.ID, &req)
+	class, err := h.classService.CreateClass(teacherID, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to create class",
+			"error":   "创建班级失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message": "Class created successfully",
+		"message": "班级创建成功",
 		"data":    class,
+	})
+}
+
+// ListClasses 获取班级列表
+func (h *ClassHandler) ListClasses(c *gin.Context) {
+	// TODO: 根据用户角色返回不同的班级列表
+	// 这里简单返回所有班级
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	classes, total, err := h.classService.GetAllClasses(page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取班级列表失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":      classes,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
 // GetClass 获取班级详情
 func (h *ClassHandler) GetClass(c *gin.Context) {
-	classID := c.GetUint("class_id")
+	classID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的班级ID",
+		})
+		return
+	}
 
-	class, err := h.classService.GetClassByID(classID)
+	class, err := h.classService.GetClassByID(uint(classID))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "Class not found",
+			"error":   "班级不存在",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Success",
-		"data":    class,
+		"data": class,
 	})
 }
 
-// GetClasses 获取班级列表
-func (h *ClassHandler) GetClasses(c *gin.Context) {
-	user, exists := c.Get("current_user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
+// UpdateClass 更新班级信息
+func (h *ClassHandler) UpdateClass(c *gin.Context) {
+	classID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的班级ID",
 		})
 		return
 	}
-
-	currentUser := user.(*models.User)
-
-	switch currentUser.Role {
-	case services.RoleAdmin:
-		// 管理员获取所有班级
-		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-		pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-
-		if page < 1 {
-			page = 1
-		}
-		if pageSize < 1 || pageSize > 100 {
-			pageSize = 20
-		}
-
-		classes, total, err := h.classService.GetAllClasses(page, pageSize)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "Failed to get classes",
-				"details": err.Error(),
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Success",
-			"data": gin.H{
-				"classes":   classes,
-				"total":     total,
-				"page":      page,
-				"page_size": pageSize,
-			},
-		})
-
-	case services.RoleTeacher:
-		// 老师获取自己创建的班级
-		classes, err := h.classService.GetClassesByTeacher(currentUser.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "Failed to get classes",
-				"details": err.Error(),
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Success",
-			"data":    classes,
-		})
-
-	case services.RoleStudent:
-		// 学生获取自己加入的班级
-		classes, err := h.classService.GetClassesByStudent(currentUser.ID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "Failed to get classes",
-				"details": err.Error(),
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Success",
-			"data":    classes,
-		})
-
-	default:
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "Insufficient permissions",
-		})
-	}
-}
-
-// UpdateClass 更新班级
-func (h *ClassHandler) UpdateClass(c *gin.Context) {
-	classID := c.GetUint("class_id")
 
 	var req services.UpdateClassRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request body",
+			"error":   "无效的请求数据",
 			"details": err.Error(),
 		})
 		return
 	}
 
-	class, err := h.classService.UpdateClass(classID, &req)
+	class, err := h.classService.UpdateClass(uint(classID), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to update class",
+			"error":   "更新班级失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Class updated successfully",
+		"message": "班级更新成功",
 		"data":    class,
 	})
 }
 
 // DeleteClass 删除班级
 func (h *ClassHandler) DeleteClass(c *gin.Context) {
-	classID := c.GetUint("class_id")
+	classID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的班级ID",
+		})
+		return
+	}
 
-	if err := h.classService.DeleteClass(classID); err != nil {
+	if err := h.classService.DeleteClass(uint(classID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to delete class",
+			"error":   "删除班级失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Class deleted successfully",
+		"message": "班级删除成功",
 	})
 }
 
 // JoinClass 学生加入班级
 func (h *ClassHandler) JoinClass(c *gin.Context) {
-	user, exists := c.Get("current_user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
-		})
-		return
-	}
-
-	currentUser := user.(*models.User)
+	// TODO: 从JWT获取学生ID
+	studentID := uint(2)
 
 	var req services.JoinClassRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request body",
+			"error":   "无效的请求数据",
 			"details": err.Error(),
 		})
 		return
 	}
 
-	class, err := h.classService.JoinClass(currentUser.ID, req.Code)
+	class, err := h.classService.JoinClass(studentID, req.Code)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Failed to join class",
+			"error":   "加入班级失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Successfully joined class",
+		"message": "成功加入班级",
 		"data":    class,
 	})
 }
 
-// AddStudentToClass 添加学生到班级
-func (h *ClassHandler) AddStudentToClass(c *gin.Context) {
-	classID := c.GetUint("class_id")
-
-	studentIDStr := c.Param("student_id")
-	studentID, err := strconv.ParseUint(studentIDStr, 10, 32)
+// AddMember 添加班级成员
+func (h *ClassHandler) AddMember(c *gin.Context) {
+	classID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid student ID",
+			"error": "无效的班级ID",
 		})
 		return
 	}
 
-	if err := h.classService.AddStudentToClass(classID, uint(studentID)); err != nil {
+	var req struct {
+		StudentID uint `json:"student_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "无效的请求数据",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	if err := h.classService.AddStudentToClass(uint(classID), req.StudentID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to add student to class",
+			"error":   "添加成员失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Student added to class successfully",
+		"message": "成员添加成功",
 	})
 }
 
-// RemoveStudentFromClass 从班级移除学生
-func (h *ClassHandler) RemoveStudentFromClass(c *gin.Context) {
-	classID := c.GetUint("class_id")
-
-	studentIDStr := c.Param("student_id")
-	studentID, err := strconv.ParseUint(studentIDStr, 10, 32)
+// RemoveMember 移除班级成员
+func (h *ClassHandler) RemoveMember(c *gin.Context) {
+	classID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid student ID",
+			"error": "无效的班级ID",
 		})
 		return
 	}
 
-	if err := h.classService.RemoveStudentFromClass(classID, uint(studentID)); err != nil {
+	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的用户ID",
+		})
+		return
+	}
+
+	if err := h.classService.RemoveStudentFromClass(uint(classID), uint(userID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to remove student from class",
+			"error":   "移除成员失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Student removed from class successfully",
+		"message": "成员移除成功",
 	})
 }
 
-// GetClassMembers 获取班级成员
-func (h *ClassHandler) GetClassMembers(c *gin.Context) {
-	classID := c.GetUint("class_id")
+// GetMembers 获取班级成员列表
+func (h *ClassHandler) GetMembers(c *gin.Context) {
+	classID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的班级ID",
+		})
+		return
+	}
 
-	members, err := h.classService.GetClassMembers(classID)
+	members, err := h.classService.GetClassMembers(uint(classID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to get class members",
+			"error":   "获取成员列表失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Success",
-		"data":    members,
+		"data":  members,
+		"total": len(members),
 	})
 }
 
-// GetClassStats 获取班级统计
+// GetClassStats 获取班级统计信息
 func (h *ClassHandler) GetClassStats(c *gin.Context) {
-	classID := c.GetUint("class_id")
+	classID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的班级ID",
+		})
+		return
+	}
 
-	stats, err := h.classService.GetClassStats(classID)
+	stats, err := h.classService.GetClassStats(uint(classID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to get class stats",
+			"error":   "获取班级统计失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Success",
-		"data":    stats,
+		"data": stats,
 	})
 }
 
-// RegisterRoutes 注册班级相关路由
-func (h *ClassHandler) RegisterRoutes(router *gin.RouterGroup, permissionService *services.PermissionService) {
-	classes := router.Group("/classes")
-	{
-		// 基础认证
-		classes.Use(permissionService.RequireAuth())
-
-		// 班级列表和创建
-		classes.GET("", h.GetClasses)
-		classes.POST("", permissionService.RequireTeacher(), h.CreateClass)
-
-		// 学生加入班级
-		classes.POST("/join", permissionService.RequireRole(services.RoleStudent), h.JoinClass)
-
-		// 特定班级操作
-		classGroup := classes.Group("/:id")
-		{
-			// 获取班级详情（需要访问权限）
-			classGroup.GET("", permissionService.RequireClassAccess(services.PermissionRead), h.GetClass)
-
-			// 更新和删除班级（需要管理权限）
-			classGroup.PUT("", permissionService.RequireClassAccess(services.PermissionManage), h.UpdateClass)
-			classGroup.DELETE("", permissionService.RequireClassAccess(services.PermissionManage), h.DeleteClass)
-
-			// 成员管理
-			members := classGroup.Group("/members")
-			{
-				members.GET("", permissionService.RequireClassAccess(services.PermissionRead), h.GetClassMembers)
-				members.POST("/:student_id", permissionService.RequireClassAccess(services.PermissionManage), h.AddStudentToClass)
-				members.DELETE("/:student_id", permissionService.RequireClassAccess(services.PermissionManage), h.RemoveStudentFromClass)
-			}
-
-			// 统计信息
-			classGroup.GET("/stats", permissionService.RequireClassAccess(services.PermissionRead), h.GetClassStats)
-		}
+// SyncToGitLab 同步班级到GitLab
+func (h *ClassHandler) SyncToGitLab(c *gin.Context) {
+	classID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的班级ID",
+		})
+		return
 	}
+
+	if err := h.classService.SyncClassToGitLab(uint(classID)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "同步到GitLab失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "同步到GitLab成功",
+	})
 }

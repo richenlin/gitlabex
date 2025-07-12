@@ -39,6 +39,10 @@ func main() {
 	if err != nil {
 		log.Printf("Failed to initialize GitLab service: %v", err)
 	}
+	classService := services.NewClassService(db, permissionService, gitlabService)
+	projectService := services.NewProjectService(db, permissionService, gitlabService)
+	assignmentService := services.NewAssignmentService(db, permissionService, gitlabService, projectService)
+	notificationService := services.NewNotificationService(db, permissionService, gitlabService)
 	onlyofficeService := services.NewOnlyOfficeService(cfg, db)
 	documentService := services.NewDocumentService(db, gitlabService, onlyofficeService)
 	educationService := services.NewEducationServiceSimplified(gitlabService, db)
@@ -46,6 +50,10 @@ func main() {
 	// 初始化处理器
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService, userService)
 	userHandler := handlers.NewUserHandler(userService)
+	classHandler := handlers.NewClassHandler(classService, userService)
+	projectHandler := handlers.NewProjectHandler(projectService, permissionService)
+	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, userService)
+	notificationHandler := handlers.NewNotificationHandler(notificationService, userService)
 	educationHandler := handlers.NewEducationHandler(educationService, userService)
 	wikiHandler := handlers.NewWikiHandler(gitlabService, onlyofficeService, documentService)
 
@@ -53,7 +61,7 @@ func main() {
 	gin.SetMode(cfg.Server.Mode)
 
 	// 初始化路由
-	router := setupRoutes(authService, analyticsHandler, userHandler, educationHandler, wikiHandler)
+	router := setupRoutes(authService, analyticsHandler, userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler, educationHandler, wikiHandler, permissionService)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -116,7 +124,7 @@ func autoMigrate(db *gorm.DB) error {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
+func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler, permissionService *services.PermissionService) *gin.Engine {
 	router := gin.New()
 
 	// 中间件
@@ -180,6 +188,18 @@ func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.A
 			users.GET("/dashboard", userHandler.GetUserDashboard)
 			users.POST("/sync/:gitlab_id", userHandler.SyncUserFromGitLab)
 		}
+
+		// 班级管理路由
+		classHandler.RegisterRoutes(api)
+
+		// 课题管理路由
+		projectHandler.RegisterRoutes(api, permissionService)
+
+		// 作业管理路由
+		assignmentHandler.RegisterRoutes(api)
+
+		// 通知管理路由
+		notificationHandler.RegisterRoutes(api)
 
 		// 教育管理路由
 		educationHandler.RegisterRoutes(api)
