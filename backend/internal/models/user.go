@@ -43,7 +43,7 @@ type User struct {
 	Email      string    `gorm:"unique;not null" json:"email"`
 	Name       string    `gorm:"not null" json:"name"`
 	Avatar     string    `json:"avatar"`
-	Role       int       `gorm:"default:2" json:"role"` // 1:访客, 2:学生, 3:助教, 4:教师, 5:管理员
+	Role       int       `gorm:"default:3" json:"role"` // 1:管理员, 2:老师, 3:学生, 4:访客
 	Active     bool      `gorm:"default:true" json:"is_active"`
 	LastSyncAt time.Time `gorm:"column:last_sync_at" json:"last_sync_at"`
 	CreatedAt  time.Time `json:"created_at"`

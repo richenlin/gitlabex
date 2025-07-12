@@ -132,6 +132,14 @@ func autoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&models.User{},
 		&models.DocumentAttachment{},
+		&models.Class{},
+		&models.ClassMember{},
+		&models.Project{},
+		&models.ProjectMember{},
+		&models.Assignment{},
+		&models.AssignmentSubmission{},
+		&models.Review{},
+		&models.Notification{},
 	)
 }
 

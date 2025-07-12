@@ -226,7 +226,7 @@ func (s *AuthService) syncUserFromGitLab(gitlabUser *GitLabUser) (*models.User, 
 
 	// 如果是新用户，设置默认角色
 	if user.ID == 0 {
-		user.Role = 2 // 默认学生角色
+		user.Role = 3 // 默认学生角色
 	}
 
 	// 保存到数据库
