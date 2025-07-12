@@ -13,6 +13,7 @@ import (
 
 	"gitlabex/internal/config"
 	"gitlabex/internal/handlers"
+	"gitlabex/internal/middleware"
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 )
@@ -51,9 +52,16 @@ func main() {
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService, userService)
 	userHandler := handlers.NewUserHandler(userService)
 	classHandler := handlers.NewClassHandler(classService, userService)
-	projectHandler := handlers.NewProjectHandler(projectService, permissionService)
+	projectHandler := handlers.NewProjectSimpleHandler(projectService, userService)
 	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, userService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, userService)
+	// 初始化OAuth中间件
+	oauthMiddleware := middleware.NewOAuthMiddleware(cfg, db, userService)
+
+	// 初始化重构后的第三方API Handler
+	thirdPartyHandler := handlers.NewThirdPartyAPIV2Handler(
+		userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler,
+		oauthMiddleware, gitlabService)
 	educationHandler := handlers.NewEducationHandler(educationService, userService)
 	wikiHandler := handlers.NewWikiHandler(gitlabService, onlyofficeService, documentService)
 
@@ -61,7 +69,7 @@ func main() {
 	gin.SetMode(cfg.Server.Mode)
 
 	// 初始化路由
-	router := setupRoutes(authService, analyticsHandler, userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler, educationHandler, wikiHandler, permissionService)
+	router := setupRoutes(authService, analyticsHandler, userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler, thirdPartyHandler, educationHandler, wikiHandler)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -111,20 +119,34 @@ func initDatabase(cfg *config.Config) (*gorm.DB, error) {
 // autoMigrate 自动迁移数据库表
 func autoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
+		// 用户和权限相关
 		&models.User{},
+
+		// 班级管理相关
 		&models.Class{},
 		&models.ClassMember{},
+
+		// 课题管理相关
 		&models.Project{},
 		&models.ProjectMember{},
+
+		// 作业管理相关
 		&models.Assignment{},
 		&models.AssignmentSubmission{},
 		&models.Review{},
+
+		// 通知系统相关
 		&models.Notification{},
+
+		// 文档管理相关
+		&models.Document{},
+		&models.DocumentHistory{},
+		&models.DocumentAttachment{},
 	)
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler, permissionService *services.PermissionService) *gin.Engine {
+func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectSimpleHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
 	router := gin.New()
 
 	// 中间件
@@ -193,13 +215,16 @@ func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.A
 		classHandler.RegisterRoutes(api)
 
 		// 课题管理路由
-		projectHandler.RegisterRoutes(api, permissionService)
+		projectHandler.RegisterRoutes(api)
 
 		// 作业管理路由
 		assignmentHandler.RegisterRoutes(api)
 
 		// 通知管理路由
 		notificationHandler.RegisterRoutes(api)
+
+		// 第三方API路由
+		thirdPartyHandler.RegisterRoutes(api)
 
 		// 教育管理路由
 		educationHandler.RegisterRoutes(api)
