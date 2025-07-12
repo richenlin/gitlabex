@@ -262,6 +262,57 @@ export class ApiService {
     const response = await api.post('/api/education-reports/export', null, { params })
     return response.data
   }
+
+  // 分析统计API
+  static async getAnalyticsOverview(): Promise<any> {
+    const response = await api.get('/api/analytics/overview')
+    return response.data
+  }
+
+  static async getProjectStats(): Promise<any> {
+    const response = await api.get('/api/analytics/project-stats')
+    return response.data
+  }
+
+  static async getStudentStats(): Promise<any> {
+    const response = await api.get('/api/analytics/student-stats')
+    return response.data
+  }
+
+  static async getAssignmentStats(): Promise<any> {
+    const response = await api.get('/api/analytics/assignment-stats')
+    return response.data
+  }
+
+  static async getSubmissionTrend(params?: { start_date?: Date; end_date?: Date }): Promise<any> {
+    const response = await api.get('/api/analytics/submission-trend', { params })
+    return response.data
+  }
+
+  static async getProjectDistribution(): Promise<any> {
+    const response = await api.get('/api/analytics/project-distribution')
+    return response.data
+  }
+
+  static async getGradeDistribution(): Promise<any> {
+    const response = await api.get('/api/analytics/grade-distribution')
+    return response.data
+  }
+
+  static async getActivityStats(): Promise<any> {
+    const response = await api.get('/api/analytics/activity-stats')
+    return response.data
+  }
+
+  static async getDashboardStats(): Promise<any> {
+    const response = await api.get('/api/analytics/dashboard-stats')
+    return response.data
+  }
+
+  static async getRecentActivities(params?: { limit?: number }): Promise<any> {
+    const response = await api.get('/api/analytics/recent-activities', { params })
+    return response.data
+  }
 }
 
 export default api 

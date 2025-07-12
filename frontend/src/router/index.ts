@@ -18,10 +18,10 @@ const router = createRouter({
       meta: { title: 'GitLabEx - 教育协作平台', requiresAuth: true }
     },
     {
-      path: '/dashboard',
-      name: 'dashboard',
-      component: () => import('../views/DashboardView.vue'),
-      meta: { title: '仪表板', requiresAuth: true }
+      path: '/analytics',
+      name: 'analytics',
+      component: () => import('../views/AnalyticsView.vue'),
+      meta: { title: '统计分析', requiresAuth: true }
     },
     {
       path: '/documents',
@@ -128,21 +128,7 @@ const router = createRouter({
       meta: { title: '个人资料', requiresAuth: true }
     },
     
-    // 学习进度跟踪
-    {
-      path: '/learning-progress',
-      name: 'learning-progress',
-      component: () => import('../views/LearningProgressView.vue'),
-      meta: { title: '学习进度跟踪', requiresAuth: true }
-    },
-    
-    // 教育报表 (老师和管理员权限)
-    {
-      path: '/education-reports',
-      name: 'education-reports',
-      component: () => import('../views/EducationReportsView.vue'),
-      meta: { title: '教育报表', requiresAuth: true, requiresRole: 'teacher' }
-    },
+
     
     {
       path: '/about',

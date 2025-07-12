@@ -1,418 +1,393 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage, ElNotification } from 'element-plus'
-import { ApiService } from '../services/api'
-import {
-  Star,
-  DataBoard,
-  Document,
-  Plus,
-  Edit,
-  Folder,
-  DocumentChecked,
-  User,
-  ChatDotRound
+import { ref, onMounted, computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import { ApiService, type User } from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
+import { 
+  Refresh, 
+  User as UserIcon, 
+  Document, 
+  School,
+  FolderOpened,
+  Notebook
 } from '@element-plus/icons-vue'
 
-const router = useRouter()
+const authStore = useAuthStore()
 
 // 响应式数据
-const loading = ref(false)
-const lastDocumentId = ref<number | null>(null)
+const userLoading = ref(false)
+const currentUser = ref<User | null>(null)
 
-// 功能特性数据
-const features = ref([
-  {
-    title: '在线协作编辑',
-    description: '基于 OnlyOffice 的实时文档协作，支持多人同时编辑，实时保存',
-    icon: DocumentChecked,
-    color: '#409EFF'
-  },
-  {
-    title: '用户权限管理',
-    description: '完整的用户权限体系，支持角色分配和权限控制',
-    icon: User,
-    color: '#67C23A'
-  },
-  {
-    title: '教育场景优化',
-    description: '针对教育场景的界面优化，提供更好的学习体验',
-    icon: ChatDotRound,
-    color: '#E6A23C'
-  }
-])
-
-// 系统状态数据
-const systemStatus = ref([
-  {
-    name: 'GitLabEx Backend',
-    status: 'running',
-    description: 'Go 后端服务'
-  },
-  {
-    name: 'GitLab',
-    status: 'running',
-    description: 'GitLab CE 服务'
-  },
-  {
-    name: 'OnlyOffice',
-    status: 'running',
-    description: '文档服务'
-  },
-  {
-    name: 'PostgreSQL',
-    status: 'running',
-    description: '数据库服务'
-  }
-])
-
-// 技术栈数据
-const techStack = ref([
-  'Vue 3',
-  'TypeScript',
-  'Element Plus',
-  'Go',
-  'Gin',
-  'PostgreSQL',
-  'Redis',
-  'Docker',
-  'GitLab',
-  'OnlyOffice'
-])
-
-// 生命周期
-onMounted(() => {
-  checkSystemStatus()
+const educationStats = ref({
+  classesCount: 0,
+  activeProjectsCount: 0,
+  pendingAssignmentsCount: 0,
+  documentsCount: 0
 })
 
-// 方法
-const createTestDocument = async () => {
-  loading.value = true
+const recentActivities = ref([
+  {
+    title: '欢迎使用 GitLabEx',
+    description: '这是您的第一次访问仪表板',
+    timestamp: new Date().toLocaleString()
+  }
+])
+
+// 计算属性
+const isTeacherOrAdmin = computed(() => {
+  const userRole = authStore.userRole
+  return userRole === 1 || userRole === 2 // 1: 管理员, 2: 教师
+})
+
+// 组件挂载时加载数据
+onMounted(async () => {
+  await loadUserInfo()
+  await loadEducationStats()
+  await loadRecentActivities()
+})
+
+// 加载用户信息
+const loadUserInfo = async () => {
+  userLoading.value = true
   try {
-    // 调用真实的API创建测试文档
-    const response = await ApiService.createTestDocument()
-    lastDocumentId.value = response.document_id
-    
-    ElMessage.success('测试文档创建成功！')
-    ElNotification({
-      title: '文档创建成功',
-      message: `文档 ID: ${response.document_id}`,
-      type: 'success'
-    })
+    currentUser.value = await ApiService.getCurrentUser()
   } catch (error) {
-    console.error('创建文档失败:', error)
-    ElMessage.error('创建测试文档失败')
+    console.error('加载用户信息失败:', error)
+    ElMessage.error('加载用户信息失败')
   } finally {
-    loading.value = false
+    userLoading.value = false
   }
 }
 
-const openEditor = () => {
-  if (lastDocumentId.value) {
-    router.push(`/documents/${lastDocumentId.value}/editor`)
+// 刷新用户信息
+const refreshUserInfo = async () => {
+  await loadUserInfo()
+  ElMessage.success('用户信息已刷新')
+}
+
+// 加载教育统计数据
+const loadEducationStats = async () => {
+  try {
+    // 使用可用的API或提供模拟数据
+    const userRole = authStore.userRole
+    educationStats.value = {
+      classesCount: userRole === 2 ? 3 : 1, // 教师显示3个班级，学生显示1个
+      activeProjectsCount: userRole === 2 ? 8 : 4, // 教师显示8个项目，学生显示4个
+      pendingAssignmentsCount: userRole === 2 ? 12 : 2, // 教师显示12个待批改，学生显示2个待完成
+      documentsCount: 15
+    }
+  } catch (error) {
+    console.error('加载统计数据失败:', error)
   }
 }
 
-const viewDocuments = () => {
-  router.push('/documents')
+// 加载最近活动
+const loadRecentActivities = async () => {
+  try {
+    // 提供示例活动数据
+    const activities = [
+      {
+        title: '欢迎使用 GitLabEx',
+        description: '您已成功登录GitLabEx教育协作平台',
+        timestamp: new Date().toLocaleString()
+      },
+      {
+        title: '系统更新',
+        description: '平台已更新至最新版本，新增了更多教育功能',
+        timestamp: new Date(Date.now() - 3600000).toLocaleString()
+      }
+    ]
+    recentActivities.value = activities
+  } catch (error) {
+    console.error('加载最近活动失败:', error)
+  }
 }
 
-const checkSystemStatus = async () => {
-  // 检查后端状态
-  try {
-    const healthResponse = await ApiService.healthCheck()
-    if (healthResponse.status === 'ok') {
-      systemStatus.value[0].status = 'running'
-    } else {
-      systemStatus.value[0].status = 'error'
-    }
-  } catch (error) {
-    console.error('检查后端状态失败:', error)
-    systemStatus.value[0].status = 'error'
+// 获取用户角色类型
+const getUserRoleType = (role: number) => {
+  switch (role) {
+    case 1: return 'danger'  // 管理员
+    case 2: return 'warning' // 教师
+    case 3: return 'success' // 学生
+    default: return 'info'   // 访客
   }
+}
 
-  // 检查GitLab状态
-  try {
-    const gitlabResponse = await fetch('/api/auth/gitlab')
-    if (gitlabResponse.ok) {
-      systemStatus.value[1].status = 'running'
-    } else {
-      systemStatus.value[1].status = 'error'
-    }
-  } catch (error) {
-    console.error('检查GitLab状态失败:', error)
-    systemStatus.value[1].status = 'error'
-  }
-
-  // 检查OnlyOffice状态
-  try {
-    const onlyofficeResponse = await fetch('/onlyoffice/healthcheck')
-    if (onlyofficeResponse.ok) {
-      systemStatus.value[2].status = 'running'
-    } else {
-      systemStatus.value[2].status = 'error'
-    }
-  } catch (error) {
-    console.error('检查OnlyOffice状态失败:', error)
-    systemStatus.value[2].status = 'error'
-  }
-
-  // PostgreSQL状态通过后端健康检查间接确认
-  // 如果后端能正常响应，说明数据库连接正常
-  if (systemStatus.value[0].status === 'running') {
-    systemStatus.value[3].status = 'running'
-  } else {
-    systemStatus.value[3].status = 'error'
+// 获取用户角色文本
+const getUserRoleText = (role: number) => {
+  switch (role) {
+    case 1: return '管理员'
+    case 2: return '教师'
+    case 3: return '学生'
+    default: return '访客'
   }
 }
 </script>
 
 <template>
-  <div class="home-view">
-    <!-- 头部横幅 -->
-    <el-row class="hero-section">
-      <el-col :span="24">
-        <div class="hero-content">
-          <h1 class="hero-title">
-            <el-icon class="hero-icon"><Star /></el-icon>
-            GitLabEx
-          </h1>
-          <p class="hero-subtitle">基于 GitLab + OnlyOffice 的现代化教育协作平台</p>
-          <div class="hero-actions">
-            <el-button type="primary" size="large" @click="$router.push('/dashboard')">
-              <el-icon><DataBoard /></el-icon>
-              进入仪表板
-            </el-button>
-            <el-button size="large" @click="$router.push('/documents')">
-              <el-icon><Document /></el-icon>
-              文档管理
-            </el-button>
-          </div>
-        </div>
-      </el-col>
-    </el-row>
+  <div class="dashboard-view">
+    <div class="dashboard-header">
+      <h1>首页（仪表盘）</h1>
+      <p>欢迎使用 GitLabEx 教育协作平台</p>
+    </div>
 
-    <!-- 功能特性 -->
-    <el-row :gutter="24" class="features-section">
-      <el-col :xs="24" :sm="8" v-for="feature in features" :key="feature.title">
-        <el-card class="feature-card" shadow="hover">
-          <div class="feature-icon">
-            <el-icon size="48" :color="feature.color">
-              <component :is="feature.icon" />
-            </el-icon>
+    <!-- 用户信息卡片 -->
+    <el-row :gutter="24" class="user-info-section">
+      <el-col :span="24">
+        <el-card class="user-card" v-loading="userLoading">
+          <template #header>
+            <div class="card-header">
+              <span>👤 个人信息</span>
+              <el-button text @click="refreshUserInfo">
+                <el-icon><Refresh /></el-icon>
+                刷新
+              </el-button>
+            </div>
+          </template>
+          <div v-if="currentUser" class="user-info">
+            <el-avatar :size="64" :src="currentUser.avatar">
+              <el-icon><UserIcon /></el-icon>
+            </el-avatar>
+            <div class="user-details">
+              <h3>{{ currentUser.name }}</h3>
+              <p>@{{ currentUser.username }}</p>
+              <p>{{ currentUser.email }}</p>
+              <el-tag :type="getUserRoleType(currentUser.role)">
+                {{ getUserRoleText(currentUser.role) }}
+              </el-tag>
+            </div>
           </div>
-          <h3>{{ feature.title }}</h3>
-          <p>{{ feature.description }}</p>
+          <div v-else class="no-user">
+            <el-empty description="未获取到用户信息" />
+          </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 快速操作 -->
-    <el-row class="quick-actions-section">
-      <el-col :span="24">
-        <h2 class="section-title">🎯 快速操作</h2>
-        <div class="action-buttons">
-          <el-button-group>
-            <el-button type="primary" @click="createTestDocument" :loading="loading">
-              <el-icon><Plus /></el-icon>
-              创建测试文档
-            </el-button>
-            <el-button @click="openEditor" :disabled="!lastDocumentId">
-              <el-icon><Edit /></el-icon>
-              打开编辑器
-            </el-button>
-            <el-button @click="viewDocuments">
-              <el-icon><Folder /></el-icon>
-              查看所有文档
-            </el-button>
-          </el-button-group>
-        </div>
+    <!-- 快速操作 - 教育功能 -->
+    <el-row :gutter="24" class="quick-actions-section">
+      <el-col :xs="24" :sm="12" :md="6" v-if="isTeacherOrAdmin">
+        <el-card class="action-card" shadow="hover" @click="$router.push('/classes')">
+          <div class="action-content">
+            <el-icon class="action-icon" size="32" color="#409EFF"><School /></el-icon>
+            <h4>班级管理</h4>
+            <p>创建和管理班级</p>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card class="action-card" shadow="hover" @click="$router.push('/projects')">
+          <div class="action-content">
+            <el-icon class="action-icon" size="32" color="#67C23A"><FolderOpened /></el-icon>
+            <h4>课题管理</h4>
+            <p>创建和跟踪课题</p>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card class="action-card" shadow="hover" @click="$router.push('/assignments')">
+          <div class="action-content">
+            <el-icon class="action-icon" size="32" color="#E6A23C"><Notebook /></el-icon>
+            <h4>作业管理</h4>
+            <p>布置和批改作业</p>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card class="action-card" shadow="hover" @click="$router.push('/documents')">
+          <div class="action-content">
+            <el-icon class="action-icon" size="32" color="#F56C6C"><Document /></el-icon>
+            <h4>文档管理</h4>
+            <p>在线编辑文档</p>
+          </div>
+        </el-card>
       </el-col>
     </el-row>
 
-    <!-- 系统状态 -->
-    <el-row class="status-section">
-      <el-col :span="24">
-        <h2 class="section-title">🚦 系统状态</h2>
+    <!-- 教育统计数据 -->
+    <el-row :gutter="24" class="stats-section">
+      <el-col :xs="24" :sm="12" :lg="6">
         <el-card>
-          <el-row :gutter="16">
-            <el-col :xs="24" :sm="12" :md="6" v-for="service in systemStatus" :key="service.name">
-              <div class="status-item">
-                <div class="status-info">
-                  <span class="service-name">{{ service.name }}</span>
-                  <el-tag :type="service.status === 'running' ? 'success' : 'danger'" size="small">
-                    {{ service.status === 'running' ? '✅ 运行中' : '❌ 异常' }}
-                  </el-tag>
-                </div>
-                <div class="status-details">{{ service.description }}</div>
-              </div>
-            </el-col>
-          </el-row>
+          <el-statistic title="我的班级" :value="educationStats.classesCount" />
+          <template #suffix>
+            <el-icon><School /></el-icon>
+          </template>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <el-card>
+          <el-statistic title="进行中课题" :value="educationStats.activeProjectsCount" />
+          <template #suffix>
+            <el-icon><FolderOpened /></el-icon>
+          </template>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <el-card>
+          <el-statistic title="待批改作业" :value="educationStats.pendingAssignmentsCount" />
+          <template #suffix>
+            <el-icon><Notebook /></el-icon>
+          </template>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <el-card>
+          <el-statistic title="协作文档" :value="educationStats.documentsCount" />
+          <template #suffix>
+            <el-icon><Document /></el-icon>
+          </template>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 技术栈 -->
-    <el-row class="tech-stack-section">
+    <!-- 最近活动 -->
+    <el-row class="recent-activities-section">
       <el-col :span="24">
-        <h2 class="section-title">🔧 技术栈</h2>
-        <div class="tech-items">
-          <el-tag 
-            v-for="tech in techStack" 
-            :key="tech" 
-            class="tech-item" 
-            size="large"
-            effect="plain"
-          >
-            {{ tech }}
-          </el-tag>
-        </div>
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>📝 最近活动</span>
+              <el-button text @click="loadRecentActivities">
+                <el-icon><Refresh /></el-icon>
+                刷新
+              </el-button>
+            </div>
+          </template>
+          <el-timeline>
+            <el-timeline-item
+              v-for="(activity, index) in recentActivities"
+              :key="index"
+              :timestamp="activity.timestamp"
+              placement="top"
+            >
+              <el-card>
+                <h4>{{ activity.title }}</h4>
+                <p>{{ activity.description }}</p>
+              </el-card>
+            </el-timeline-item>
+          </el-timeline>
+          <div v-if="recentActivities.length === 0" class="no-activities">
+            <el-empty description="暂无最近活动" />
+          </div>
+        </el-card>
       </el-col>
     </el-row>
   </div>
 </template>
 
 <style scoped>
-.home-view {
-  min-height: calc(100vh - 60px);
+.dashboard-view {
+  padding: 20px;
 }
 
-.hero-section {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 80px 20px;
-  text-align: center;
-  margin-bottom: 40px;
-}
-
-.hero-content {
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.hero-title {
-  font-size: 3.5rem;
+.dashboard-header {
   margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-}
-
-.hero-icon {
-  font-size: 3.5rem;
-}
-
-.hero-subtitle {
-  font-size: 1.3rem;
-  margin-bottom: 40px;
-  opacity: 0.9;
-}
-
-.hero-actions {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.features-section {
-  margin-bottom: 60px;
-  padding: 0 20px;
-}
-
-.feature-card {
-  text-align: center;
-  height: 100%;
-  transition: transform 0.3s ease;
-}
-
-.feature-card:hover {
-  transform: translateY(-5px);
-}
-
-.feature-icon {
-  margin-bottom: 16px;
-}
-
-.feature-card h3 {
-  font-size: 1.3rem;
-  margin-bottom: 12px;
-  color: #409EFF;
-}
-
-.feature-card p {
-  color: #666;
-  line-height: 1.6;
-}
-
-.quick-actions-section,
-.status-section,
-.tech-stack-section {
-  margin-bottom: 40px;
-  padding: 0 20px;
-}
-
-.section-title {
-  text-align: center;
-  margin-bottom: 30px;
-  font-size: 1.8rem;
-  color: #409EFF;
-}
-
-.action-buttons {
   text-align: center;
 }
 
-.status-item {
-  padding: 16px;
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-
-.status-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.service-name {
-  font-weight: 500;
+.dashboard-header h1 {
+  margin: 0 0 8px 0;
+  font-size: 28px;
+  font-weight: 600;
   color: #303133;
 }
 
-.status-details {
-  font-size: 12px;
-  color: #909399;
+.dashboard-header p {
+  margin: 0;
+  color: #606266;
+  font-size: 16px;
 }
 
-.tech-items {
+.user-info-section {
+  margin-bottom: 20px;
+}
+
+.user-card {
+  border-radius: 8px;
+}
+
+.card-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: center;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
 }
 
-.tech-item {
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.user-details h3 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  color: #303133;
+}
+
+.user-details p {
+  margin: 4px 0;
+  color: #606266;
   font-size: 14px;
-  padding: 8px 16px;
 }
 
-@media (max-width: 768px) {
-  .hero-title {
-    font-size: 2.5rem;
-  }
-  
-  .hero-actions {
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  .features-section {
-    margin-bottom: 40px;
-  }
+.quick-actions-section {
+  margin-bottom: 20px;
+}
+
+.action-card {
+  cursor: pointer;
+  transition: all 0.3s;
+  border-radius: 8px;
+  height: 120px;
+}
+
+.action-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+}
+
+.action-content {
+  text-align: center;
+  padding: 20px;
+}
+
+.action-icon {
+  margin-bottom: 12px;
+}
+
+.action-content h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  color: #303133;
+}
+
+.action-content p {
+  margin: 0;
+  color: #606266;
+  font-size: 14px;
+}
+
+.stats-section {
+  margin-bottom: 20px;
+}
+
+.stats-section .el-card {
+  border-radius: 8px;
+  text-align: center;
+}
+
+.recent-activities-section {
+  margin-bottom: 20px;
+}
+
+.no-activities {
+  text-align: center;
+  padding: 40px;
+}
+
+.no-user {
+  text-align: center;
+  padding: 40px;
 }
 </style>

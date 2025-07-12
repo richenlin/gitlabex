@@ -6,7 +6,6 @@ import { ApiService, type User } from './services/api'
 import { useAuthStore } from './stores/auth'
 import {
   Star,
-  House,
   DataBoard,
   Document,
   User as UserIcon,
@@ -16,9 +15,9 @@ import {
   School,
   Notebook,
   FolderOpened,
-  Bell,
   TrendCharts
 } from '@element-plus/icons-vue'
+import NotificationBell from './components/NotificationBell.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,6 +34,12 @@ const activeIndex = computed(() => {
 // 是否显示导航栏（登录页面不显示）
 const showNavigation = computed(() => {
   return route.path !== '/login'
+})
+
+// 是否为教师或管理员
+const isTeacherOrAdmin = computed(() => {
+  const userRole = authStore.userRole
+  return userRole === 1 || userRole === 2 // 1: 管理员, 2: 教师
 })
 
 // 生命周期
@@ -119,12 +124,17 @@ const logout = async () => {
           <!-- 占位符，保持header布局 -->
           <div class="header-spacer"></div>
 
+          <!-- 公告通知 -->
+          <div class="notification-section">
+            <NotificationBell />
+          </div>
+
           <!-- 用户菜单 -->
           <div class="user-section">
             <el-dropdown @command="handleUserMenuCommand">
               <span class="user-info">
                 <el-avatar :size="32" :src="currentUser?.avatar">
-                  <el-icon><User /></el-icon>
+                  <el-icon><UserIcon /></el-icon>
                 </el-avatar>
                 <span class="username">{{ currentUser?.name || '用户' }}</span>
                 <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
@@ -132,7 +142,7 @@ const logout = async () => {
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="profile">
-                    <el-icon><User /></el-icon>
+                    <el-icon><UserIcon /></el-icon>
                     个人资料
                   </el-dropdown-item>
                   <el-dropdown-item command="settings">
@@ -163,14 +173,10 @@ const logout = async () => {
           active-text-color="#409EFF"
         >
           <el-menu-item index="/">
-            <el-icon><House /></el-icon>
-            <span>首页</span>
-          </el-menu-item>
-          <el-menu-item index="/dashboard">
             <el-icon><DataBoard /></el-icon>
-            <span>仪表板</span>
+            <span>首页（仪表盘）</span>
           </el-menu-item>
-          <el-menu-item index="/classes">
+          <el-menu-item index="/classes" v-if="isTeacherOrAdmin">
             <el-icon><School /></el-icon>
             <span>班级管理</span>
           </el-menu-item>
@@ -182,21 +188,13 @@ const logout = async () => {
             <el-icon><Notebook /></el-icon>
             <span>作业管理</span>
           </el-menu-item>
-          <el-menu-item index="/learning-progress">
-            <el-icon><DataBoard /></el-icon>
-            <span>学习进度跟踪</span>
-          </el-menu-item>
-          <el-menu-item index="/notifications">
-            <el-icon><Bell /></el-icon>
-            <span>通知系统</span>
-          </el-menu-item>
-          <el-menu-item index="/education-reports">
+          <el-menu-item index="/analytics">
             <el-icon><TrendCharts /></el-icon>
-            <span>教育报表</span>
+            <span>统计分析</span>
           </el-menu-item>
           <el-menu-item index="/documents">
             <el-icon><Document /></el-icon>
-            <span>文档</span>
+            <span>文档管理</span>
           </el-menu-item>
           <el-menu-item index="/wiki">
             <el-icon><FolderOpened /></el-icon>
@@ -335,6 +333,12 @@ const logout = async () => {
 .sidebar-menu .el-menu-item .el-icon {
   margin-right: 12px;
   font-size: 18px;
+}
+
+.notification-section {
+  display: flex;
+  align-items: center;
+  margin-right: 16px;
 }
 
 .user-section {
