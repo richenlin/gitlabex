@@ -90,16 +90,14 @@ onMounted(() => {
 const createTestDocument = async () => {
   loading.value = true
   try {
-    // 模拟创建文档
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    const testDocId = Math.floor(Math.random() * 1000) + 1
-    lastDocumentId.value = testDocId
+    // 调用真实的API创建测试文档
+    const response = await ApiService.createTestDocument()
+    lastDocumentId.value = response.document_id
     
     ElMessage.success('测试文档创建成功！')
     ElNotification({
       title: '文档创建成功',
-      message: `文档 ID: ${testDocId}`,
+      message: `文档 ID: ${response.document_id}`,
       type: 'success'
     })
   } catch (error) {
@@ -123,13 +121,14 @@ const viewDocuments = () => {
 const checkSystemStatus = async () => {
   try {
     // 检查后端状态
-    const response = await fetch('http://localhost:8080/api/health')
-    if (response.ok) {
+    const healthResponse = await ApiService.healthCheck()
+    if (healthResponse.status === 'ok') {
       systemStatus.value[0].status = 'running'
     } else {
       systemStatus.value[0].status = 'error'
     }
   } catch (error) {
+    console.error('检查系统状态失败:', error)
     systemStatus.value[0].status = 'error'
   }
 }

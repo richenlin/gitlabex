@@ -6,9 +6,10 @@
 
 **管理员账号**:
 - 用户名: `root`
-- 密码: `GitLab@2024#SecurePass!`
+- 密码: `b75hZ0qcwLKD`
 
-sudo docker exec -it gitlabex-gitlab gitlab-rails runner "user = User.where(id: 1).first; user.password = 'GitLab@2024#SecurePass!'; user.password_confirmation = 'GitLab@2024#SecurePass!'; user.save!"
+sudo docker exec -it gitlabex-gitlab gitlab-rails runner "user = User.new(username: 'root', email: 'admin@example.com', name: 'Administrator', password: 'b75hZ0qcwLKD', password_confirmation: 'Gi
+tLab@2024#SecurePass', admin: true);  user.save; puts 'Admin user created successfully'"
 
 ## 📋 密码说明
 
@@ -25,7 +26,7 @@ sudo docker exec -it gitlabex-gitlab gitlab-rails runner "user = User.where(id: 
 1. 访问 http://localhost:8081
 2. 使用以下凭据登录：
    - Username: `root`
-   - Password: `GitLab@2024#SecurePass!`
+   - Password: `b75hZ0qcwLKD`
 3. 登录成功后，可以进入 Admin Area 配置 OAuth 应用
 
 ## ⚙️ 配置 OAuth 应用
@@ -46,7 +47,8 @@ sudo docker exec -it gitlabex-gitlab gitlab-rails runner "user = User.where(id: 
      - `email` - 电子邮件地址
 5. 点击 **Save application**
 6. 记录生成的 **Application ID** 和 **Secret**
-
+**Application ID**： 375dbd60a3bec327790d2f7f814458a137c83e367f4246138aa2c446afa6da5c
+**Secret**：gloas-2393db14563f27fa9306c256861c13362c0d03a724850fae16c8560956031bb9
 ## 🔧 更新后端配置
 
 获得 OAuth 应用的 Application ID 和 Secret 后：

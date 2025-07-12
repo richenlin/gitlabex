@@ -20,7 +20,7 @@
           </template>
           <div v-if="currentUser" class="user-info">
             <el-avatar :size="64" :src="currentUser.avatar">
-              <el-icon><User /></el-icon>
+              <el-icon><UserIcon /></el-icon>
             </el-avatar>
             <div class="user-details">
               <h3>{{ currentUser.name }}</h3>
@@ -38,69 +38,77 @@
       </el-col>
     </el-row>
 
-    <!-- 快速操作 -->
+    <!-- 快速操作 - 教育功能 -->
     <el-row :gutter="24" class="quick-actions-section">
       <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="action-card" shadow="hover" @click="createDocument">
+        <el-card class="action-card" shadow="hover" @click="$router.push('/classes')">
           <div class="action-content">
-            <el-icon class="action-icon" size="32" color="#409EFF"><Plus /></el-icon>
-            <h4>创建文档</h4>
-            <p>创建新的协作文档</p>
+            <el-icon class="action-icon" size="32" color="#409EFF"><School /></el-icon>
+            <h4>班级管理</h4>
+            <p>创建和管理班级</p>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card class="action-card" shadow="hover" @click="$router.push('/projects')">
+          <div class="action-content">
+            <el-icon class="action-icon" size="32" color="#67C23A"><FolderOpened /></el-icon>
+            <h4>课题管理</h4>
+            <p>创建和跟踪课题</p>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <el-card class="action-card" shadow="hover" @click="$router.push('/assignments')">
+          <div class="action-content">
+            <el-icon class="action-icon" size="32" color="#E6A23C"><Notebook /></el-icon>
+            <h4>作业管理</h4>
+            <p>布置和批改作业</p>
           </div>
         </el-card>
       </el-col>
       <el-col :xs="24" :sm="12" :md="6">
         <el-card class="action-card" shadow="hover" @click="$router.push('/documents')">
           <div class="action-content">
-            <el-icon class="action-icon" size="32" color="#67C23A"><Document /></el-icon>
-            <h4>文档管理</h4>
-            <p>查看和管理文档</p>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="action-card" shadow="hover" @click="$router.push('/users')">
-          <div class="action-content">
-            <el-icon class="action-icon" size="32" color="#E6A23C"><User /></el-icon>
-            <h4>用户管理</h4>
-            <p>查看活跃用户</p>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="action-card" shadow="hover" @click="$router.push('/profile')">
-          <div class="action-content">
-            <el-icon class="action-icon" size="32" color="#F56C6C"><Setting /></el-icon>
-            <h4>个人设置</h4>
-            <p>管理个人资料</p>
+            <el-icon class="action-icon" size="32" color="#F56C6C"><Document /></el-icon>
+            <h4>文档协作</h4>
+            <p>在线编辑文档</p>
           </div>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 统计数据 -->
+    <!-- 教育统计数据 -->
     <el-row :gutter="24" class="stats-section">
-      <el-col :xs="24" :sm="12" :lg="8">
+      <el-col :xs="24" :sm="12" :lg="6">
         <el-card>
-          <el-statistic title="我的文档" :value="stats.documentsCount" />
+          <el-statistic title="我的班级" :value="educationStats.classesCount" />
+          <template #suffix>
+            <el-icon><School /></el-icon>
+          </template>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <el-card>
+          <el-statistic title="进行中课题" :value="educationStats.activeProjectsCount" />
+          <template #suffix>
+            <el-icon><FolderOpened /></el-icon>
+          </template>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <el-card>
+          <el-statistic title="待批改作业" :value="educationStats.pendingAssignmentsCount" />
+          <template #suffix>
+            <el-icon><Notebook /></el-icon>
+          </template>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :sm="12" :lg="6">
+        <el-card>
+          <el-statistic title="协作文档" :value="educationStats.documentsCount" />
           <template #suffix>
             <el-icon><Document /></el-icon>
-          </template>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :lg="8">
-        <el-card>
-          <el-statistic title="活跃用户" :value="stats.activeUsers" />
-          <template #suffix>
-            <el-icon><User /></el-icon>
-          </template>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :lg="8">
-        <el-card>
-          <el-statistic title="项目数量" :value="stats.projectsCount" />
-          <template #suffix>
-            <el-icon><Folder /></el-icon>
           </template>
         </el-card>
       </el-col>
@@ -141,6 +149,17 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiService, type User } from '@/services/api'
+import { 
+  Refresh, 
+  User as UserIcon, 
+  Plus, 
+  Document, 
+  Setting, 
+  Folder,
+  School,
+  FolderOpened,
+  Notebook
+} from '@element-plus/icons-vue'
 
 // 响应式数据
 const userLoading = ref(false)
@@ -149,6 +168,13 @@ const stats = ref({
   documentsCount: 0,
   activeUsers: 0,
   projectsCount: 0
+})
+
+const educationStats = ref({
+  classesCount: 0,
+  activeProjectsCount: 0,
+  pendingAssignmentsCount: 0,
+  documentsCount: 0
 })
 
 const recentActivities = ref([
@@ -163,6 +189,7 @@ const recentActivities = ref([
 onMounted(async () => {
   await loadUserInfo()
   await loadStats()
+  await loadEducationStats()
 })
 
 // 加载用户信息
@@ -190,6 +217,45 @@ const loadStats = async () => {
     stats.value.projectsCount = Math.floor(Math.random() * 5) + 1
   } catch (error) {
     console.error('获取统计数据失败:', error)
+  }
+}
+
+// 加载教育统计数据
+const loadEducationStats = async () => {
+  try {
+    // 从API获取教育统计数据
+    const response = await fetch('/api/education/stats', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      educationStats.value = data.data || {
+        classesCount: 0,
+        activeProjectsCount: 0,
+        pendingAssignmentsCount: 0,
+        documentsCount: 0
+      }
+    } else {
+      // 使用模拟数据
+      educationStats.value = {
+        classesCount: Math.floor(Math.random() * 5) + 1,
+        activeProjectsCount: Math.floor(Math.random() * 8) + 2,
+        pendingAssignmentsCount: Math.floor(Math.random() * 10) + 1,
+        documentsCount: Math.floor(Math.random() * 15) + 3
+      }
+    }
+  } catch (error) {
+    console.error('获取教育统计数据失败:', error)
+    // 使用模拟数据
+    educationStats.value = {
+      classesCount: Math.floor(Math.random() * 5) + 1,
+      activeProjectsCount: Math.floor(Math.random() * 8) + 2,
+      pendingAssignmentsCount: Math.floor(Math.random() * 10) + 1,
+      documentsCount: Math.floor(Math.random() * 15) + 3
+    }
   }
 }
 

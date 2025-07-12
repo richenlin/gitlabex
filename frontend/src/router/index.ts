@@ -35,10 +35,34 @@ const router = createRouter({
       meta: { title: '文档编辑器' }
     },
     {
+      path: '/wiki',
+      name: 'wiki-documents',
+      component: () => import('../views/WikiDocumentsView.vue'),
+      meta: { title: 'Wiki文档管理' }
+    },
+    {
       path: '/users',
       name: 'users',
       component: () => import('../views/UsersView.vue'),
       meta: { title: '用户管理' }
+    },
+    {
+      path: '/classes',
+      name: 'classes',
+      component: () => import('../views/ClassesView.vue'),
+      meta: { title: '班级管理' }
+    },
+    {
+      path: '/assignments',
+      name: 'assignments',
+      component: () => import('../views/AssignmentsView.vue'),
+      meta: { title: '作业管理' }
+    },
+    {
+      path: '/projects',
+      name: 'projects',
+      component: () => import('../views/ProjectsView.vue'),
+      meta: { title: '课题管理' }
     },
     {
       path: '/profile',

@@ -11,7 +11,10 @@ import {
   User as UserIcon,
   ArrowDown,
   Setting,
-  SwitchButton
+  SwitchButton,
+  School,
+  Notebook,
+  FolderOpened
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -33,11 +36,15 @@ onMounted(() => {
 // 方法
 const loadCurrentUser = async () => {
   try {
-    // 这里应该调用获取当前用户信息的API
-    // const response = await ApiService.getCurrentUser()
-    // currentUser.value = response.data
+    // 调用真实的API获取当前用户信息
+    const response = await ApiService.getCurrentUser()
+    currentUser.value = response
+    console.log('当前用户:', currentUser.value)
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+    ElMessage.error('获取用户信息失败')
     
-    // 模拟数据
+    // 如果API调用失败，使用默认用户作为后备
     currentUser.value = {
       id: 1,
       name: '演示用户',
@@ -49,8 +56,6 @@ const loadCurrentUser = async () => {
       is_active: true,
       last_sync_at: new Date().toISOString()
     }
-  } catch (error) {
-    console.error('获取用户信息失败:', error)
   }
 }
 
@@ -122,9 +127,25 @@ const logout = async () => {
             <el-icon><DataBoard /></el-icon>
             <span>仪表板</span>
           </el-menu-item>
+          <el-menu-item index="/classes">
+            <el-icon><School /></el-icon>
+            <span>班级管理</span>
+          </el-menu-item>
+          <el-menu-item index="/projects">
+            <el-icon><FolderOpened /></el-icon>
+            <span>课题管理</span>
+          </el-menu-item>
+          <el-menu-item index="/assignments">
+            <el-icon><Notebook /></el-icon>
+            <span>作业管理</span>
+          </el-menu-item>
           <el-menu-item index="/documents">
             <el-icon><Document /></el-icon>
             <span>文档</span>
+          </el-menu-item>
+          <el-menu-item index="/wiki">
+            <el-icon><FolderOpened /></el-icon>
+            <span>Wiki文档</span>
           </el-menu-item>
           <el-menu-item index="/users">
             <el-icon><User /></el-icon>

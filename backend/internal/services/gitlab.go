@@ -148,6 +148,17 @@ func (s *GitLabService) CheckPermission(userID int, resourceType string, resourc
 
 // GetEducationDashboard 获取教育仪表板数据
 func (s *GitLabService) GetEducationDashboard(userID int) (*EducationDashboard, error) {
+	// 检查GitLab客户端是否有有效的token
+	if s.config.GitLab.Token == "" || s.config.GitLab.Token == "your-gitlab-token" {
+		// 返回默认的空仪表板，而不是错误
+		return &EducationDashboard{
+			Groups:         []*gitlab.Group{},
+			Projects:       []*gitlab.Project{},
+			AssignedIssues: []*gitlab.Issue{},
+			AssignedMRs:    []*gitlab.MergeRequest{},
+		}, nil
+	}
+
 	var (
 		groups   []*gitlab.Group
 		projects []*gitlab.Project
@@ -202,7 +213,7 @@ func (s *GitLabService) GetEducationDashboard(userID int) (*EducationDashboard, 
 		}
 	}()
 
-	// 并发获取分配的MR
+	// 并发获取分配的MRs
 	go func() {
 		defer wg.Done()
 		if assignedMRs, _, err := s.client.MergeRequests.ListMergeRequests(&gitlab.ListMergeRequestsOptions{
@@ -218,8 +229,14 @@ func (s *GitLabService) GetEducationDashboard(userID int) (*EducationDashboard, 
 
 	wg.Wait()
 
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("failed to load dashboard data: %v", errs)
+	// 如果所有请求都失败了，返回空数据而不是错误
+	if len(errs) == 4 {
+		return &EducationDashboard{
+			Groups:         []*gitlab.Group{},
+			Projects:       []*gitlab.Project{},
+			AssignedIssues: []*gitlab.Issue{},
+			AssignedMRs:    []*gitlab.MergeRequest{},
+		}, nil
 	}
 
 	return &EducationDashboard{
@@ -337,6 +354,44 @@ func (s *GitLabService) hasPermissionForAction(role models.EducationRole, action
 	default:
 		return false
 	}
+}
+
+// GetUserProjects 获取用户项目列表
+func (s *GitLabService) GetUserProjects(userID int) ([]*gitlab.Project, error) {
+	projects, _, err := s.client.Projects.ListUserProjects(userID, &gitlab.ListProjectsOptions{
+		MinAccessLevel: gitlab.AccessLevel(gitlab.ReporterPermissions),
+	})
+	return projects, err
+}
+
+// GetWikiPages 获取Wiki页面列表
+func (s *GitLabService) GetWikiPages(projectID int) ([]*gitlab.Wiki, error) {
+	// GitLab API 中可能没有 ListWikiPages，暂时返回空列表
+	// TODO: 实现正确的 Wiki 页面列表获取逻辑
+	return []*gitlab.Wiki{}, nil
+}
+
+// UpdateWikiPage 更新Wiki页面
+func (s *GitLabService) UpdateWikiPage(projectID int, slug, title, content string) (*gitlab.Wiki, error) {
+	format := gitlab.WikiFormatValue("markdown")
+	wiki, _, err := s.client.Wikis.EditWikiPage(projectID, slug, &gitlab.EditWikiPageOptions{
+		Title:   gitlab.String(title),
+		Content: gitlab.String(content),
+		Format:  &format,
+	})
+	return wiki, err
+}
+
+// CheckWikiEditPermission 检查Wiki编辑权限
+func (s *GitLabService) CheckWikiEditPermission(userID int, projectID int) (bool, error) {
+	// 获取用户在项目中的权限
+	member, _, err := s.client.ProjectMembers.GetProjectMember(projectID, userID)
+	if err != nil {
+		return false, err
+	}
+
+	// Wiki编辑需要Developer及以上权限
+	return member.AccessLevel >= gitlab.DeveloperPermissions, nil
 }
 
 // EducationDashboard 教育仪表板数据结构

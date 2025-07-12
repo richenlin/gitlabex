@@ -47,6 +47,7 @@ type GitLabConfig struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
+	Token        string
 }
 
 // OnlyOfficeConfig OnlyOffice配置
@@ -62,9 +63,13 @@ type JWTConfig struct {
 }
 
 func LoadConfig() (*Config, error) {
-	// 尝试加载.env文件
-	if err := godotenv.Load(); err != nil {
-		fmt.Println("No .env file found, using environment variables")
+	// 尝试加载.env文件 - 优先查找config/app.env，然后是.env
+	if err := godotenv.Load("config/app.env"); err != nil {
+		if err := godotenv.Load("../config/app.env"); err != nil {
+			if err := godotenv.Load(".env"); err != nil {
+				fmt.Println("No .env file found, using environment variables")
+			}
+		}
 	}
 
 	config := &Config{
@@ -96,6 +101,7 @@ func LoadConfig() (*Config, error) {
 			ClientID:     getEnv("GITLAB_CLIENT_ID", ""),
 			ClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
 			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:8080/api/auth/gitlab/callback"),
+			Token:        getEnv("GITLAB_TOKEN", ""),
 		},
 		JWT: JWTConfig{
 			Secret: getEnv("JWT_SECRET", "your-jwt-secret-key"),

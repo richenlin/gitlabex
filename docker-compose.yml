@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # GitLab CE
   gitlab:
-    image: gitlab/gitlab-ce:latest
+    image: gitlab/gitlab-ce:17.11.5-ce.0
     hostname: gitlab.local
     container_name: gitlabex-gitlab
     restart: unless-stopped
@@ -11,6 +11,9 @@ services:
       - "8081:80"
       - "4431:443"
       - "2222:22"
+    depends_on:
+      - postgres
+      - redis
     volumes:
       - gitlab_config:/etc/gitlab
       - gitlab_logs:/var/log/gitlab
@@ -19,9 +22,25 @@ services:
       GITLAB_OMNIBUS_CONFIG: |
         external_url 'http://localhost:8081'
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
-        gitlab_rails['initial_root_password'] = 'GitLab@2024#SecurePass!'
+        gitlab_rails['initial_root_password'] = 'b75hZ0qcwLKD'
         gitlab_rails['gitlab_signup_enabled'] = true
         nginx['listen_port'] = 80
+        
+        # 禁用内置PostgreSQL
+        postgresql['enable'] = false
+        gitlab_rails['db_adapter'] = 'postgresql'
+        gitlab_rails['db_encoding'] = 'utf8'
+        gitlab_rails['db_host'] = 'postgres'
+        gitlab_rails['db_port'] = 5432
+        gitlab_rails['db_username'] = 'gitlabex'
+        gitlab_rails['db_password'] = 'password123'
+        gitlab_rails['db_database'] = 'gitlabex'
+        
+        # 禁用内置Redis
+        redis['enable'] = false
+        gitlab_rails['redis_host'] = 'redis'
+        gitlab_rails['redis_port'] = 6379
+        gitlab_rails['redis_password'] = 'password123'
     networks:
       - gitlabex-network
 

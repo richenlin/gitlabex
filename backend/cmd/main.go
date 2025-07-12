@@ -43,16 +43,21 @@ func main() {
 	authService := services.NewAuthService(db, cfg)
 	userService := services.NewUserService(db, gitlabSvc)
 	onlyOfficeService := services.NewOnlyOfficeService(cfg, db)
+	documentService := services.NewDocumentService(db, gitlabSvc)
+	educationServiceSimplified := services.NewEducationServiceSimplified(gitlabSvc, db)
 
 	// 初始化处理器
 	userHandler := handlers.NewUserHandler(userService)
 	documentHandler := handlers.NewDocumentHandler(onlyOfficeService)
+	wikiHandler := handlers.NewWikiHandler(gitlabSvc, onlyOfficeService, documentService)
+	educationTestHandler := handlers.NewEducationTestHandler(educationServiceSimplified)
+	educationHandler := handlers.NewEducationHandler(educationServiceSimplified, userService)
 
 	// 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
 	// 初始化路由
-	router := setupRoutes(authService, userHandler, documentHandler)
+	router := setupRoutes(authService, userHandler, documentHandler, wikiHandler, educationTestHandler, educationHandler)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -128,7 +133,7 @@ func autoMigrate(db *gorm.DB) error {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHandler, documentHandler *handlers.DocumentHandler) *gin.Engine {
+func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHandler, documentHandler *handlers.DocumentHandler, wikiHandler *handlers.WikiHandler, educationTestHandler *handlers.EducationTestHandler, educationHandler *handlers.EducationHandler) *gin.Engine {
 	router := gin.New()
 
 	// 加载HTML模板
@@ -190,6 +195,15 @@ func setupRoutes(authService *services.AuthService, userHandler *handlers.UserHa
 				documents.GET("/:id/content", documentHandler.GetDocumentContent)
 				documents.POST("/:id/callback", documentHandler.HandleCallback)
 			}
+
+			// Wiki相关路由
+			wikiHandler.RegisterRoutes(protected)
+
+			// 教育测试路由
+			educationTestHandler.RegisterRoutes(protected)
+
+			// 教育管理路由
+			educationHandler.RegisterRoutes(protected)
 		}
 	}
 
