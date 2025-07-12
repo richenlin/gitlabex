@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -140,9 +141,14 @@ func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.A
 		auth := api.Group("/auth")
 		{
 			auth.GET("/gitlab", func(c *gin.Context) {
-				state := "random-state-string"
+				// 生成随机state以防止CSRF攻击
+				state := fmt.Sprintf("%d-%d", time.Now().UnixNano(), rand.Int63())
+
+				// 直接使用配置的外部URL生成OAuth URL
 				url := authService.GetGitLabOAuthURL(state)
-				c.JSON(200, gin.H{"url": url})
+
+				// 直接重定向到GitLab OAuth页面
+				c.Redirect(302, url)
 			})
 			auth.GET("/gitlab/callback", authService.HandleGitLabCallback)
 			auth.POST("/gitlab/callback", authService.HandleGitLabCallback)

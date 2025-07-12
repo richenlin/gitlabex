@@ -122,11 +122,11 @@ func LoadConfig() (*Config, error) {
 			CallbackURL: getEnv("ONLYOFFICE_CALLBACK_URL", "http://localhost:8080/api/documents/callback"),
 		},
 		GitLab: GitLabConfig{
-			URL:          getEnv("GITLAB_URL", "http://localhost:8000/gitlab"),
+			URL:          getEnv("GITLAB_EXTERNAL_URL", "http://127.0.0.1:8000/gitlab"),
 			InternalURL:  getEnv("GITLAB_INTERNAL_URL", "http://gitlab"),
 			ClientID:     getEnv("GITLAB_CLIENT_ID", ""),
 			ClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
-			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:8000/api/auth/gitlab/callback"),
+			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://127.0.0.1:8000/api/auth/gitlab/callback"),
 			Token:        getEnv("GITLAB_TOKEN", ""),
 		},
 		JWT: JWTConfig{

@@ -13,15 +13,10 @@ TRIES=0
 while [ $TRIES -lt $MAX_TRIES ]; do
     echo "检查GitLab状态... (尝试 $((TRIES + 1))/$MAX_TRIES)"
     
-    # 检查GitLab是否响应
-    if curl -f -s http://gitlab/-/health > /dev/null 2>&1; then
-        echo "GitLab基础服务已启动"
-        
-        # 等待GitLab完全就绪 (检查用户界面)
-        if curl -f -s http://gitlab/users/sign_in > /dev/null 2>&1; then
-            echo "GitLab完全就绪！"
-            break
-        fi
+    # 检查GitLab用户界面是否可访问
+    if curl -f -s http://gitlab/users/sign_in > /dev/null 2>&1; then
+        echo "GitLab完全就绪！"
+        break
     fi
     
     TRIES=$((TRIES + 1))

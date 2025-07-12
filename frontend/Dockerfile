@@ -16,6 +16,9 @@ RUN pnpm install
 # 复制源代码
 COPY . .
 
+# 设置构建环境变量
+ENV VITE_API_BASE_URL=
+
 # 构建应用
 RUN pnpm run build
 

@@ -20,11 +20,16 @@ services:
       - gitlab_data:/var/opt/gitlab
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://gitlab'
+        external_url 'http://localhost:8000/gitlab'
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
         gitlab_rails['initial_root_password'] = 'b75hZ0qcwLKD'
         gitlab_rails['gitlab_signup_enabled'] = true
         nginx['listen_port'] = 80
+        nginx['redirect_http_to_https'] = false
+        # 强制设置正确的external URL用于重定向
+        gitlab_rails['gitlab_host'] = 'localhost:8000'
+        gitlab_rails['gitlab_port'] = 8000
+        gitlab_rails['gitlab_https'] = false
         
         # 禁用内置PostgreSQL
         postgresql['enable'] = false
@@ -110,6 +115,7 @@ services:
       - gitlab
     volumes:
       - ./scripts:/scripts:ro
+      - ./config:/config:ro
       - gitlab_oauth_config:/shared
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -145,10 +151,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=password123
-      # GitLab配置
-      - GITLAB_URL=http://localhost:8000/gitlab
-      - GITLAB_INTERNAL_URL=http://gitlab
-      - GITLAB_REDIRECT_URI=http://localhost:8000/api/auth/gitlab/callback
+      # GitLab配置 (从OAuth配置文件中动态加载)
       - GITLAB_OAUTH_CONFIG_PATH=/shared/gitlab-oauth.env
       # OnlyOffice配置
       - ONLYOFFICE_URL=http://onlyoffice
