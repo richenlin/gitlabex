@@ -18,6 +18,16 @@ type Project struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
+	// GitLab 相关字段
+	GitLabProjectID int    `json:"gitlab_project_id"`                    // GitLab项目ID
+	GitLabURL       string `json:"gitlab_url"`                           // GitLab项目URL
+	RepositoryURL   string `json:"repository_url"`                       // 仓库URL
+	DefaultBranch   string `gorm:"default:'main'" json:"default_branch"` // 默认分支
+	ReadmeContent   string `json:"readme_content"`                       // README内容（课题介绍）
+	WikiEnabled     bool   `gorm:"default:true" json:"wiki_enabled"`     // 是否启用Wiki
+	IssuesEnabled   bool   `gorm:"default:true" json:"issues_enabled"`   // 是否启用Issues
+	MREnabled       bool   `gorm:"default:true" json:"mr_enabled"`       // 是否启用合并请求
+
 	// 关联关系
 	Teacher     User            `gorm:"foreignKey:TeacherID" json:"teacher,omitempty"`
 	Class       Class           `gorm:"foreignKey:ClassID" json:"class,omitempty"`
@@ -40,6 +50,14 @@ type ProjectMember struct {
 	JoinedAt  time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"joined_at"`
 	Status    string    `gorm:"default:'active'" json:"status"` // active, inactive
 
+	// GitLab 相关字段
+	GitLabAccessLevel int        `json:"gitlab_access_level"` // GitLab访问级别
+	PersonalBranch    string     `json:"personal_branch"`     // 个人分支名
+	PersonalBranchURL string     `json:"personal_branch_url"` // 个人分支URL
+	LastCommitHash    string     `json:"last_commit_hash"`    // 最后提交的哈希
+	LastCommitMessage string     `json:"last_commit_message"` // 最后提交的消息
+	LastCommitTime    *time.Time `json:"last_commit_time"`    // 最后提交时间
+
 	// 关联关系
 	Project Project `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
 	Student User    `gorm:"foreignKey:StudentID" json:"student,omitempty"`
@@ -56,4 +74,13 @@ type ProjectStats struct {
 	AssignmentCount      int `json:"assignment_count"`
 	CompletedAssignments int `json:"completed_assignments"`
 	PendingAssignments   int `json:"pending_assignments"`
+
+	// GitLab 相关统计
+	TotalCommits       int `json:"total_commits"`
+	TotalIssues        int `json:"total_issues"`
+	OpenIssues         int `json:"open_issues"`
+	TotalMergeRequests int `json:"total_merge_requests"`
+	OpenMergeRequests  int `json:"open_merge_requests"`
+	WikiPages          int `json:"wiki_pages"`
+	ActiveBranches     int `json:"active_branches"`
 }

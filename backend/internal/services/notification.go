@@ -13,13 +13,15 @@ import (
 type NotificationService struct {
 	db                *gorm.DB
 	permissionService *PermissionService
+	gitlabService     *GitLabService
 }
 
 // NewNotificationService 创建通知管理服务
-func NewNotificationService(db *gorm.DB, permissionService *PermissionService) *NotificationService {
+func NewNotificationService(db *gorm.DB, permissionService *PermissionService, gitlabService *GitLabService) *NotificationService {
 	return &NotificationService{
 		db:                db,
 		permissionService: permissionService,
+		gitlabService:     gitlabService,
 	}
 }
 
@@ -410,6 +412,455 @@ func (s *NotificationService) CleanupOldNotifications(days int) error {
 	result := s.db.Where("created_at < ?", cutoffDate).Delete(&models.Notification{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to cleanup old notifications: %w", result.Error)
+	}
+
+	return nil
+}
+
+// NotifyGitLabProjectCreated 通知GitLab项目创建
+func (s *NotificationService) NotifyGitLabProjectCreated(project *models.Project) error {
+	// 获取班级成员
+	var classMembers []models.ClassMember
+	if err := s.db.Where("class_id = ? AND status = 'active'", project.ClassID).Find(&classMembers).Error; err != nil {
+		return fmt.Errorf("failed to get class members: %w", err)
+	}
+
+	// 为每个班级成员创建通知
+	for _, member := range classMembers {
+		notification := &models.Notification{
+			UserID:     member.StudentID,
+			Title:      "新课题发布",
+			Content:    fmt.Sprintf("课题「%s」已发布，现在可以加入并开始学习", project.Name),
+			Type:       models.NotificationTypeProjectCreated,
+			TargetType: "project",
+			TargetID:   project.ID,
+		}
+
+		if err := s.CreateNotification(notification); err != nil {
+			// 单个通知失败不影响其他通知
+			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.StudentID, err)
+		}
+	}
+
+	return nil
+}
+
+// NotifyGitLabCommitPushed 通知GitLab提交推送
+func (s *NotificationService) NotifyGitLabCommitPushed(projectID uint, studentID uint, commitHash, commitMessage string) error {
+	// 获取项目信息
+	var project models.Project
+	if err := s.db.Preload("Teacher").First(&project, projectID).Error; err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+
+	// 获取学生信息
+	var student models.User
+	if err := s.db.First(&student, studentID).Error; err != nil {
+		return fmt.Errorf("failed to get student: %w", err)
+	}
+
+	// 通知老师
+	notification := &models.Notification{
+		UserID:     project.TeacherID,
+		Title:      "学生提交代码",
+		Content:    fmt.Sprintf("学生 %s 在课题「%s」中提交了代码：%s", student.Name, project.Name, commitMessage),
+		Type:       models.NotificationTypeGitLabCommit,
+		TargetType: "project",
+		TargetID:   project.ID,
+	}
+
+	return s.CreateNotification(notification)
+}
+
+// NotifyMergeRequestCreated 通知合并请求创建
+func (s *NotificationService) NotifyMergeRequestCreated(projectID uint, studentID uint, mrTitle, mrURL string) error {
+	// 获取项目信息
+	var project models.Project
+	if err := s.db.Preload("Teacher").First(&project, projectID).Error; err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+
+	// 获取学生信息
+	var student models.User
+	if err := s.db.First(&student, studentID).Error; err != nil {
+		return fmt.Errorf("failed to get student: %w", err)
+	}
+
+	// 通知老师
+	notification := &models.Notification{
+		UserID:     project.TeacherID,
+		Title:      "新的合并请求",
+		Content:    fmt.Sprintf("学生 %s 在课题「%s」中创建了合并请求：%s", student.Name, project.Name, mrTitle),
+		Type:       models.NotificationTypeMergeRequest,
+		TargetType: "project",
+		TargetID:   project.ID,
+	}
+
+	return s.CreateNotification(notification)
+}
+
+// NotifyIssueCreated 通知Issue创建
+func (s *NotificationService) NotifyIssueCreated(projectID uint, userID uint, issueTitle, issueURL string) error {
+	// 获取项目信息
+	var project models.Project
+	if err := s.db.Preload("Teacher").First(&project, projectID).Error; err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+
+	// 获取用户信息
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// 通知项目成员
+	var members []models.ProjectMember
+	if err := s.db.Where("project_id = ? AND status = 'active'", projectID).Find(&members).Error; err != nil {
+		return fmt.Errorf("failed to get project members: %w", err)
+	}
+
+	for _, member := range members {
+		if member.StudentID == userID {
+			continue // 不通知自己
+		}
+
+		notification := &models.Notification{
+			UserID:     member.StudentID,
+			Title:      "新的讨论",
+			Content:    fmt.Sprintf("%s 在课题「%s」中创建了新的讨论：%s", user.Name, project.Name, issueTitle),
+			Type:       models.NotificationTypeIssueCreated,
+			TargetType: "project",
+			TargetID:   project.ID,
+		}
+
+		if err := s.CreateNotification(notification); err != nil {
+			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.StudentID, err)
+		}
+	}
+
+	// 也通知老师
+	if project.TeacherID != userID {
+		notification := &models.Notification{
+			UserID:     project.TeacherID,
+			Title:      "新的讨论",
+			Content:    fmt.Sprintf("%s 在课题「%s」中创建了新的讨论：%s", user.Name, project.Name, issueTitle),
+			Type:       models.NotificationTypeIssueCreated,
+			TargetType: "project",
+			TargetID:   project.ID,
+		}
+
+		if err := s.CreateNotification(notification); err != nil {
+			fmt.Printf("Warning: Failed to create notification for teacher %d: %v\n", project.TeacherID, err)
+		}
+	}
+
+	return nil
+}
+
+// NotifyWikiPageCreated 通知Wiki页面创建
+func (s *NotificationService) NotifyWikiPageCreated(projectID uint, userID uint, wikiTitle, wikiURL string) error {
+	// 获取项目信息
+	var project models.Project
+	if err := s.db.Preload("Teacher").First(&project, projectID).Error; err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+
+	// 获取用户信息
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// 通知项目成员
+	var members []models.ProjectMember
+	if err := s.db.Where("project_id = ? AND status = 'active'", projectID).Find(&members).Error; err != nil {
+		return fmt.Errorf("failed to get project members: %w", err)
+	}
+
+	for _, member := range members {
+		if member.StudentID == userID {
+			continue // 不通知自己
+		}
+
+		notification := &models.Notification{
+			UserID:     member.StudentID,
+			Title:      "新的Wiki页面",
+			Content:    fmt.Sprintf("%s 在课题「%s」中创建了新的Wiki页面：%s", user.Name, project.Name, wikiTitle),
+			Type:       models.NotificationTypeWikiCreated,
+			TargetType: "project",
+			TargetID:   project.ID,
+		}
+
+		if err := s.CreateNotification(notification); err != nil {
+			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.StudentID, err)
+		}
+	}
+
+	return nil
+}
+
+// NotifyAssignmentDue 通知作业即将到期
+func (s *NotificationService) NotifyAssignmentDue(assignmentID uint, hours int) error {
+	// 获取作业信息
+	var assignment models.Assignment
+	if err := s.db.Preload("Project").First(&assignment, assignmentID).Error; err != nil {
+		return fmt.Errorf("failed to get assignment: %w", err)
+	}
+
+	// 获取项目成员
+	var members []models.ProjectMember
+	if err := s.db.Where("project_id = ? AND status = 'active'", assignment.ProjectID).Find(&members).Error; err != nil {
+		return fmt.Errorf("failed to get project members: %w", err)
+	}
+
+	// 检查哪些学生还没有提交作业
+	for _, member := range members {
+		var submission models.AssignmentSubmission
+		if err := s.db.Where("assignment_id = ? AND student_id = ?", assignmentID, member.StudentID).First(&submission).Error; err != nil {
+			// 学生还没有提交作业，发送通知
+			notification := &models.Notification{
+				UserID:     member.StudentID,
+				Title:      "作业即将到期",
+				Content:    fmt.Sprintf("作业「%s」将在 %d 小时后到期，请及时提交", assignment.Title, hours),
+				Type:       models.NotificationTypeAssignmentDue,
+				TargetType: "assignment",
+				TargetID:   assignment.ID,
+			}
+
+			if err := s.CreateNotification(notification); err != nil {
+				fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.StudentID, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// NotifyCodeReviewRequest 通知代码审查请求
+func (s *NotificationService) NotifyCodeReviewRequest(projectID uint, studentID uint, reviewerID uint, mrTitle string) error {
+	// 获取项目信息
+	var project models.Project
+	if err := s.db.First(&project, projectID).Error; err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+
+	// 获取学生信息
+	var student models.User
+	if err := s.db.First(&student, studentID).Error; err != nil {
+		return fmt.Errorf("failed to get student: %w", err)
+	}
+
+	// 通知审查者
+	notification := &models.Notification{
+		UserID:     reviewerID,
+		Title:      "代码审查请求",
+		Content:    fmt.Sprintf("学生 %s 在课题「%s」中请求代码审查：%s", student.Name, project.Name, mrTitle),
+		Type:       models.NotificationTypeCodeReview,
+		TargetType: "project",
+		TargetID:   project.ID,
+	}
+
+	return s.CreateNotification(notification)
+}
+
+// SyncNotificationsFromGitLab 从GitLab同步通知
+func (s *NotificationService) SyncNotificationsFromGitLab(projectID uint) error {
+	// 获取项目信息
+	var project models.Project
+	if err := s.db.First(&project, projectID).Error; err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+
+	if project.GitLabProjectID == 0 {
+		return fmt.Errorf("project not linked to GitLab")
+	}
+
+	// 获取GitLab项目的最新活动（这里可能需要扩展GitLab服务）
+	// 这是一个示例实现，实际可能需要使用GitLab的Events API
+
+	// 获取最新的Issues
+	issues, err := s.gitlabService.GetDiscussions(project.GitLabProjectID)
+	if err != nil {
+		return fmt.Errorf("failed to get GitLab issues: %w", err)
+	}
+
+	// 为新的Issues创建通知
+	for _, issue := range issues {
+		// 检查是否已经有通知
+		var existingNotification models.Notification
+		if err := s.db.Where("target_type = 'gitlab_issue' AND target_id = ?", issue.ID).First(&existingNotification).Error; err != nil {
+			// 创建新通知
+			notification := &models.Notification{
+				UserID:     project.TeacherID,
+				Title:      "GitLab活动",
+				Content:    fmt.Sprintf("GitLab项目中有新的活动：%s", issue.Title),
+				Type:       models.NotificationTypeGitLabActivity,
+				TargetType: "gitlab_issue",
+				TargetID:   uint(issue.ID),
+			}
+
+			if err := s.CreateNotification(notification); err != nil {
+				fmt.Printf("Warning: Failed to create GitLab notification: %v\n", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// ProcessGitLabWebhook 处理GitLab Webhook
+func (s *NotificationService) ProcessGitLabWebhook(projectID uint, eventType string, eventData map[string]interface{}) error {
+	// 获取项目信息
+	var project models.Project
+	if err := s.db.First(&project, projectID).Error; err != nil {
+		return fmt.Errorf("failed to get project: %w", err)
+	}
+
+	switch eventType {
+	case "push":
+		// 处理推送事件
+		return s.handlePushEvent(project, eventData)
+	case "merge_request":
+		// 处理合并请求事件
+		return s.handleMergeRequestEvent(project, eventData)
+	case "issue":
+		// 处理Issue事件
+		return s.handleIssueEvent(project, eventData)
+	case "wiki":
+		// 处理Wiki事件
+		return s.handleWikiEvent(project, eventData)
+	default:
+		fmt.Printf("Unknown GitLab event type: %s\n", eventType)
+		return nil
+	}
+}
+
+// handlePushEvent 处理推送事件
+func (s *NotificationService) handlePushEvent(project models.Project, eventData map[string]interface{}) error {
+	// 解析事件数据
+	commits, ok := eventData["commits"].([]interface{})
+	if !ok || len(commits) == 0 {
+		return nil
+	}
+
+	// 获取用户信息
+	userEmail, ok := eventData["user_email"].(string)
+	if !ok {
+		return nil
+	}
+
+	var user models.User
+	if err := s.db.Where("email = ?", userEmail).First(&user).Error; err != nil {
+		return nil // 用户不存在，忽略
+	}
+
+	// 创建通知
+	commitMessage := fmt.Sprintf("推送了 %d 个提交", len(commits))
+	if len(commits) == 1 {
+		if commit, ok := commits[0].(map[string]interface{}); ok {
+			if message, ok := commit["message"].(string); ok {
+				commitMessage = message
+			}
+		}
+	}
+
+	return s.NotifyGitLabCommitPushed(project.ID, user.ID, "", commitMessage)
+}
+
+// handleMergeRequestEvent 处理合并请求事件
+func (s *NotificationService) handleMergeRequestEvent(project models.Project, eventData map[string]interface{}) error {
+	// 解析事件数据
+	mrTitle, ok := eventData["title"].(string)
+	if !ok {
+		return nil
+	}
+
+	mrURL, ok := eventData["url"].(string)
+	if !ok {
+		return nil
+	}
+
+	userEmail, ok := eventData["user_email"].(string)
+	if !ok {
+		return nil
+	}
+
+	var user models.User
+	if err := s.db.Where("email = ?", userEmail).First(&user).Error; err != nil {
+		return nil // 用户不存在，忽略
+	}
+
+	return s.NotifyMergeRequestCreated(project.ID, user.ID, mrTitle, mrURL)
+}
+
+// handleIssueEvent 处理Issue事件
+func (s *NotificationService) handleIssueEvent(project models.Project, eventData map[string]interface{}) error {
+	// 解析事件数据
+	issueTitle, ok := eventData["title"].(string)
+	if !ok {
+		return nil
+	}
+
+	issueURL, ok := eventData["url"].(string)
+	if !ok {
+		return nil
+	}
+
+	userEmail, ok := eventData["user_email"].(string)
+	if !ok {
+		return nil
+	}
+
+	var user models.User
+	if err := s.db.Where("email = ?", userEmail).First(&user).Error; err != nil {
+		return nil // 用户不存在，忽略
+	}
+
+	return s.NotifyIssueCreated(project.ID, user.ID, issueTitle, issueURL)
+}
+
+// handleWikiEvent 处理Wiki事件
+func (s *NotificationService) handleWikiEvent(project models.Project, eventData map[string]interface{}) error {
+	// 解析事件数据
+	wikiTitle, ok := eventData["title"].(string)
+	if !ok {
+		return nil
+	}
+
+	wikiURL, ok := eventData["url"].(string)
+	if !ok {
+		return nil
+	}
+
+	userEmail, ok := eventData["user_email"].(string)
+	if !ok {
+		return nil
+	}
+
+	var user models.User
+	if err := s.db.Where("email = ?", userEmail).First(&user).Error; err != nil {
+		return nil // 用户不存在，忽略
+	}
+
+	return s.NotifyWikiPageCreated(project.ID, user.ID, wikiTitle, wikiURL)
+}
+
+// ScheduleAssignmentDueNotifications 计划作业到期通知
+func (s *NotificationService) ScheduleAssignmentDueNotifications() error {
+	// 获取即将到期的作业（24小时内）
+	tomorrow := time.Now().Add(24 * time.Hour)
+	var assignments []models.Assignment
+
+	if err := s.db.Where("due_date > ? AND due_date < ? AND status = 'active'", time.Now(), tomorrow).Find(&assignments).Error; err != nil {
+		return fmt.Errorf("failed to get assignments due soon: %w", err)
+	}
+
+	// 为每个作业发送通知
+	for _, assignment := range assignments {
+		hours := int(assignment.DueDate.Sub(time.Now()).Hours())
+		if err := s.NotifyAssignmentDue(assignment.ID, hours); err != nil {
+			fmt.Printf("Warning: Failed to notify assignment due for assignment %d: %v\n", assignment.ID, err)
+		}
 	}
 
 	return nil

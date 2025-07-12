@@ -13,13 +13,17 @@ import (
 type AssignmentService struct {
 	db                *gorm.DB
 	permissionService *PermissionService
+	gitlabService     *GitLabService
+	projectService    *ProjectService
 }
 
 // NewAssignmentService 创建作业管理服务
-func NewAssignmentService(db *gorm.DB, permissionService *PermissionService) *AssignmentService {
+func NewAssignmentService(db *gorm.DB, permissionService *PermissionService, gitlabService *GitLabService, projectService *ProjectService) *AssignmentService {
 	return &AssignmentService{
 		db:                db,
 		permissionService: permissionService,
+		gitlabService:     gitlabService,
+		projectService:    projectService,
 	}
 }
 
@@ -29,7 +33,15 @@ type CreateAssignmentRequest struct {
 	Description string    `json:"description"`
 	ProjectID   uint      `json:"project_id" binding:"required"`
 	DueDate     time.Time `json:"due_date" binding:"required"`
-	MaxScore    int       `json:"max_score"`
+	Type        string    `json:"type"` // homework, project, quiz
+
+	// GitLab相关字段
+	RequiredFiles     []string `json:"required_files"`      // 必须提交的文件列表
+	SubmissionBranch  string   `json:"submission_branch"`   // 提交分支前缀
+	AutoCreateMR      bool     `json:"auto_create_mr"`      // 是否自动创建合并请求
+	RequireCodeReview bool     `json:"require_code_review"` // 是否需要代码审查
+	MaxFileSize       int64    `json:"max_file_size"`       // 最大文件大小
+	AllowedFileTypes  []string `json:"allowed_file_types"`  // 允许的文件类型
 }
 
 // UpdateAssignmentRequest 更新作业请求
@@ -37,14 +49,15 @@ type UpdateAssignmentRequest struct {
 	Title       string     `json:"title"`
 	Description string     `json:"description"`
 	DueDate     *time.Time `json:"due_date"`
-	MaxScore    *int       `json:"max_score"`
 	Status      string     `json:"status"`
 }
 
 // SubmitAssignmentRequest 提交作业请求
 type SubmitAssignmentRequest struct {
-	Content  string `json:"content"`
-	FilePath string `json:"file_path"`
+	Content      string            `json:"content"`
+	Files        map[string]string `json:"files"`          // 文件路径 -> 文件内容
+	FilePaths    []string          `json:"file_paths"`     // 本地文件路径
+	AutoCreateMR bool              `json:"auto_create_mr"` // 是否自动创建MR
 }
 
 // CreateAssignment 创建作业（老师权限）
@@ -55,9 +68,15 @@ func (s *AssignmentService) CreateAssignment(teacherID uint, req *CreateAssignme
 		return nil, fmt.Errorf("project not found or access denied: %w", err)
 	}
 
-	maxScore := req.MaxScore
-	if maxScore <= 0 {
-		maxScore = 100
+	// 设置默认值
+	if req.Type == "" {
+		req.Type = "homework"
+	}
+	if req.MaxFileSize == 0 {
+		req.MaxFileSize = 10485760 // 10MB
+	}
+	if req.SubmissionBranch == "" {
+		req.SubmissionBranch = "assignment"
 	}
 
 	assignment := &models.Assignment{
@@ -66,8 +85,17 @@ func (s *AssignmentService) CreateAssignment(teacherID uint, req *CreateAssignme
 		ProjectID:   req.ProjectID,
 		TeacherID:   teacherID,
 		DueDate:     req.DueDate,
-		MaxScore:    maxScore,
+		Type:        req.Type,
 		Status:      "active",
+		// GitLab相关字段
+		RequiredFiles:     req.RequiredFiles,
+		SubmissionBranch:  req.SubmissionBranch,
+		AutoCreateMR:      req.AutoCreateMR,
+		RequireCodeReview: req.RequireCodeReview,
+		MaxFileSize:       req.MaxFileSize,
+		AllowedFileTypes:  req.AllowedFileTypes,
+		MRTitle:           fmt.Sprintf("Assignment: %s", req.Title),
+		MRDescription:     fmt.Sprintf("Assignment submission for: %s\n\n%s", req.Title, req.Description),
 	}
 
 	if err := s.db.Create(assignment).Error; err != nil {
@@ -190,9 +218,6 @@ func (s *AssignmentService) UpdateAssignment(assignmentID uint, req *UpdateAssig
 	if req.DueDate != nil {
 		assignment.DueDate = *req.DueDate
 	}
-	if req.MaxScore != nil {
-		assignment.MaxScore = *req.MaxScore
-	}
 	if req.Status != "" {
 		assignment.Status = req.Status
 	}
@@ -231,69 +256,79 @@ func (s *AssignmentService) DeleteAssignment(assignmentID uint) error {
 	})
 }
 
-// SubmitAssignment 学生提交作业
+// SubmitAssignment 提交作业（支持GitLab集成）
 func (s *AssignmentService) SubmitAssignment(studentID uint, assignmentID uint, req *SubmitAssignmentRequest) (*models.AssignmentSubmission, error) {
-	// 验证作业是否存在
+	// 验证作业是否存在且学生有权限提交
 	var assignment models.Assignment
 	if err := s.db.Preload("Project").First(&assignment, assignmentID).Error; err != nil {
 		return nil, fmt.Errorf("assignment not found: %w", err)
 	}
 
-	// 验证学生是否有权限提交（是否在课题中）
+	// 验证学生是否在课题中
 	var member models.ProjectMember
-	if err := s.db.Where("project_id = ? AND student_id = ? AND status = 'active'",
-		assignment.ProjectID, studentID).First(&member).Error; err != nil {
-		return nil, fmt.Errorf("student not in project: %w", err)
+	if err := s.db.Where("project_id = ? AND student_id = ? AND status = 'active'", assignment.ProjectID, studentID).First(&member).Error; err != nil {
+		return nil, fmt.Errorf("student not in project or inactive: %w", err)
 	}
 
 	// 检查是否已经提交过
 	var existingSubmission models.AssignmentSubmission
-	err := s.db.Where("assignment_id = ? AND student_id = ?", assignmentID, studentID).First(&existingSubmission).Error
-	if err == nil {
-		// 更新现有提交
-		existingSubmission.Content = req.Content
-		existingSubmission.FilePath = req.FilePath
-		existingSubmission.SubmittedAt = time.Now()
-		existingSubmission.Status = "submitted"
+	if err := s.db.Where("assignment_id = ? AND student_id = ?", assignmentID, studentID).First(&existingSubmission).Error; err == nil {
+		return nil, fmt.Errorf("assignment already submitted")
+	}
 
-		if err := s.db.Save(&existingSubmission).Error; err != nil {
-			return nil, fmt.Errorf("failed to update submission: %w", err)
+	// 检查截止日期
+	if time.Now().After(assignment.DueDate) {
+		return nil, fmt.Errorf("assignment deadline has passed")
+	}
+
+	// 如果有文件需要提交到GitLab
+	if len(req.Files) > 0 && assignment.Project.GitLabProjectID > 0 {
+		// 使用ProjectService的GitLab集成功能
+		submission, err := s.projectService.SubmitAssignmentToGitLab(assignment.ProjectID, studentID, assignmentID, req.Files)
+		if err != nil {
+			return nil, fmt.Errorf("failed to submit to GitLab: %w", err)
 		}
 
-		// 重新加载数据
-		if err := s.db.Preload("Assignment").Preload("Student").First(&existingSubmission, existingSubmission.ID).Error; err != nil {
-			return nil, fmt.Errorf("failed to reload submission: %w", err)
+		// 如果需要自动创建MR
+		if req.AutoCreateMR || assignment.AutoCreateMR {
+			mrTitle := fmt.Sprintf("Assignment: %s - %s", assignment.Title, member.Student.Username)
+			mrDescription := fmt.Sprintf("Assignment submission for: %s\n\nSubmitted by: %s\nSubmission time: %s",
+				assignment.Title, member.Student.Username, time.Now().Format("2006-01-02 15:04:05"))
+
+			mr, err := s.gitlabService.CreateMergeRequestForAssignment(
+				assignment.Project.GitLabProjectID,
+				member.PersonalBranch,
+				mrTitle,
+				mrDescription,
+				assignment.Project.Teacher.GitLabID,
+			)
+			if err != nil {
+				// MR创建失败不影响作业提交
+				fmt.Printf("Warning: Failed to create MR: %v\n", err)
+			} else {
+				submission.MergeRequestID = mr.IID
+				submission.MergeRequestURL = mr.WebURL
+				s.db.Save(submission)
+			}
 		}
 
-		// TODO: 发送通知给老师（待通知服务实现）
+		return submission, nil
+	} else {
+		// 传统方式提交（不使用GitLab）
+		submission := &models.AssignmentSubmission{
+			AssignmentID: assignmentID,
+			StudentID:    studentID,
+			Content:      req.Content,
+			Status:       "submitted",
+			SubmittedAt:  time.Now(),
+		}
 
-		return &existingSubmission, nil
-	} else if err != gorm.ErrRecordNotFound {
-		return nil, fmt.Errorf("failed to check existing submission: %w", err)
+		if err := s.db.Create(submission).Error; err != nil {
+			return nil, fmt.Errorf("failed to create submission: %w", err)
+		}
+
+		return submission, nil
 	}
-
-	// 创建新的提交
-	submission := &models.AssignmentSubmission{
-		AssignmentID: assignmentID,
-		StudentID:    studentID,
-		Content:      req.Content,
-		FilePath:     req.FilePath,
-		SubmittedAt:  time.Now(),
-		Status:       "submitted",
-	}
-
-	if err := s.db.Create(submission).Error; err != nil {
-		return nil, fmt.Errorf("failed to create submission: %w", err)
-	}
-
-	// 预加载关联数据
-	if err := s.db.Preload("Assignment").Preload("Student").First(submission, submission.ID).Error; err != nil {
-		return nil, fmt.Errorf("failed to load submission: %w", err)
-	}
-
-	// TODO: 发送通知给老师（待通知服务实现）
-
-	return submission, nil
 }
 
 // GetSubmissionsByAssignment 获取作业的所有提交
@@ -343,6 +378,40 @@ func (s *AssignmentService) GetSubmissionByID(submissionID uint) (*models.Assign
 	return &submission, nil
 }
 
+// GetSubmissionWithGitLabInfo 获取包含GitLab信息的作业提交
+func (s *AssignmentService) GetSubmissionWithGitLabInfo(submissionID uint) (*models.AssignmentSubmission, error) {
+	var submission models.AssignmentSubmission
+	err := s.db.Preload("Assignment").
+		Preload("Assignment.Project").
+		Preload("Student").
+		First(&submission, submissionID).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("submission not found: %w", err)
+	}
+
+	// 如果有GitLab信息，获取最新的提交状态
+	if submission.CommitHash != "" && submission.Assignment.Project.GitLabProjectID > 0 {
+		// 获取分支的最新提交
+		var member models.ProjectMember
+		if err := s.db.Where("project_id = ? AND student_id = ?", submission.Assignment.ProjectID, submission.StudentID).First(&member).Error; err == nil {
+			commits, err := s.gitlabService.GetBranchCommits(submission.Assignment.Project.GitLabProjectID, member.PersonalBranch, 1)
+			if err == nil && len(commits) > 0 {
+				latestCommit := commits[0]
+				if latestCommit.ID != submission.CommitHash {
+					// 更新提交信息
+					submission.CommitHash = latestCommit.ID
+					submission.CommitMessage = latestCommit.Message
+					submission.CommitURL = fmt.Sprintf("%s/-/commit/%s", submission.Assignment.Project.GitLabURL, latestCommit.ID)
+					s.db.Save(&submission)
+				}
+			}
+		}
+	}
+
+	return &submission, nil
+}
+
 // GetAssignmentStats 获取作业统计信息
 func (s *AssignmentService) GetAssignmentStats(assignmentID uint) (*models.AssignmentStats, error) {
 	stats := &models.AssignmentStats{}
@@ -382,4 +451,82 @@ func (s *AssignmentService) GetAssignmentStats(assignmentID uint) (*models.Assig
 	}
 
 	return stats, nil
+}
+
+// GetAssignmentSubmissionsWithGitLabStats 获取作业提交列表及GitLab统计
+func (s *AssignmentService) GetAssignmentSubmissionsWithGitLabStats(assignmentID uint) ([]models.AssignmentSubmission, map[uint]*GitLabSubmissionStats, error) {
+	var submissions []models.AssignmentSubmission
+	err := s.db.Preload("Student").
+		Where("assignment_id = ?", assignmentID).
+		Find(&submissions).Error
+
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get submissions: %w", err)
+	}
+
+	// 获取GitLab统计信息
+	stats := make(map[uint]*GitLabSubmissionStats)
+	var assignment models.Assignment
+	if err := s.db.Preload("Project").First(&assignment, assignmentID).Error; err == nil {
+		for _, submission := range submissions {
+			if submission.BranchName != "" {
+				// 获取分支提交统计
+				commits, err := s.gitlabService.GetBranchCommits(assignment.Project.GitLabProjectID, submission.BranchName, 10)
+				if err == nil {
+					stats[submission.ID] = &GitLabSubmissionStats{
+						TotalCommits: len(commits),
+						LastCommitAt: &submission.SubmittedAt,
+						BranchName:   submission.BranchName,
+						BranchURL:    submission.BranchURL,
+						MRStatus:     submission.CodeReviewStatus,
+						MRUrl:        submission.MergeRequestURL,
+					}
+				}
+			}
+		}
+	}
+
+	return submissions, stats, nil
+}
+
+// CreateAssignmentWithGitLabIntegration 创建作业并设置GitLab集成
+func (s *AssignmentService) CreateAssignmentWithGitLabIntegration(teacherID uint, req *CreateAssignmentRequest) (*models.Assignment, error) {
+	// 首先创建作业
+	assignment, err := s.CreateAssignment(teacherID, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// 如果项目有GitLab集成，创建作业相关的Issue
+	if assignment.Project.GitLabProjectID > 0 {
+		issueTitle := fmt.Sprintf("Assignment: %s", assignment.Title)
+		issueDescription := fmt.Sprintf("## Assignment Description\n\n%s\n\n## Due Date\n\n%s\n\n## Instructions\n\n1. Create your submission in your personal branch\n2. Submit files to the `students/[username]/assignment-%d/` directory\n3. Create a merge request when ready for review\n\n## Required Files\n\n%v",
+			assignment.Description,
+			assignment.DueDate.Format("2006-01-02 15:04:05"),
+			assignment.ID,
+			assignment.RequiredFiles)
+
+		_, err := s.gitlabService.CreateIssue(
+			assignment.Project.GitLabProjectID,
+			issueTitle,
+			issueDescription,
+			[]string{"assignment", "homework"},
+			&assignment.DueDate,
+		)
+		if err != nil {
+			fmt.Printf("Warning: Failed to create assignment issue: %v\n", err)
+		}
+	}
+
+	return assignment, nil
+}
+
+// GitLabSubmissionStats GitLab提交统计
+type GitLabSubmissionStats struct {
+	TotalCommits int        `json:"total_commits"`
+	LastCommitAt *time.Time `json:"last_commit_at"`
+	BranchName   string     `json:"branch_name"`
+	BranchURL    string     `json:"branch_url"`
+	MRStatus     string     `json:"mr_status"`
+	MRUrl        string     `json:"mr_url"`
 }

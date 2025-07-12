@@ -35,6 +35,15 @@ const (
 	NotificationTypeClassJoined         = "class_joined"
 	NotificationTypeAssignmentCreated   = "assignment_created"
 	NotificationTypeProjectCreated      = "project_created"
+
+	// GitLab 集成相关通知类型
+	NotificationTypeGitLabCommit   = "gitlab_commit"
+	NotificationTypeMergeRequest   = "merge_request"
+	NotificationTypeIssueCreated   = "issue_created"
+	NotificationTypeWikiCreated    = "wiki_created"
+	NotificationTypeAssignmentDue  = "assignment_due"
+	NotificationTypeCodeReview     = "code_review"
+	NotificationTypeGitLabActivity = "gitlab_activity"
 )
 
 // MarkAsRead 标记通知为已读

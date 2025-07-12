@@ -394,6 +394,296 @@ func (s *GitLabService) CheckWikiEditPermission(userID int, projectID int) (bool
 	return member.AccessLevel >= gitlab.DeveloperPermissions, nil
 }
 
+// === 新增的课题仓库管理功能 ===
+
+// CreateProjectRepository 创建课题仓库
+func (s *GitLabService) CreateProjectRepository(name, description, readmeContent string, teacherID int) (*gitlab.Project, error) {
+	// 创建项目选项
+	opts := &gitlab.CreateProjectOptions{
+		Name:                             gitlab.String(name),
+		Description:                      gitlab.String(description),
+		Visibility:                       gitlab.Visibility(gitlab.PrivateVisibility),
+		InitializeWithReadme:             gitlab.Bool(true),
+		WikiEnabled:                      gitlab.Bool(true),
+		IssuesEnabled:                    gitlab.Bool(true),
+		MergeRequestsEnabled:             gitlab.Bool(true),
+		JobsEnabled:                      gitlab.Bool(false),
+		SnippetsEnabled:                  gitlab.Bool(true),
+		ContainerRegistryEnabled:         gitlab.Bool(false),
+		SharedRunnersEnabled:             gitlab.Bool(false),
+		MergeMethod:                      gitlab.MergeMethod("merge"),
+		OnlyAllowMergeIfPipelineSucceeds: gitlab.Bool(false),
+		OnlyAllowMergeIfAllDiscussionsAreResolved: gitlab.Bool(false),
+		RemoveSourceBranchAfterMerge:              gitlab.Bool(false),
+		RequestAccessEnabled:                      gitlab.Bool(false),
+		PrintingMergeRequestLinkEnabled:           gitlab.Bool(true),
+		AutoDevopsEnabled:                         gitlab.Bool(false),
+		ApprovalsBeforeMerge:                      gitlab.Int(0),
+	}
+
+	// 创建项目
+	project, _, err := s.client.Projects.CreateProject(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitLab project: %w", err)
+	}
+
+	// 等待项目创建完成，然后更新README
+	if readmeContent != "" {
+		// 等待几秒让项目完全创建
+		time.Sleep(2 * time.Second)
+
+		// 更新README文件
+		_, _, err = s.client.RepositoryFiles.UpdateFile(project.ID, "README.md", &gitlab.UpdateFileOptions{
+			Branch:        gitlab.String("main"),
+			Content:       gitlab.String(readmeContent),
+			CommitMessage: gitlab.String("Update README with course description"),
+		})
+		if err != nil {
+			// 如果更新README失败，我们记录错误但不失败整个创建过程
+			fmt.Printf("Warning: Failed to update README: %v\n", err)
+		}
+	}
+
+	// 设置项目成员权限 - 教师为Owner
+	if teacherID > 0 {
+		_, _, err = s.client.ProjectMembers.AddProjectMember(project.ID, &gitlab.AddProjectMemberOptions{
+			UserID:      gitlab.Int(teacherID),
+			AccessLevel: gitlab.AccessLevel(gitlab.OwnerPermissions),
+		})
+		if err != nil {
+			fmt.Printf("Warning: Failed to add teacher as owner: %v\n", err)
+		}
+	}
+
+	return project, nil
+}
+
+// CreateStudentBranch 为学生创建个人分支
+func (s *GitLabService) CreateStudentBranch(projectID int, studentID int, branchName string) (*gitlab.Branch, error) {
+	// 创建分支
+	branch, _, err := s.client.Branches.CreateBranch(projectID, &gitlab.CreateBranchOptions{
+		Branch: gitlab.String(branchName),
+		Ref:    gitlab.String("main"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create student branch: %w", err)
+	}
+
+	// 创建学生专用目录
+	studentDir := fmt.Sprintf("students/%s", branchName)
+	initialContent := fmt.Sprintf("# %s 的作业目录\n\n这是 %s 的个人作业目录，请在此目录下提交作业。\n", branchName, branchName)
+
+	_, _, err = s.client.RepositoryFiles.CreateFile(projectID, fmt.Sprintf("%s/README.md", studentDir), &gitlab.CreateFileOptions{
+		Branch:        gitlab.String(branchName),
+		Content:       gitlab.String(initialContent),
+		CommitMessage: gitlab.String(fmt.Sprintf("Initialize student directory for %s", branchName)),
+	})
+	if err != nil {
+		fmt.Printf("Warning: Failed to create student directory: %v\n", err)
+	}
+
+	return branch, nil
+}
+
+// AddStudentToProject 将学生添加到项目
+func (s *GitLabService) AddStudentToProject(projectID int, studentID int, accessLevel gitlab.AccessLevelValue) error {
+	// 添加项目成员
+	_, _, err := s.client.ProjectMembers.AddProjectMember(projectID, &gitlab.AddProjectMemberOptions{
+		UserID:      gitlab.Int(studentID),
+		AccessLevel: gitlab.AccessLevel(accessLevel),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add student to project: %w", err)
+	}
+
+	return nil
+}
+
+// SubmitAssignment 学生提交作业
+func (s *GitLabService) SubmitAssignment(projectID int, branchName string, files map[string]string, commitMessage string) (string, error) {
+	var actions []*gitlab.CommitActionOptions
+
+	// 为每个文件创建commit action
+	for filePath, content := range files {
+		actions = append(actions, &gitlab.CommitActionOptions{
+			Action:   gitlab.FileAction(gitlab.FileCreate), // 或者 gitlab.FileUpdate
+			FilePath: gitlab.String(filePath),
+			Content:  gitlab.String(content),
+		})
+	}
+
+	// 创建commit
+	commit, _, err := s.client.Commits.CreateCommit(projectID, &gitlab.CreateCommitOptions{
+		Branch:        gitlab.String(branchName),
+		CommitMessage: gitlab.String(commitMessage),
+		Actions:       actions,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to submit assignment: %w", err)
+	}
+
+	return commit.ID, nil
+}
+
+// CreateMergeRequestForAssignment 为作业创建合并请求
+func (s *GitLabService) CreateMergeRequestForAssignment(projectID int, sourceBranch, title, description string, assigneeID int) (*gitlab.MergeRequest, error) {
+	mr, _, err := s.client.MergeRequests.CreateMergeRequest(projectID, &gitlab.CreateMergeRequestOptions{
+		Title:        gitlab.String(title),
+		Description:  gitlab.String(description),
+		SourceBranch: gitlab.String(sourceBranch),
+		TargetBranch: gitlab.String("main"),
+		AssigneeIDs:  &[]int{assigneeID},
+		Labels:       &gitlab.LabelOptions{"homework", "assignment"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create merge request: %w", err)
+	}
+
+	return mr, nil
+}
+
+// GetProjectStatistics 获取项目统计信息
+func (s *GitLabService) GetProjectStatistics(projectID int) (*ProjectStatistics, error) {
+	// 并发获取各种统计信息
+	var (
+		branches []string
+		issues   []*gitlab.Issue
+		mrs      []*gitlab.MergeRequest
+		commits  []*gitlab.Commit
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+	)
+
+	wg.Add(4)
+
+	// 获取分支
+	go func() {
+		defer wg.Done()
+		if branchList, _, err := s.client.Branches.ListBranches(projectID, &gitlab.ListBranchesOptions{}); err == nil {
+			mu.Lock()
+			for _, branch := range branchList {
+				branches = append(branches, branch.Name)
+			}
+			mu.Unlock()
+		}
+	}()
+
+	// 获取Issues
+	go func() {
+		defer wg.Done()
+		if issueList, _, err := s.client.Issues.ListProjectIssues(projectID, &gitlab.ListProjectIssuesOptions{}); err == nil {
+			mu.Lock()
+			issues = issueList
+			mu.Unlock()
+		}
+	}()
+
+	// 获取MRs
+	go func() {
+		defer wg.Done()
+		if mrList, _, err := s.client.MergeRequests.ListProjectMergeRequests(projectID, &gitlab.ListProjectMergeRequestsOptions{}); err == nil {
+			mu.Lock()
+			mrs = mrList
+			mu.Unlock()
+		}
+	}()
+
+	// 获取Commits
+	go func() {
+		defer wg.Done()
+		if commitList, _, err := s.client.Commits.ListCommits(projectID, &gitlab.ListCommitsOptions{}); err == nil {
+			mu.Lock()
+			commits = commitList
+			mu.Unlock()
+		}
+	}()
+
+	wg.Wait()
+
+	// 计算统计信息
+	stats := &ProjectStatistics{
+		ProjectID:          projectID,
+		TotalCommits:       len(commits),
+		TotalIssues:        len(issues),
+		TotalMergeRequests: len(mrs),
+		ActiveBranches:     len(branches),
+		OpenIssues:         0,
+		OpenMergeRequests:  0,
+		WikiPages:          0, // Wiki页面统计需要单独实现
+	}
+
+	// 计算开放的Issues和MRs
+	for _, issue := range issues {
+		if issue.State == "opened" {
+			stats.OpenIssues++
+		}
+	}
+	for _, mr := range mrs {
+		if mr.State == "opened" {
+			stats.OpenMergeRequests++
+		}
+	}
+
+	return stats, nil
+}
+
+// GetBranchCommits 获取分支的提交历史
+func (s *GitLabService) GetBranchCommits(projectID int, branchName string, limit int) ([]*gitlab.Commit, error) {
+	opts := &gitlab.ListCommitsOptions{
+		RefName: gitlab.String(branchName),
+		ListOptions: gitlab.ListOptions{
+			PerPage: limit,
+		},
+	}
+
+	commits, _, err := s.client.Commits.ListCommits(projectID, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get branch commits: %w", err)
+	}
+
+	return commits, nil
+}
+
+// GetDiscussions 获取项目讨论（通过Issues实现）
+func (s *GitLabService) GetDiscussions(projectID int) ([]*gitlab.Issue, error) {
+	// 使用Issues来实现讨论功能
+	issues, _, err := s.client.Issues.ListProjectIssues(projectID, &gitlab.ListProjectIssuesOptions{
+		Labels: &gitlab.LabelOptions{"discussion"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get discussions: %w", err)
+	}
+
+	return issues, nil
+}
+
+// CreateDiscussion 创建讨论（通过Issues实现）
+func (s *GitLabService) CreateDiscussion(projectID int, title, content string) (*gitlab.Issue, error) {
+	labelOptions := gitlab.LabelOptions{"discussion"}
+	issue, _, err := s.client.Issues.CreateIssue(projectID, &gitlab.CreateIssueOptions{
+		Title:       gitlab.String(title),
+		Description: gitlab.String(content),
+		Labels:      &labelOptions,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create discussion: %w", err)
+	}
+
+	return issue, nil
+}
+
+// ProjectStatistics 项目统计信息
+type ProjectStatistics struct {
+	ProjectID          int `json:"project_id"`
+	TotalCommits       int `json:"total_commits"`
+	TotalIssues        int `json:"total_issues"`
+	OpenIssues         int `json:"open_issues"`
+	TotalMergeRequests int `json:"total_merge_requests"`
+	OpenMergeRequests  int `json:"open_merge_requests"`
+	WikiPages          int `json:"wiki_pages"`
+	ActiveBranches     int `json:"active_branches"`
+}
+
 // EducationDashboard 教育仪表板数据结构
 type EducationDashboard struct {
 	Groups         []*gitlab.Group        `json:"groups"`

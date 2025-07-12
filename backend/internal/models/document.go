@@ -4,6 +4,60 @@ import (
 	"time"
 )
 
+// Document 文档模型 - 支持Wiki和文档管理
+type Document struct {
+	ID        uint   `gorm:"primaryKey" json:"id"`
+	Title     string `gorm:"not null" json:"title"`
+	Content   string `gorm:"type:text" json:"content"`
+	ProjectID uint   `gorm:"not null" json:"project_id"`
+	AuthorID  uint   `gorm:"not null" json:"author_id"`
+	Type      string `gorm:"not null;default:'wiki'" json:"type"`       // wiki, markdown, office
+	Format    string `gorm:"not null;default:'markdown'" json:"format"` // markdown, html
+	IsPublic  bool   `gorm:"default:true" json:"is_public"`
+	ParentID  uint   `gorm:"default:0" json:"parent_id"`
+	Status    string `gorm:"not null;default:'active'" json:"status"` // active, deleted, archived
+	Version   int    `gorm:"default:1" json:"version"`
+
+	// GitLab Wiki相关字段
+	GitLabWikiSlug string `json:"gitlab_wiki_slug"`
+	GitLabWikiURL  string `json:"gitlab_wiki_url"`
+
+	// 时间戳
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	DeletedAt time.Time `json:"deleted_at"`
+
+	// 关联关系
+	Author   User       `gorm:"foreignKey:AuthorID" json:"author,omitempty"`
+	Project  Project    `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	Parent   *Document  `gorm:"foreignKey:ParentID" json:"parent,omitempty"`
+	Children []Document `gorm:"foreignKey:ParentID" json:"children,omitempty"`
+}
+
+// TableName 指定表名
+func (Document) TableName() string {
+	return "documents"
+}
+
+// DocumentHistory 文档历史记录
+type DocumentHistory struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	DocumentID uint      `gorm:"not null" json:"document_id"`
+	AuthorID   uint      `gorm:"not null" json:"author_id"`
+	Content    string    `gorm:"type:text" json:"content"`
+	ChangeNote string    `json:"change_note"`
+	CreatedAt  time.Time `json:"created_at"`
+
+	// 关联关系
+	Document Document `gorm:"foreignKey:DocumentID" json:"document,omitempty"`
+	Author   User     `gorm:"foreignKey:AuthorID" json:"author,omitempty"`
+}
+
+// TableName 指定表名
+func (DocumentHistory) TableName() string {
+	return "document_histories"
+}
+
 // DocumentAttachment 文档附件模型 - 只存储OnlyOffice编辑会话信息
 type DocumentAttachment struct {
 	ID           uint       `gorm:"primaryKey" json:"id"`

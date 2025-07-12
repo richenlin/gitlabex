@@ -401,6 +401,88 @@ func (h *ProjectHandler) GetProjectStats(c *gin.Context) {
 	})
 }
 
+// GetProjectWithGitLabStats 获取包含GitLab统计信息的课题详情
+func (h *ProjectHandler) GetProjectWithGitLabStats(c *gin.Context) {
+	projectID := c.GetUint("project_id")
+
+	project, gitlabStats, err := h.projectService.GetProjectWithGitLabStats(projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to get project with GitLab stats",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Success",
+		"data": gin.H{
+			"project":      project,
+			"gitlab_stats": gitlabStats,
+		},
+	})
+}
+
+// GetProjectGitLabInfo 获取课题的GitLab信息
+func (h *ProjectHandler) GetProjectGitLabInfo(c *gin.Context) {
+	projectID := c.GetUint("project_id")
+
+	gitlabInfo, err := h.projectService.GetProjectGitLabInfo(projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to get GitLab info",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Success",
+		"data":    gitlabInfo,
+	})
+}
+
+// SubmitAssignmentToGitLab 提交作业到GitLab
+func (h *ProjectHandler) SubmitAssignmentToGitLab(c *gin.Context) {
+	user, exists := c.Get("current_user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Authentication required",
+		})
+		return
+	}
+
+	currentUser := user.(*models.User)
+	projectID := c.GetUint("project_id")
+
+	var req struct {
+		AssignmentID uint              `json:"assignment_id" binding:"required"`
+		Files        map[string]string `json:"files" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "Invalid request body",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	submission, err := h.projectService.SubmitAssignmentToGitLab(projectID, currentUser.ID, req.AssignmentID, req.Files)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "Failed to submit assignment",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Assignment submitted successfully",
+		"data":    submission,
+	})
+}
+
 // RegisterRoutes 注册课题相关路由
 func (h *ProjectHandler) RegisterRoutes(router *gin.RouterGroup, permissionService *services.PermissionService) {
 	projects := router.Group("/projects")
@@ -437,5 +519,21 @@ func (h *ProjectHandler) RegisterRoutes(router *gin.RouterGroup, permissionServi
 			// 统计信息
 			projectGroup.GET("/stats", permissionService.RequireProjectAccess(services.PermissionRead), h.GetProjectStats)
 		}
+	}
+
+	// GitLab集成相关路由
+	projectsGroup := projects.Group("/:project_id")
+	{
+		projectsGroup.GET("/gitlab/stats",
+			permissionService.RequireRole(services.RoleAdmin, services.RoleTeacher, services.RoleStudent),
+			h.GetProjectWithGitLabStats)
+
+		projectsGroup.GET("/gitlab/info",
+			permissionService.RequireRole(services.RoleAdmin, services.RoleTeacher, services.RoleStudent),
+			h.GetProjectGitLabInfo)
+
+		projectsGroup.POST("/gitlab/submit",
+			permissionService.RequireRole(services.RoleStudent),
+			h.SubmitAssignmentToGitLab)
 	}
 }

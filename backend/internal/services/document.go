@@ -2,213 +2,410 @@ package services
 
 import (
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"gitlabex/internal/models"
 
+	"github.com/xanzy/go-gitlab"
 	"gorm.io/gorm"
 )
 
-// DocumentService 文档服务 - 管理文档附件和Wiki集成
+// DocumentService 文档管理服务
 type DocumentService struct {
-	db     *gorm.DB
-	gitlab *GitLabService
+	db                *gorm.DB
+	gitlabService     *GitLabService
+	onlyofficeService *OnlyOfficeService
 }
 
-// NewDocumentService 创建文档服务
-func NewDocumentService(db *gorm.DB, gitlab *GitLabService) *DocumentService {
+// NewDocumentService 创建文档管理服务
+func NewDocumentService(db *gorm.DB, gitlabService *GitLabService, onlyofficeService *OnlyOfficeService) *DocumentService {
 	return &DocumentService{
-		db:     db,
-		gitlab: gitlab,
+		db:                db,
+		gitlabService:     gitlabService,
+		onlyofficeService: onlyofficeService,
 	}
 }
 
-// CreateWikiAttachment 创建Wiki附件
-func (s *DocumentService) CreateWikiAttachment(userID int, projectID int, wikiSlug string, filename string, fileURL string, fileContent []byte) (*models.DocumentAttachment, error) {
-	// 获取文件类型
-	fileType := s.getFileType(filename)
-
-	// 生成文档key
-	documentKey := s.generateDocumentKey(filename)
-
-	// 创建文档记录
-	doc := &models.DocumentAttachment{
-		UserID:       userID,
-		ProjectID:    &projectID,
-		WikiPageSlug: wikiSlug,
-		FileName:     filename,
-		FileURL:      fileURL,
-		FilePath:     fmt.Sprintf("uploads/wiki/%d/%s/%s", projectID, wikiSlug, filename),
-		FileType:     fileType,
-		DocumentKey:  documentKey,
-		EditMode:     "edit",
-		Status:       "ready",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-	}
-
-	if err := s.db.Create(doc).Error; err != nil {
-		return nil, fmt.Errorf("创建文档记录失败: %w", err)
-	}
-
-	return doc, nil
+// CreateDocumentRequest 创建文档请求
+type CreateDocumentRequest struct {
+	Title     string `json:"title" binding:"required"`
+	Content   string `json:"content"`
+	ProjectID uint   `json:"project_id" binding:"required"`
+	Type      string `json:"type"`      // wiki, markdown, office
+	Format    string `json:"format"`    // markdown, html
+	IsPublic  bool   `json:"is_public"` // 是否公开
+	ParentID  uint   `json:"parent_id"` // 父文档ID
 }
 
-// GetWikiAttachments 获取Wiki附件列表
-func (s *DocumentService) GetWikiAttachments(projectID int, wikiSlug string) ([]*models.DocumentAttachment, error) {
-	var attachments []*models.DocumentAttachment
+// UpdateDocumentRequest 更新文档请求
+type UpdateDocumentRequest struct {
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	Format   string `json:"format"`
+	IsPublic *bool  `json:"is_public"`
+}
 
-	err := s.db.Where("project_id = ? AND wiki_page_slug = ?", projectID, wikiSlug).
-		Preload("LastEditor").
-		Find(&attachments).Error
-
-	if err != nil {
-		return nil, fmt.Errorf("获取Wiki附件失败: %w", err)
+// CreateDocument 创建文档
+func (s *DocumentService) CreateDocument(userID uint, req *CreateDocumentRequest) (*models.Document, error) {
+	// 验证项目是否存在
+	var project models.Project
+	if err := s.db.First(&project, req.ProjectID).Error; err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
 	}
 
-	return attachments, nil
+	// 设置默认值
+	if req.Type == "" {
+		req.Type = "wiki"
+	}
+	if req.Format == "" {
+		req.Format = "markdown"
+	}
+
+	// 创建本地文档记录
+	document := &models.Document{
+		Title:     req.Title,
+		Content:   req.Content,
+		ProjectID: req.ProjectID,
+		AuthorID:  userID,
+		Type:      req.Type,
+		Format:    req.Format,
+		IsPublic:  req.IsPublic,
+		ParentID:  req.ParentID,
+		Status:    "active",
+		Version:   1,
+	}
+
+	if err := s.db.Create(document).Error; err != nil {
+		return nil, fmt.Errorf("failed to create document: %w", err)
+	}
+
+	// 如果项目启用了GitLab并且是Wiki类型，同步到GitLab
+	if project.GitLabProjectID > 0 && req.Type == "wiki" && project.WikiEnabled {
+		// 生成Wiki页面的slug
+		slug := s.generateWikiSlug(req.Title)
+
+		// 创建GitLab Wiki页面
+		_, err := s.gitlabService.CreateWikiPage(project.GitLabProjectID, req.Title, req.Content)
+		if err != nil {
+			// Wiki创建失败不影响本地文档创建
+			fmt.Printf("Warning: Failed to create GitLab wiki page: %v\n", err)
+		} else {
+			// 更新文档的GitLab信息
+			document.GitLabWikiSlug = slug
+			document.GitLabWikiURL = fmt.Sprintf("%s/-/wikis/%s", project.GitLabURL, slug)
+			s.db.Save(document)
+		}
+	}
+
+	// 预加载关联数据
+	if err := s.db.Preload("Author").Preload("Project").First(document, document.ID).Error; err != nil {
+		return nil, fmt.Errorf("failed to load document: %w", err)
+	}
+
+	return document, nil
 }
 
 // GetDocumentByID 根据ID获取文档
-func (s *DocumentService) GetDocumentByID(docID int) (*models.DocumentAttachment, error) {
-	var doc models.DocumentAttachment
-
-	err := s.db.Where("id = ?", docID).
-		Preload("LastEditor").
-		First(&doc).Error
+func (s *DocumentService) GetDocumentByID(documentID uint) (*models.Document, error) {
+	var document models.Document
+	err := s.db.Preload("Author").
+		Preload("Project").
+		Preload("Parent").
+		First(&document, documentID).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("文档不存在: %w", err)
+		return nil, fmt.Errorf("document not found: %w", err)
 	}
 
-	return &doc, nil
+	return &document, nil
 }
 
-// UpdateDocumentEditStatus 更新文档编辑状态
-func (s *DocumentService) UpdateDocumentEditStatus(docID int, userID int, status string) error {
-	var doc models.DocumentAttachment
+// GetDocumentsByProject 获取项目的文档列表
+func (s *DocumentService) GetDocumentsByProject(projectID uint) ([]models.Document, error) {
+	var documents []models.Document
+	err := s.db.Preload("Author").
+		Where("project_id = ? AND status = 'active'", projectID).
+		Order("created_at DESC").
+		Find(&documents).Error
 
-	if err := s.db.Where("id = ?", docID).First(&doc).Error; err != nil {
-		return fmt.Errorf("文档不存在: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get documents: %w", err)
 	}
 
-	now := time.Now()
-	userIDUint := uint(userID)
+	return documents, nil
+}
 
-	doc.Status = status
-	doc.LastEditedBy = &userIDUint
-	doc.LastEditedAt = &now
-	doc.UpdatedAt = now
+// GetDocumentsByUser 获取用户的文档列表
+func (s *DocumentService) GetDocumentsByUser(userID uint) ([]models.Document, error) {
+	var documents []models.Document
+	err := s.db.Preload("Author").
+		Preload("Project").
+		Where("author_id = ? AND status = 'active'", userID).
+		Order("created_at DESC").
+		Find(&documents).Error
 
-	if err := s.db.Save(&doc).Error; err != nil {
-		return fmt.Errorf("更新文档状态失败: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get documents: %w", err)
+	}
+
+	return documents, nil
+}
+
+// UpdateDocument 更新文档
+func (s *DocumentService) UpdateDocument(documentID uint, req *UpdateDocumentRequest) (*models.Document, error) {
+	var document models.Document
+	if err := s.db.Preload("Project").First(&document, documentID).Error; err != nil {
+		return nil, fmt.Errorf("document not found: %w", err)
+	}
+
+	// 更新字段
+	if req.Title != "" {
+		document.Title = req.Title
+	}
+	if req.Content != "" {
+		document.Content = req.Content
+	}
+	if req.Format != "" {
+		document.Format = req.Format
+	}
+	if req.IsPublic != nil {
+		document.IsPublic = *req.IsPublic
+	}
+
+	// 版本号递增
+	document.Version++
+	document.UpdatedAt = time.Now()
+
+	if err := s.db.Save(&document).Error; err != nil {
+		return nil, fmt.Errorf("failed to update document: %w", err)
+	}
+
+	// 如果是Wiki类型且有GitLab集成，同步更新
+	if document.Type == "wiki" && document.GitLabWikiSlug != "" && document.Project.GitLabProjectID > 0 {
+		_, err := s.gitlabService.UpdateWikiPage(
+			document.Project.GitLabProjectID,
+			document.GitLabWikiSlug,
+			document.Title,
+			document.Content,
+		)
+		if err != nil {
+			fmt.Printf("Warning: Failed to update GitLab wiki page: %v\n", err)
+		}
+	}
+
+	return &document, nil
+}
+
+// DeleteDocument 删除文档
+func (s *DocumentService) DeleteDocument(documentID uint) error {
+	var document models.Document
+	if err := s.db.Preload("Project").First(&document, documentID).Error; err != nil {
+		return fmt.Errorf("document not found: %w", err)
+	}
+
+	// 软删除
+	document.Status = "deleted"
+	document.DeletedAt = time.Now()
+
+	if err := s.db.Save(&document).Error; err != nil {
+		return fmt.Errorf("failed to delete document: %w", err)
+	}
+
+	// 如果是Wiki类型且有GitLab集成，需要手动处理（GitLab API可能不支持删除Wiki页面）
+	if document.Type == "wiki" && document.GitLabWikiSlug != "" && document.Project.GitLabProjectID > 0 {
+		fmt.Printf("Note: GitLab Wiki page should be manually deleted: %s\n", document.GitLabWikiURL)
 	}
 
 	return nil
 }
 
-// DeleteWikiAttachment 删除Wiki附件
-func (s *DocumentService) DeleteWikiAttachment(docID int, userID int) error {
-	var doc models.DocumentAttachment
-
-	if err := s.db.Where("id = ? AND user_id = ?", docID, userID).First(&doc).Error; err != nil {
-		return fmt.Errorf("文档不存在或无权限: %w", err)
+// GetProjectWikiPages 获取项目的Wiki页面列表（从GitLab同步）
+func (s *DocumentService) GetProjectWikiPages(projectID uint) ([]*gitlab.Wiki, error) {
+	var project models.Project
+	if err := s.db.First(&project, projectID).Error; err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
 	}
 
-	if err := s.db.Delete(&doc).Error; err != nil {
-		return fmt.Errorf("删除文档失败: %w", err)
+	if project.GitLabProjectID == 0 {
+		return nil, fmt.Errorf("project not linked to GitLab")
+	}
+
+	// 获取GitLab Wiki页面
+	pages, err := s.gitlabService.GetWikiPages(project.GitLabProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get wiki pages: %w", err)
+	}
+
+	return pages, nil
+}
+
+// SyncWikiFromGitLab 从GitLab同步Wiki页面到本地
+func (s *DocumentService) SyncWikiFromGitLab(projectID uint) error {
+	var project models.Project
+	if err := s.db.First(&project, projectID).Error; err != nil {
+		return fmt.Errorf("project not found: %w", err)
+	}
+
+	if project.GitLabProjectID == 0 {
+		return fmt.Errorf("project not linked to GitLab")
+	}
+
+	// 获取GitLab Wiki页面
+	pages, err := s.gitlabService.GetWikiPages(project.GitLabProjectID)
+	if err != nil {
+		return fmt.Errorf("failed to get wiki pages: %w", err)
+	}
+
+	// 同步每个页面
+	for _, page := range pages {
+		// 检查本地是否已存在
+		var existingDoc models.Document
+		if err := s.db.Where("project_id = ? AND gitlab_wiki_slug = ?", projectID, page.Slug).First(&existingDoc).Error; err == nil {
+			// 更新现有文档
+			existingDoc.Title = page.Title
+			existingDoc.Content = page.Content
+			existingDoc.Format = string(page.Format)
+			existingDoc.UpdatedAt = time.Now()
+			s.db.Save(&existingDoc)
+		} else {
+			// 创建新文档
+			newDoc := &models.Document{
+				Title:          page.Title,
+				Content:        page.Content,
+				ProjectID:      projectID,
+				Type:           "wiki",
+				Format:         string(page.Format),
+				IsPublic:       true,
+				Status:         "active",
+				Version:        1,
+				GitLabWikiSlug: page.Slug,
+				GitLabWikiURL:  fmt.Sprintf("%s/-/wikis/%s", project.GitLabURL, page.Slug),
+				AuthorID:       project.TeacherID, // 默认作者为项目创建者
+			}
+			s.db.Create(newDoc)
+		}
 	}
 
 	return nil
 }
 
-// GetProjectDocuments 获取项目的所有文档
-func (s *DocumentService) GetProjectDocuments(projectID int) ([]*models.DocumentAttachment, error) {
-	var attachments []*models.DocumentAttachment
+// CheckWikiEditPermission 检查Wiki编辑权限
+func (s *DocumentService) CheckWikiEditPermission(userID uint, projectID uint) (bool, error) {
+	var project models.Project
+	if err := s.db.First(&project, projectID).Error; err != nil {
+		return false, fmt.Errorf("project not found: %w", err)
+	}
 
-	err := s.db.Where("project_id = ?", projectID).
-		Preload("LastEditor").
-		Order("updated_at DESC").
-		Find(&attachments).Error
+	// 获取用户信息
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false, fmt.Errorf("user not found: %w", err)
+	}
+
+	// 检查用户角色
+	if user.Role == RoleAdmin || user.Role == RoleTeacher {
+		return true, nil
+	}
+
+	// 检查是否是项目成员
+	var member models.ProjectMember
+	if err := s.db.Where("project_id = ? AND student_id = ? AND status = 'active'", projectID, userID).First(&member).Error; err != nil {
+		return false, nil
+	}
+
+	// 如果有GitLab集成，检查GitLab权限
+	if project.GitLabProjectID > 0 && user.GitLabID > 0 {
+		return s.gitlabService.CheckWikiEditPermission(user.GitLabID, project.GitLabProjectID)
+	}
+
+	// 默认项目成员可以编辑Wiki
+	return true, nil
+}
+
+// generateWikiSlug 生成Wiki页面的slug
+func (s *DocumentService) generateWikiSlug(title string) string {
+	// 简单的slug生成逻辑，可以根据需要优化
+	return title
+}
+
+// GetDocumentTree 获取文档树结构
+func (s *DocumentService) GetDocumentTree(projectID uint) ([]models.Document, error) {
+	var documents []models.Document
+	err := s.db.Preload("Author").
+		Where("project_id = ? AND parent_id = 0 AND status = 'active'", projectID).
+		Order("created_at DESC").
+		Find(&documents).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("获取项目文档失败: %w", err)
+		return nil, fmt.Errorf("failed to get document tree: %w", err)
 	}
 
-	return attachments, nil
+	// 递归加载子文档
+	for i := range documents {
+		children, err := s.getDocumentChildren(documents[i].ID)
+		if err != nil {
+			continue
+		}
+		documents[i].Children = children
+	}
+
+	return documents, nil
 }
 
-// GetUserDocuments 获取用户的所有文档
-func (s *DocumentService) GetUserDocuments(userID int) ([]*models.DocumentAttachment, error) {
-	var attachments []*models.DocumentAttachment
-
-	err := s.db.Where("user_id = ?", userID).
-		Preload("LastEditor").
-		Order("updated_at DESC").
-		Find(&attachments).Error
+// getDocumentChildren 递归获取子文档
+func (s *DocumentService) getDocumentChildren(parentID uint) ([]models.Document, error) {
+	var children []models.Document
+	err := s.db.Preload("Author").
+		Where("parent_id = ? AND status = 'active'", parentID).
+		Order("created_at DESC").
+		Find(&children).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("获取用户文档失败: %w", err)
+		return nil, err
 	}
 
-	return attachments, nil
-}
-
-// 辅助方法
-
-// getFileType 获取文件类型
-func (s *DocumentService) getFileType(filename string) string {
-	ext := filepath.Ext(filename)
-	switch ext {
-	case ".docx", ".doc":
-		return "docx"
-	case ".xlsx", ".xls":
-		return "xlsx"
-	case ".pptx", ".ppt":
-		return "pptx"
-	case ".pdf":
-		return "pdf"
-	default:
-		return "unknown"
+	// 递归加载子文档的子文档
+	for i := range children {
+		grandchildren, err := s.getDocumentChildren(children[i].ID)
+		if err != nil {
+			continue
+		}
+		children[i].Children = grandchildren
 	}
+
+	return children, nil
 }
 
-// generateDocumentKey 生成文档key
-func (s *DocumentService) generateDocumentKey(filename string) string {
-	return fmt.Sprintf("wiki_%d_%s", time.Now().UnixNano(), filename)
-}
-
-// GetEditableDocuments 获取可编辑的文档
-func (s *DocumentService) GetEditableDocuments(projectID int) ([]*models.DocumentAttachment, error) {
-	var attachments []*models.DocumentAttachment
-
-	err := s.db.Where("project_id = ? AND file_type IN (?)", projectID, []string{"docx", "xlsx", "pptx"}).
-		Preload("LastEditor").
-		Order("updated_at DESC").
-		Find(&attachments).Error
+// GetDocumentHistory 获取文档历史版本
+func (s *DocumentService) GetDocumentHistory(documentID uint) ([]models.DocumentHistory, error) {
+	var history []models.DocumentHistory
+	err := s.db.Preload("Author").
+		Where("document_id = ?", documentID).
+		Order("created_at DESC").
+		Find(&history).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("获取可编辑文档失败: %w", err)
+		return nil, fmt.Errorf("failed to get document history: %w", err)
 	}
 
-	return attachments, nil
+	return history, nil
 }
 
-// GetDocumentStats 获取文档统计信息
-func (s *DocumentService) GetDocumentStats(userID int) (map[string]interface{}, error) {
-	var totalCount int64
-	var recentCount int64
+// CreateDocumentHistory 创建文档历史记录
+func (s *DocumentService) CreateDocumentHistory(documentID uint, userID uint, content, changeNote string) error {
+	history := &models.DocumentHistory{
+		DocumentID: documentID,
+		AuthorID:   userID,
+		Content:    content,
+		ChangeNote: changeNote,
+		CreatedAt:  time.Now(),
+	}
 
-	// 获取用户相关文档总数
-	s.db.Model(&models.DocumentAttachment{}).Where("user_id = ?", userID).Count(&totalCount)
+	if err := s.db.Create(history).Error; err != nil {
+		return fmt.Errorf("failed to create document history: %w", err)
+	}
 
-	// 获取最近一周的文档数
-	lastWeek := time.Now().AddDate(0, 0, -7)
-	s.db.Model(&models.DocumentAttachment{}).Where("user_id = ? AND created_at > ?", userID, lastWeek).Count(&recentCount)
-
-	return map[string]interface{}{
-		"total_documents":  totalCount,
-		"recent_documents": recentCount,
-	}, nil
+	return nil
 }
+
+// 使用已定义的角色常量
