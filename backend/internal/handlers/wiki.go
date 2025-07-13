@@ -28,14 +28,14 @@ func NewWikiHandler(gitlabService *services.GitLabService, onlyOfficeService *se
 
 // RegisterRoutes 注册路由
 func (h *WikiHandler) RegisterRoutes(router *gin.RouterGroup) {
-	// 项目相关路由
-	projects := router.Group("/projects")
+	// Wiki相关路由
+	wiki := router.Group("/wiki")
 	{
-		projects.GET("", h.GetProjects)
-		projects.GET("/:id/wiki", h.GetWikiPages)
-		projects.POST("/:id/wiki", h.CreateWikiPage)
-		projects.GET("/:id/wiki/:slug/attachments", h.GetWikiAttachments)
-		projects.POST("/:id/wiki/:slug/attachments", h.UploadWikiAttachment)
+		wiki.GET("/projects", h.GetProjects)
+		wiki.GET("/projects/:id", h.GetWikiPages)
+		wiki.POST("/projects/:id", h.CreateWikiPage)
+		wiki.GET("/projects/:id/:slug/attachments", h.GetWikiAttachments)
+		wiki.POST("/projects/:id/:slug/attachments", h.UploadWikiAttachment)
 	}
 
 	// 文档编辑相关路由

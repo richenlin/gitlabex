@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"gitlabex/internal/config"
@@ -64,10 +65,13 @@ func NewAuthService(db *gorm.DB, config *config.Config) *AuthService {
 
 // GetGitLabOAuthURL 获取GitLab OAuth认证URL
 func (s *AuthService) GetGitLabOAuthURL(state string) string {
-	return fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=api+read_user+email+read_repository+write_repository+read_registry&state=%s",
+	// 将空格分隔的scopes转换为+分隔的格式
+	scopes := strings.ReplaceAll(s.config.GitLab.Scopes, " ", "+")
+	return fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
 		s.config.GitLab.URL,
 		s.config.GitLab.ClientID,
 		s.config.GitLab.RedirectURI,
+		scopes,
 		state,
 	)
 }
@@ -147,7 +151,12 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 
 // exchangeCodeForToken 交换认证码为访问令牌
 func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
-	tokenURL := fmt.Sprintf("%s/oauth/token", s.config.GitLab.InternalURL)
+	// 使用外部URL进行token交换，确保OAuth认证正常工作
+	tokenURL := fmt.Sprintf("%s/oauth/token", s.config.GitLab.URL)
+
+	fmt.Printf("DEBUG: Exchange token URL: %s\n", tokenURL)
+	fmt.Printf("DEBUG: Client ID: %s\n", s.config.GitLab.ClientID[:10]+"...")
+	fmt.Printf("DEBUG: Redirect URI: %s\n", s.config.GitLab.RedirectURI)
 
 	formData := map[string][]string{
 		"client_id":     {s.config.GitLab.ClientID},
@@ -159,25 +168,36 @@ func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
 
 	resp, err := http.PostForm(tokenURL, formData)
 	if err != nil {
+		fmt.Printf("DEBUG: HTTP request error: %v\n", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	fmt.Printf("DEBUG: Response status: %s\n", resp.Status)
+	fmt.Printf("DEBUG: Response headers: %v\n", resp.Header)
+
 	if resp.StatusCode != http.StatusOK {
+		// 读取错误响应内容
+		body, _ := json.Marshal(resp.Body)
+		fmt.Printf("DEBUG: Error response body: %s\n", string(body))
 		return nil, fmt.Errorf("failed to exchange token: %s", resp.Status)
 	}
 
 	var token GitLabToken
 	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+		fmt.Printf("DEBUG: JSON decode error: %v\n", err)
 		return nil, err
 	}
+
+	fmt.Printf("DEBUG: Token exchange successful, access_token length: %d\n", len(token.AccessToken))
 
 	return &token, nil
 }
 
 // fetchGitLabUser 从GitLab API获取用户信息
 func (s *AuthService) fetchGitLabUser(accessToken string) (*GitLabUser, error) {
-	userURL := fmt.Sprintf("%s/api/v4/user", s.config.GitLab.InternalURL)
+	// 使用外部URL获取用户信息，与token交换保持一致
+	userURL := fmt.Sprintf("%s/api/v4/user", s.config.GitLab.URL)
 
 	req, err := http.NewRequest("GET", userURL, nil)
 	if err != nil {

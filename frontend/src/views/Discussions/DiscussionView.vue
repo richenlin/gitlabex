@@ -106,7 +106,7 @@
             </div>
             
             <h3 class="discussion-title">{{ discussion.title }}</h3>
-            <p class="discussion-description">{{ discussion.content | truncate(200) }}</p>
+            <p class="discussion-description">{{ truncate(discussion.content, 200) }}</p>
             
             <div class="discussion-stats">
               <div class="stat-item">
@@ -234,6 +234,13 @@ import {
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { ApiService } from '@/services/api'
+import type { 
+  Discussion, 
+  Project, 
+  DiscussionFilters, 
+  CreateDiscussionRequest,
+  DiscussionCategory 
+} from '@/types/discussion'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -242,23 +249,23 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const creating = ref(false)
 const showCreateDialog = ref(false)
-const discussions = ref([])
-const projects = ref([])
-const categories = ref([])
+const discussions = ref<Discussion[]>([])
+const projects = ref<Project[]>([])
+const categories = ref<string[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
 
 // 过滤器
-const filters = reactive({
+const filters = reactive<DiscussionFilters>({
   projectId: '',
   category: '',
   status: ''
 })
 
 // 创建表单
-const createForm = reactive({
-  project_id: '',
+const createForm = reactive<CreateDiscussionRequest>({
+  project_id: 0,
   title: '',
   content: '',
   category: 'general',
@@ -304,7 +311,7 @@ const loadProjects = async () => {
     const response = await ApiService.getProjects()
     projects.value = response.data || []
     if (projects.value.length > 0) {
-      filters.projectId = projects.value[0].id
+      filters.projectId = projects.value[0].id.toString()
     }
   } catch (error) {
     console.error('加载项目失败:', error)
@@ -331,7 +338,7 @@ const loadDiscussions = async () => {
   loading.value = true
   try {
     const params = {
-      project_id: filters.projectId,
+      project_id: Number(filters.projectId),
       page: currentPage.value,
       page_size: pageSize.value,
       category: filters.category,
@@ -386,7 +393,11 @@ const createDiscussion = async () => {
   
   creating.value = true
   try {
-    await ApiService.createDiscussion(createForm)
+    const requestData = {
+      ...createForm,
+      project_id: Number(createForm.project_id)
+    }
+    await ApiService.createDiscussion(requestData)
     ElMessage.success('话题创建成功')
     showCreateDialog.value = false
     resetCreateForm()
@@ -402,7 +413,7 @@ const createDiscussion = async () => {
 // 重置创建表单
 const resetCreateForm = () => {
   Object.assign(createForm, {
-    project_id: '',
+    project_id: 0,
     title: '',
     content: '',
     category: 'general',
@@ -413,7 +424,7 @@ const resetCreateForm = () => {
 
 // 获取分类标签
 const getCategoryLabel = (category: string) => {
-  const labels = {
+  const labels: Record<string, string> = {
     general: '通用',
     question: '问题',
     announcement: '公告',
@@ -425,7 +436,7 @@ const getCategoryLabel = (category: string) => {
 
 // 获取分类类型
 const getCategoryType = (category: string) => {
-  const types = {
+  const types: Record<string, string> = {
     general: '',
     question: 'warning',
     announcement: 'danger',

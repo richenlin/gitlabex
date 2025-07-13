@@ -1,12 +1,12 @@
-version: '3.8'
+# docker-compose.yml - 移除过时的version配置
 
 services:
-  # GitLab CE
+  # GitLab CE服务
   gitlab:
     image: gitlab/gitlab-ce:17.10.1-ce.0
-    hostname: gitlab.local
     container_name: gitlabex-gitlab
     restart: unless-stopped
+    hostname: 'gitlab'
     expose:
       - "80"
       - "443"
@@ -18,6 +18,9 @@ services:
       - gitlab_config:/etc/gitlab
       - gitlab_logs:/var/log/gitlab
       - gitlab_data:/var/opt/gitlab
+      - ./config:/config:ro
+      - ./scripts:/scripts:ro
+      - gitlab_oauth_config:/shared
     environment:
       GITLAB_OMNIBUS_CONFIG: |
         external_url 'http://localhost:8000/gitlab'
@@ -48,6 +51,12 @@ services:
         gitlab_rails['redis_password'] = 'password123'
     networks:
       - gitlabex-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/gitlab/help"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
 
   # PostgreSQL数据库
   postgres:
@@ -55,14 +64,14 @@ services:
     container_name: gitlabex-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: gitlabex
       POSTGRES_USER: gitlabex
       POSTGRES_PASSWORD: password123
-      PGDATA: /var/lib/postgresql/data/pgdata
-      POSTGRES_MULTIPLE_DATABASES: gitlabex,gitlab
+      POSTGRES_DB: gitlabex
+      # 为GitLab创建额外的数据库
+      POSTGRES_MULTIPLE_DATABASES: gitlab
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-multiple-postgresql-databases.sh:/docker-entrypoint-initdb.d/init-multiple-postgresql-databases.sh
+      - ./config/init-postgres.sql:/docker-entrypoint-initdb.d/init-postgres.sql:ro
     expose:
       - "5432"
     networks:
@@ -106,13 +115,14 @@ services:
     networks:
       - gitlabex-network
 
-  # GitLab OAuth应用自动初始化服务
+  # GitLab OAuth应用自动初始化服务 - 关键的第一步  
   gitlab-init:
     image: alpine:latest
     container_name: gitlabex-gitlab-init
-    restart: "no"
+    restart: "no"  # 只运行一次
     depends_on:
-      - gitlab
+      gitlab:
+        condition: service_healthy
     volumes:
       - ./scripts:/scripts:ro
       - ./config:/config:ro
@@ -120,13 +130,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - gitlabex-network
-    command: >
-      sh -c "
-        apk add --no-cache curl docker-cli &&
-        sh /scripts/init-gitlab-oauth.sh
-      "
+    command: ["/scripts/init-complete-flow.sh"]
 
-  # 后端服务
+  # 后端服务 - 支持动态OAuth配置加载
   backend:
     build: ./backend
     container_name: gitlabex-backend
@@ -134,11 +140,14 @@ services:
     expose:
       - "8080"
     depends_on:
-      - postgres
-      - redis
-      - gitlab
-      - onlyoffice
-      - gitlab-init
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      gitlab:
+        condition: service_healthy
+      onlyoffice:
+        condition: service_started
     environment:
       # 数据库配置
       - DB_HOST=postgres
@@ -166,6 +175,11 @@ services:
       - gitlab_oauth_config:/shared:ro
     networks:
       - gitlabex-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # 前端服务
   frontend:
@@ -177,7 +191,7 @@ services:
     networks:
       - gitlabex-network
 
-  # Nginx反向代理
+  # Nginx反向代理 - 最后启动，确保所有服务就绪
   nginx:
     image: nginx:alpine
     container_name: gitlabex-nginx
@@ -188,12 +202,21 @@ services:
       - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./frontend/dist:/usr/share/nginx/html:ro
     depends_on:
-      - frontend
-      - backend
-      - gitlab
-      - onlyoffice
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
+      gitlab:
+        condition: service_started
+      onlyoffice:
+        condition: service_started
     networks:
       - gitlabex-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   gitlab_config:

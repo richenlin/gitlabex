@@ -49,6 +49,7 @@ type GitLabConfig struct {
 	ClientSecret string
 	RedirectURI  string
 	Token        string
+	Scopes       string // OAuth权限范围
 }
 
 // OnlyOfficeConfig OnlyOffice配置
@@ -128,6 +129,7 @@ func LoadConfig() (*Config, error) {
 			ClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
 			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://127.0.0.1:8000/api/auth/gitlab/callback"),
 			Token:        getEnv("GITLAB_TOKEN", ""),
+			Scopes:       getEnv("GITLAB_SCOPES", "api read_user email"),
 		},
 		JWT: JWTConfig{
 			Secret: getEnv("JWT_SECRET", "your-jwt-secret-key"),

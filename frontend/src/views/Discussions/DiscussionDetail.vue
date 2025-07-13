@@ -272,6 +272,12 @@ import {
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { ApiService } from '@/services/api'
+import type { 
+  Discussion, 
+  DiscussionReply, 
+  UpdateDiscussionRequest,
+  CreateReplyRequest 
+} from '@/types/discussion'
 
 const route = useRoute()
 const router = useRouter()
@@ -283,15 +289,15 @@ const updating = ref(false)
 const replying = ref(false)
 const showEditDialog = ref(false)
 const showReplyDialog = ref(false)
-const discussion = ref(null)
-const replies = ref([])
+const discussion = ref<Discussion | null>(null)
+const replies = ref<DiscussionReply[]>([])
 const isLiked = ref(false)
 const canEdit = ref(false)
 const canDelete = ref(false)
-const categories = ref([])
+const categories = ref<string[]>([])
 
 // 编辑表单
-const editForm = reactive({
+const editForm = reactive<UpdateDiscussionRequest>({
   title: '',
   content: '',
   category: '',
@@ -300,9 +306,9 @@ const editForm = reactive({
 })
 
 // 回复表单
-const replyForm = reactive({
+const replyForm = reactive<CreateReplyRequest>({
   content: '',
-  parent_reply_id: null
+  parent_reply_id: undefined
 })
 
 // 表单验证规则
@@ -378,6 +384,8 @@ const goBack = () => {
 
 // 切换点赞
 const toggleLike = async () => {
+  if (!discussion.value) return
+  
   try {
     if (isLiked.value) {
       await ApiService.unlikeDiscussion(discussion.value.id)
@@ -397,6 +405,8 @@ const toggleLike = async () => {
 
 // 置顶话题
 const pinDiscussion = async () => {
+  if (!discussion.value) return
+  
   try {
     await ApiService.pinDiscussion(discussion.value.id)
     discussion.value.is_pinned = !discussion.value.is_pinned
@@ -408,6 +418,8 @@ const pinDiscussion = async () => {
 
 // 删除话题
 const deleteDiscussion = async () => {
+  if (!discussion.value) return
+  
   try {
     await ElMessageBox.confirm('确定要删除这个话题吗？', '确认删除', {
       type: 'warning'
@@ -425,6 +437,8 @@ const deleteDiscussion = async () => {
 
 // 更新话题
 const updateDiscussion = async () => {
+  if (!discussion.value) return
+  
   const formRef = ref()
   if (!formRef.value) return
   
@@ -449,6 +463,8 @@ const updateDiscussion = async () => {
 
 // 创建回复
 const createReply = async () => {
+  if (!discussion.value) return
+  
   const formRef = ref()
   if (!formRef.value) return
   
@@ -473,7 +489,7 @@ const createReply = async () => {
 }
 
 // 切换解决状态
-const toggleResolve = async (reply) => {
+const toggleResolve = async (reply: DiscussionReply) => {
   try {
     // 这里需要添加标记解决的API
     reply.is_resolved = !reply.is_resolved
@@ -506,7 +522,7 @@ const resetReplyForm = () => {
 
 // 获取分类标签
 const getCategoryLabel = (category: string) => {
-  const labels = {
+  const labels: Record<string, string> = {
     general: '通用',
     question: '问题',
     announcement: '公告',
@@ -518,7 +534,7 @@ const getCategoryLabel = (category: string) => {
 
 // 获取分类类型
 const getCategoryType = (category: string) => {
-  const types = {
+  const types: Record<string, string> = {
     general: '',
     question: 'warning',
     announcement: 'danger',

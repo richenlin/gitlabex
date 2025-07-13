@@ -267,7 +267,7 @@ func (s *DiscussionService) CreateReply(discussionID uint, req *models.Discussio
 		AuthorID:      userID,
 		Content:       req.Content,
 		GitLabNoteID:  gitlabNote.ID,
-		GitLabNoteURL: gitlabNote.WebURL,
+		GitLabNoteURL: "", // GitLab Note 没有 WebURL 字段，暂时设为空
 		ParentReplyID: req.ParentReplyID,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
@@ -434,9 +434,9 @@ func (s *DiscussionService) createGitLabNote(issueID int, content string) (*gitl
 	// 这里需要调用GitLab API创建Note
 	// 暂时返回模拟数据
 	return &gitlab.Note{
-		ID:     int(time.Now().Unix()),
-		WebURL: fmt.Sprintf("https://gitlab.com/issues/%d#note_%d", issueID, time.Now().Unix()),
-		Body:   content,
+		ID:   int(time.Now().Unix()),
+		Body: content,
+		// Note: GitLab Note 结构体没有 WebURL 字段
 	}, nil
 }
 
