@@ -35,6 +35,13 @@ func main() {
 	permissionService := services.NewPermissionService(db)
 	userService := services.NewUserService(db, permissionService)
 	analyticsService := services.NewAnalyticsService(db)
+
+	// 调试：输出GitLab配置
+	fmt.Printf("DEBUG: GitLab Config - ClientID: %s, ClientSecret: %s, URL: %s\n",
+		cfg.GitLab.ClientID[:10]+"...",
+		cfg.GitLab.ClientSecret[:10]+"...",
+		cfg.GitLab.URL)
+
 	authService := services.NewAuthService(db, cfg)
 	gitlabService, err := services.NewGitLabService(cfg, nil, db)
 	if err != nil {
@@ -224,7 +231,8 @@ func setupRoutes(authService *services.AuthService, permissionService *services.
 
 		// 用户管理路由
 		users := api.Group("/users")
-		users.Use(permissionService.RequireAuth()) // TODO: 使用统一的权限认证中间件
+		users.Use(authService.AuthMiddleware())    // JWT认证中间件
+		users.Use(permissionService.RequireAuth()) // 权限认证中间件
 		{
 			users.GET("/active", userHandler.ListActiveUsers)
 			users.GET("/current", userHandler.GetCurrentUser)

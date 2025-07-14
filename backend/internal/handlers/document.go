@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -90,19 +89,11 @@ func (h *DocumentHandler) GetDocumentEditor(c *gin.Context) {
 		return
 	}
 
-	// 将配置序列化为JSON
-	configJSON, err := json.Marshal(config)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": fmt.Sprintf("Failed to serialize config: %v", err),
-		})
-		return
-	}
-
-	// 返回HTML页面
-	c.HTML(http.StatusOK, "simple.html", gin.H{
-		"configJSON": string(configJSON),
-		"docID":      docID,
+	// 返回JSON配置，不再使用HTML模板
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Document editor configuration",
+		"docID":   docID,
+		"config":  config,
 	})
 }
 

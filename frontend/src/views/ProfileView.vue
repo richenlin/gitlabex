@@ -246,6 +246,9 @@ import {
 } from '@element-plus/icons-vue'
 import { ApiService } from '../services/api'
 import type { User, UserDashboard } from '../services/api'
+import { useAuthStore } from '../stores/auth'
+
+const authStore = useAuthStore()
 
 // 响应式数据
 const isEditing = ref(false)
@@ -354,14 +357,16 @@ const cancelEdit = () => {
 const saveProfile = async () => {
   isSaving.value = true
   try {
-    // 这里应该调用更新用户资料API
-    // await ApiService.updateUserProfile(profileForm.value)
+    // 调用更新用户资料API
+    const updatedUser = await ApiService.updateUserProfile(profileForm.value)
     
-    // 模拟保存
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    originalProfile.value = { ...profileForm.value }
+    // 更新本地数据
+    profileForm.value = { ...updatedUser }
+    originalProfile.value = { ...updatedUser }
     isEditing.value = false
+    
+    // 同步更新Auth Store中的用户信息
+    await authStore.refreshUserInfo()
     
     ElMessage.success('个人资料保存成功')
   } catch (error) {

@@ -142,8 +142,9 @@ export class ApiService {
 
   // 用户相关API
   static async getCurrentUser(): Promise<User> {
-    const response = await api.get('/api/users/me')
-    return response.data.data
+    const response = await api.get('/api/users/current')
+    // 处理后端返回的数据结构 {"data": {"user": {...}}}
+    return response.data.user
   }
 
   static async getActiveUsers(): Promise<{ data: User[], total: number }> {
@@ -160,6 +161,14 @@ export class ApiService {
     const response = await api.get(`/api/users/${id}`)
     return response.data.data
   }
+
+  static async updateUserProfile(userData: Partial<User>): Promise<User> {
+    const response = await api.put('/api/users/me/profile', userData)
+    return response.data
+  }
+
+  // 获取保存的测试用户资料
+
 
   // 认证相关API
   static async getGitLabOAuthUrl(): Promise<{ url: string }> {

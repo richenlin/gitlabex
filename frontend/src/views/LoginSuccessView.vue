@@ -35,8 +35,8 @@ const loading = ref(true)
 const error = ref(false)
 const errorMessage = ref('')
 
-const errorMessages = {
-  missing_code: '授权码缺失，请重新登录',
+const errorMessages: { [key: string]: string } = {
+  missing_code: '缺少认证代码，请重新登录',
   token_exchange_failed: '令牌交换失败，请重新登录',
   fetch_user_failed: '获取用户信息失败，请重新登录',
   sync_user_failed: '用户信息同步失败，请重新登录',

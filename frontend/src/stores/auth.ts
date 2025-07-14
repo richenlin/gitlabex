@@ -78,6 +78,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const checkAuth = async () => {
+    // 检查本地存储的token
     const storedToken = localStorage.getItem('authToken')
     if (!storedToken) {
       return false
@@ -100,6 +101,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+
+
   const updateUserInfo = async () => {
     if (!isAuthenticated.value) return
 
@@ -111,6 +114,11 @@ export const useAuthStore = defineStore('auth', () => {
       console.error('更新用户信息失败:', error)
       throw error
     }
+  }
+
+  // 手动更新用户信息（用于资料修改后同步）
+  const refreshUserInfo = async () => {
+    return updateUserInfo()
   }
 
   return {
@@ -130,6 +138,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     logout,
     checkAuth,
-    updateUserInfo
+    updateUserInfo,
+    refreshUserInfo
   }
 }) 

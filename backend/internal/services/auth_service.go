@@ -3,7 +3,9 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -103,7 +105,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 
 	if code == "" {
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=missing_code")
+		c.Redirect(http.StatusFound, "/login?error=missing_code")
 		return
 	}
 
@@ -112,7 +114,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("ERROR: Failed to exchange token: %v\n", err)
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=token_exchange_failed")
+		c.Redirect(http.StatusFound, "/login?error=token_exchange_failed")
 		return
 	}
 
@@ -121,7 +123,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("ERROR: Failed to fetch user: %v\n", err)
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=fetch_user_failed")
+		c.Redirect(http.StatusFound, "/login?error=fetch_user_failed")
 		return
 	}
 
@@ -130,7 +132,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("ERROR: Failed to sync user: %v\n", err)
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=sync_user_failed")
+		c.Redirect(http.StatusFound, "/login?error=sync_user_failed")
 		return
 	}
 
@@ -139,7 +141,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("ERROR: Failed to generate JWT: %v\n", err)
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=jwt_generation_failed")
+		c.Redirect(http.StatusFound, "/login?error=jwt_generation_failed")
 		return
 	}
 
@@ -147,28 +149,42 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 
 	// 登录成功，重定向到前端首页并传递token
 	// 使用URL参数传递token（在生产环境中应该使用更安全的方式，如设置HttpOnly cookie）
-	redirectURL := fmt.Sprintf("http://localhost:3000/login/success?token=%s", jwtToken)
+	redirectURL := fmt.Sprintf("/login/success?token=%s", jwtToken)
 	c.Redirect(http.StatusFound, redirectURL)
 }
 
 // exchangeCodeForToken 交换认证码为访问令牌
 func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
-	// 使用外部URL进行token交换，确保OAuth认证正常工作
-	tokenURL := fmt.Sprintf("%s/oauth/token", s.config.GitLab.URL)
+	// 使用内部URL进行token交换，确保容器内部网络访问正常
+	var tokenURL string
+	if s.config.GitLab.InternalURL != "" {
+		tokenURL = fmt.Sprintf("%s/oauth/token", s.config.GitLab.InternalURL)
+	} else {
+		tokenURL = fmt.Sprintf("%s/oauth/token", s.config.GitLab.URL)
+	}
 
 	fmt.Printf("DEBUG: Exchange token URL: %s\n", tokenURL)
 	fmt.Printf("DEBUG: Client ID: %s\n", s.config.GitLab.ClientID[:10]+"...")
 	fmt.Printf("DEBUG: Redirect URI: %s\n", s.config.GitLab.RedirectURI)
 
+	// 使用HTTP Basic认证发送client credentials
 	formData := map[string][]string{
-		"client_id":     {s.config.GitLab.ClientID},
-		"client_secret": {s.config.GitLab.ClientSecret},
-		"code":          {code},
-		"grant_type":    {"authorization_code"},
-		"redirect_uri":  {s.config.GitLab.RedirectURI},
+		"code":         {code},
+		"grant_type":   {"authorization_code"},
+		"redirect_uri": {s.config.GitLab.RedirectURI},
 	}
 
-	resp, err := http.PostForm(tokenURL, formData)
+	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(url.Values(formData).Encode()))
+	if err != nil {
+		return nil, err
+	}
+
+	// 设置Basic认证头
+	req.SetBasicAuth(s.config.GitLab.ClientID, s.config.GitLab.ClientSecret)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("DEBUG: HTTP request error: %v\n", err)
 		return nil, err
@@ -180,7 +196,7 @@ func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		// 读取错误响应内容
-		body, _ := json.Marshal(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		fmt.Printf("DEBUG: Error response body: %s\n", string(body))
 		return nil, fmt.Errorf("failed to exchange token: %s", resp.Status)
 	}
@@ -198,8 +214,13 @@ func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
 
 // fetchGitLabUser 从GitLab API获取用户信息
 func (s *AuthService) fetchGitLabUser(accessToken string) (*GitLabUser, error) {
-	// 使用外部URL获取用户信息，与token交换保持一致
-	userURL := fmt.Sprintf("%s/api/v4/user", s.config.GitLab.URL)
+	// 使用内部URL获取用户信息，确保容器内部网络访问正常
+	var userURL string
+	if s.config.GitLab.InternalURL != "" {
+		userURL = fmt.Sprintf("%s/api/v4/user", s.config.GitLab.InternalURL)
+	} else {
+		userURL = fmt.Sprintf("%s/api/v4/user", s.config.GitLab.URL)
+	}
 
 	req, err := http.NewRequest("GET", userURL, nil)
 	if err != nil {

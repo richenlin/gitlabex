@@ -28,9 +28,8 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# 从构建阶段复制二进制文件和模板文件
+# 从构建阶段复制二进制文件和启动脚本
 COPY --from=builder /app/main .
-COPY --from=builder /app/templates ./templates/
 COPY --from=builder /app/start.sh .
 
 # 也直接复制一份以确保存在

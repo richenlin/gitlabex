@@ -1,7 +1,6 @@
 package services
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -42,21 +41,7 @@ const (
 // RequireAuth 基础认证中间件
 func (s *PermissionService) RequireAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// TODO: 临时屏蔽OAuth检查，方便测试项目其他功能
-		// 需要在OAuth配置完成后重新启用认证检查
-		// 统一在permission.go中处理所有权限相关的认证逻辑
-
-		fmt.Printf("DEBUG: RequireAuth called for path: %s\n", c.Request.URL.Path)
-
-		if s.isPermissionBypassEnabled() {
-			fmt.Printf("DEBUG: Permission bypass enabled, creating test user\n")
-			testUser := s.createTestUser()
-			c.Set("current_user", testUser)
-			c.Next()
-			return
-		}
-
-		// 正常的权限认证逻辑
+		// 从JWT token中获取用户ID
 		userID, exists := c.Get("user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -88,38 +73,6 @@ func (s *PermissionService) RequireAuth() gin.HandlerFunc {
 		c.Set("current_user", &user)
 		c.Next()
 	}
-}
-
-// isPermissionBypassEnabled 检查是否启用权限绕过（临时测试功能）
-func (s *PermissionService) isPermissionBypassEnabled() bool {
-	// TODO: 临时返回true以便测试，后续需要改为false或通过配置控制
-	return true
-}
-
-// createTestUser 创建测试用户（临时测试功能）
-func (s *PermissionService) createTestUser() *models.User {
-	// TODO: 临时测试用户，后续需要移除
-	testUser := &models.User{
-		ID:       1,
-		GitLabID: 1,
-		Username: "testuser",
-		Email:    "test@example.com",
-		Name:     "Test User",
-		Role:     2, // 学生角色
-		Active:   true,
-	}
-
-	// 确保测试用户存在于数据库中
-	var existingUser models.User
-	if err := s.db.Where("id = ?", testUser.ID).First(&existingUser).Error; err != nil {
-		// 用户不存在，创建测试用户
-		if err := s.db.Create(testUser).Error; err != nil {
-			// 如果创建失败，返回内存中的用户对象
-			return testUser
-		}
-	}
-
-	return testUser
 }
 
 // RequireRole 角色权限中间件

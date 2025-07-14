@@ -25,10 +25,16 @@ if [ -f "$OAUTH_CONFIG_PATH" ]; then
     echo "配置内容预览:"
     cat "$OAUTH_CONFIG_PATH" | sed 's/GITLAB_CLIENT_SECRET=.*/GITLAB_CLIENT_SECRET=***/'
     
-    # 加载OAuth配置到环境变量
-    set -a  # 自动导出变量
-    source "$OAUTH_CONFIG_PATH"
-    set +a  # 关闭自动导出
+    # 加载OAuth配置到环境变量（处理多行值）
+    while IFS='=' read -r key value; do
+        # 跳过空行和注释
+        [[ -z "$key" || "$key" =~ ^#.* ]] && continue
+        # 移除值中的引号
+        value=$(echo "$value" | sed 's/^"//;s/"$//')
+        # 导出环境变量
+        export "$key"="$value"
+        echo "Loaded: $key=${value:0:20}..."
+    done < "$OAUTH_CONFIG_PATH"
     
     echo "✅ OAuth配置已加载到环境变量"
     echo "Client ID: ${GITLAB_CLIENT_ID:0:10}..."
@@ -63,4 +69,9 @@ fi
 # 启动主程序
 echo "🚀 启动GitLabEx Backend..."
 echo "服务器将在端口 ${SERVER_PORT:-8080} 上启动"
+
+# 调试：显示传递给程序的环境变量
+echo "DEBUG: 传递给程序的GitLab环境变量："
+env | grep GITLAB | sort
+
 exec ./main 
