@@ -105,7 +105,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 
 	if code == "" {
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "/login?error=missing_code")
+		c.Redirect(http.StatusFound, fmt.Sprintf("%s/login?error=missing_code", s.config.Frontend.URL))
 		return
 	}
 
@@ -114,7 +114,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("ERROR: Failed to exchange token: %v\n", err)
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "/login?error=token_exchange_failed")
+		c.Redirect(http.StatusFound, fmt.Sprintf("%s/login?error=token_exchange_failed", s.config.Frontend.URL))
 		return
 	}
 
@@ -123,7 +123,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("ERROR: Failed to fetch user: %v\n", err)
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "/login?error=fetch_user_failed")
+		c.Redirect(http.StatusFound, fmt.Sprintf("%s/login?error=fetch_user_failed", s.config.Frontend.URL))
 		return
 	}
 
@@ -132,7 +132,7 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("ERROR: Failed to sync user: %v\n", err)
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "/login?error=sync_user_failed")
+		c.Redirect(http.StatusFound, fmt.Sprintf("%s/login?error=sync_user_failed", s.config.Frontend.URL))
 		return
 	}
 
@@ -141,15 +141,15 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	if err != nil {
 		fmt.Printf("ERROR: Failed to generate JWT: %v\n", err)
 		// 重定向到前端登录页面并显示错误
-		c.Redirect(http.StatusFound, "/login?error=jwt_generation_failed")
+		c.Redirect(http.StatusFound, fmt.Sprintf("%s/login?error=jwt_generation_failed", s.config.Frontend.URL))
 		return
 	}
 
 	fmt.Printf("SUCCESS: User %s logged in successfully\n", user.Username)
 
-	// 登录成功，重定向到前端首页并传递token
+	// 登录成功，重定向到前端登录成功页面并传递token
 	// 使用URL参数传递token（在生产环境中应该使用更安全的方式，如设置HttpOnly cookie）
-	redirectURL := fmt.Sprintf("/login/success?token=%s", jwtToken)
+	redirectURL := fmt.Sprintf("%s/login/success?token=%s", s.config.Frontend.URL, jwtToken)
 	c.Redirect(http.StatusFound, redirectURL)
 }
 
@@ -426,7 +426,16 @@ func (s *AuthService) AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// 从数据库获取完整的用户信息
+		user, err := s.GetUserByID(claims.UserID)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+			c.Abort()
+			return
+		}
+
 		// 设置用户信息到上下文
+		c.Set("current_user", user)
 		c.Set("user_id", claims.UserID)
 		c.Set("gitlab_id", claims.GitLabID)
 		c.Set("username", claims.Username)

@@ -15,6 +15,7 @@ type Config struct {
 	OnlyOffice OnlyOfficeConfig
 	GitLab     GitLabConfig
 	JWT        JWTConfig
+	Frontend   FrontendConfig
 }
 
 // ServerConfig 服务器配置
@@ -62,6 +63,11 @@ type OnlyOfficeConfig struct {
 // JWTConfig JWT配置
 type JWTConfig struct {
 	Secret string
+}
+
+// FrontendConfig 前端配置
+type FrontendConfig struct {
+	URL string // 前端应用URL
 }
 
 func LoadConfig() (*Config, error) {
@@ -133,6 +139,9 @@ func LoadConfig() (*Config, error) {
 		},
 		JWT: JWTConfig{
 			Secret: getEnv("JWT_SECRET", "your-jwt-secret-key"),
+		},
+		Frontend: FrontendConfig{
+			URL: getEnv("FRONTEND_URL", "http://localhost:3000"),
 		},
 	}
 

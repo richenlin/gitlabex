@@ -64,11 +64,15 @@ onMounted(async () => {
       return
     }
 
-    // 存储token到localStorage
-    localStorage.setItem('authToken', token)
+    // 使用auth store的login方法来正确设置认证状态
+    const loginResult = await authStore.login(token)
     
-    // 更新auth store状态
-    await authStore.updateUserInfo()
+    if (!loginResult.success) {
+      error.value = true
+      errorMessage.value = '登录验证失败，请重新登录'
+      loading.value = false
+      return
+    }
     
     loading.value = false
     
