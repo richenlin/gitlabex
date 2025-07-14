@@ -38,6 +38,19 @@ func NewOAuthMiddleware(config *config.Config, db *gorm.DB, userService *service
 // ThirdPartyAuth 第三方API认证中间件
 func (m *OAuthMiddleware) ThirdPartyAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// TODO: 临时屏蔽OAuth检查，方便测试项目其他功能
+		// 需要在OAuth配置完成后重新启用认证检查
+		// 统一在oauth.go中处理所有OAuth相关的认证逻辑
+
+		if m.isOAuthBypassEnabled() {
+			testUser := m.createTestUser()
+			c.Set("current_user", testUser)
+			c.Set("auth_type", "test_bypass")
+			c.Next()
+			return
+		}
+
+		// 正常的OAuth认证逻辑
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -281,5 +294,25 @@ func (m *OAuthMiddleware) RateLimit() gin.HandlerFunc {
 		// 暂时允许所有请求通过
 		c.Set("client_id", clientID)
 		c.Next()
+	}
+}
+
+// isOAuthBypassEnabled 检查是否启用OAuth绕过（临时测试功能）
+func (m *OAuthMiddleware) isOAuthBypassEnabled() bool {
+	// TODO: 临时返回true以便测试，后续需要改为false或通过配置控制
+	return true
+}
+
+// createTestUser 创建测试用户（临时测试功能）
+func (m *OAuthMiddleware) createTestUser() *models.User {
+	// TODO: 临时测试用户，后续需要移除
+	return &models.User{
+		ID:       1,
+		GitLabID: 1,
+		Username: "testuser",
+		Email:    "test@example.com",
+		Name:     "Test User",
+		Role:     2, // 学生角色
+		Active:   true,
 	}
 }

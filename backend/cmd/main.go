@@ -71,7 +71,7 @@ func main() {
 	gin.SetMode(cfg.Server.Mode)
 
 	// 初始化路由
-	router := setupRoutes(authService, analyticsHandler, userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler, discussionHandler, thirdPartyHandler, educationHandler, wikiHandler)
+	router := setupRoutes(authService, permissionService, analyticsHandler, userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler, discussionHandler, thirdPartyHandler, educationHandler, wikiHandler)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -154,7 +154,7 @@ func autoMigrate(db *gorm.DB) error {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectSimpleHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, discussionHandler *handlers.DiscussionHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
+func setupRoutes(authService *services.AuthService, permissionService *services.PermissionService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectSimpleHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, discussionHandler *handlers.DiscussionHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
 	router := gin.New()
 
 	// 中间件
@@ -165,6 +165,12 @@ func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.A
 	// API路由组
 	api := router.Group("/api")
 	{
+		// 添加调试中间件
+		api.Use(func(c *gin.Context) {
+			fmt.Printf("DEBUG: API request to %s\n", c.Request.URL.Path)
+			c.Next()
+		})
+
 		// 健康检查
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
@@ -172,6 +178,14 @@ func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.A
 				"service":   "gitlabex-backend",
 				"version":   "1.0.0",
 				"timestamp": time.Now().Unix(),
+			})
+		})
+
+		// 测试路由
+		api.GET("/test", func(c *gin.Context) {
+			fmt.Printf("DEBUG: Test route called\n")
+			c.JSON(http.StatusOK, gin.H{
+				"message": "Test route works",
 			})
 		})
 
@@ -210,6 +224,7 @@ func setupRoutes(authService *services.AuthService, analyticsHandler *handlers.A
 
 		// 用户管理路由
 		users := api.Group("/users")
+		users.Use(permissionService.RequireAuth()) // TODO: 使用统一的权限认证中间件
 		{
 			users.GET("/active", userHandler.ListActiveUsers)
 			users.GET("/current", userHandler.GetCurrentUser)
