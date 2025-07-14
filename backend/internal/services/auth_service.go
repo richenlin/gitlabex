@@ -102,51 +102,53 @@ func (s *AuthService) HandleGitLabCallback(c *gin.Context) {
 	_ = state
 
 	if code == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Authorization code is required"})
+		// 重定向到前端登录页面并显示错误
+		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=missing_code")
 		return
 	}
 
 	// 交换访问令牌
 	token, err := s.exchangeCodeForToken(code)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to exchange code for token"})
+		fmt.Printf("ERROR: Failed to exchange token: %v\n", err)
+		// 重定向到前端登录页面并显示错误
+		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=token_exchange_failed")
 		return
 	}
 
 	// 获取用户信息
 	gitlabUser, err := s.fetchGitLabUser(token.AccessToken)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user info"})
+		fmt.Printf("ERROR: Failed to fetch user: %v\n", err)
+		// 重定向到前端登录页面并显示错误
+		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=fetch_user_failed")
 		return
 	}
 
 	// 同步用户到本地数据库
 	user, err := s.syncUserFromGitLab(gitlabUser)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to sync user"})
+		fmt.Printf("ERROR: Failed to sync user: %v\n", err)
+		// 重定向到前端登录页面并显示错误
+		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=sync_user_failed")
 		return
 	}
 
 	// 生成JWT令牌
 	jwtToken, err := s.generateJWTToken(user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate JWT token"})
+		fmt.Printf("ERROR: Failed to generate JWT: %v\n", err)
+		// 重定向到前端登录页面并显示错误
+		c.Redirect(http.StatusFound, "http://localhost:3000/login?error=jwt_generation_failed")
 		return
 	}
 
-	// 返回认证结果
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Login successful",
-		"token":   jwtToken,
-		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"email":    user.Email,
-			"name":     user.Name,
-			"avatar":   user.Avatar,
-			"role":     user.Role,
-		},
-	})
+	fmt.Printf("SUCCESS: User %s logged in successfully\n", user.Username)
+
+	// 登录成功，重定向到前端首页并传递token
+	// 使用URL参数传递token（在生产环境中应该使用更安全的方式，如设置HttpOnly cookie）
+	redirectURL := fmt.Sprintf("http://localhost:3000/login/success?token=%s", jwtToken)
+	c.Redirect(http.StatusFound, redirectURL)
 }
 
 // exchangeCodeForToken 交换认证码为访问令牌

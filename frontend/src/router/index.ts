@@ -12,6 +12,12 @@ const router = createRouter({
       meta: { title: '登录 - GitLabEx', requiresAuth: false }
     },
     {
+      path: '/login/success',
+      name: 'login-success',
+      component: () => import('../views/LoginSuccessView.vue'),
+      meta: { title: '登录成功 - GitLabEx', requiresAuth: false }
+    },
+    {
       path: '/',
       name: 'home',
       component: HomeView,

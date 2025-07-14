@@ -82,15 +82,15 @@ sleep 10
 
 # 验证完整服务链
 echo "📋 步骤11: 验证完整服务链..."
-if curl -f -s http://127.0.0.1:8000/api/health > /dev/null; then
+if curl -f -s http://127.0.0.1:8080/api/health > /dev/null; then
     echo "✅ 完整服务链验证成功！"
     
     echo ""
     echo "🎉 GitLabEx容器化部署测试成功！"
     echo "📝 访问地址："
-    echo "   - 前端应用: http://127.0.0.1:8000/"
-    echo "   - GitLab: http://127.0.0.1:8000/gitlab/"
-    echo "   - 后端API: http://127.0.0.1:8000/api/"
+    echo "   - 前端应用: http://127.0.0.1:3000/"
+    echo "   - GitLab: http://127.0.0.1:8081"
+    echo "   - 后端API: http://127.0.0.1:8080/"
     echo ""
     echo "🔐 OAuth认证已配置完成，可以开始使用GitLab登录"
 else
