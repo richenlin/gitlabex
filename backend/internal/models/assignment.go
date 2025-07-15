@@ -89,6 +89,18 @@ type Review struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 
+	// 详细评审报告字段
+	CodeQuality    float64 `json:"code_quality"`    // 代码质量评分
+	Functionality  float64 `json:"functionality"`   // 功能完整性评分
+	Documentation  float64 `json:"documentation"`   // 文档质量评分
+	CodeStyle      float64 `json:"code_style"`      // 代码风格评分
+	TestCoverage   float64 `json:"test_coverage"`   // 测试覆盖率评分
+	Creativity     float64 `json:"creativity"`      // 创新性评分
+	Suggestions    string  `json:"suggestions"`     // 改进建议
+	Strengths      string  `json:"strengths"`       // 优点总结
+	Weaknesses     string  `json:"weaknesses"`      // 不足之处
+	OverallComment string  `json:"overall_comment"` // 总体评价
+
 	// GitLab 相关字段
 	GitLabReviewID    int    `json:"gitlab_review_id"`   // GitLab评审ID
 	GitLabReviewURL   string `json:"gitlab_review_url"`  // GitLab评审URL

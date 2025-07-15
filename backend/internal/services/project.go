@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlabex/internal/models"
+	"gitlabex/internal/utils"
 
 	"github.com/xanzy/go-gitlab"
 	"gorm.io/gorm"
@@ -30,13 +31,12 @@ func NewProjectService(db *gorm.DB, permissionService *PermissionService, gitlab
 
 // CreateProjectRequest 创建课题请求
 type CreateProjectRequest struct {
-	Name        string    `json:"name" binding:"required"`
-	Description string    `json:"description"`
-	Type        string    `json:"type"` // graduation, research, competition, practice
-	ClassID     uint      `json:"class_id"`
-	StartDate   time.Time `json:"start_date"`
-	EndDate     time.Time `json:"end_date"`
-	MaxMembers  int       `json:"max_members"`
+	Name        string         `json:"name" binding:"required"`
+	Description string         `json:"description"`
+	Type        string         `json:"type"` // graduation, research, competition, practice
+	StartDate   utils.DateOnly `json:"start_date"`
+	EndDate     utils.DateOnly `json:"end_date"`
+	MaxMembers  int            `json:"max_members"`
 	// GitLab相关字段
 	WikiEnabled   bool `json:"wiki_enabled"`
 	IssuesEnabled bool `json:"issues_enabled"`
@@ -45,11 +45,11 @@ type CreateProjectRequest struct {
 
 // UpdateProjectRequest 更新课题请求
 type UpdateProjectRequest struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	Status      string     `json:"status"`
-	StartDate   *time.Time `json:"start_date"`
-	EndDate     *time.Time `json:"end_date"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Status      string          `json:"status"`
+	StartDate   *utils.DateOnly `json:"start_date"`
+	EndDate     *utils.DateOnly `json:"end_date"`
 }
 
 // JoinProjectRequest 加入课题请求
@@ -74,31 +74,33 @@ func (s *ProjectService) CreateProject(teacherID uint, req *CreateProjectRequest
 	// 构建README内容
 	readmeContent := fmt.Sprintf("# %s\n\n## 课题介绍\n\n%s\n\n## 使用说明\n\n1. 学生加入课题后，系统会自动为每个学生创建个人分支\n2. 学生在个人分支下的 `students/[学号]` 目录中提交作业\n3. 作业提交后，可通过合并请求进行代码审查\n4. 使用Issues进行讨论和问题跟踪\n5. 使用Wiki管理课题文档\n\n## 目录结构\n\n```\n├── README.md          # 课题说明\n├── assignments/       # 作业要求\n├── resources/         # 参考资料\n├── students/          # 学生作业目录\n│   ├── student1/     # 学生1的作业\n│   └── student2/     # 学生2的作业\n└── wiki/             # 课题文档\n```\n", req.Name, req.Description)
 
-	// 创建GitLab项目
-	gitlabProject, err := s.gitlabService.CreateProjectRepository(req.Name, req.Description, readmeContent, teacher.GitLabID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GitLab project: %w", err)
+	// 初始化项目记录
+	project := &models.Project{
+		Name:          req.Name,
+		Description:   req.Description,
+		Code:          code,
+		TeacherID:     teacherID,
+		Status:        "active",
+		StartDate:     req.StartDate.Time,
+		EndDate:       req.EndDate.Time,
+		ReadmeContent: readmeContent,
+		WikiEnabled:   req.WikiEnabled,
+		IssuesEnabled: req.IssuesEnabled,
+		MREnabled:     req.MREnabled,
 	}
 
-	// 创建本地项目记录
-	project := &models.Project{
-		Name:        req.Name,
-		Description: req.Description,
-		Code:        code,
-		TeacherID:   teacherID,
-		ClassID:     req.ClassID,
-		Status:      "active",
-		StartDate:   req.StartDate,
-		EndDate:     req.EndDate,
-		// GitLab相关字段
-		GitLabProjectID: gitlabProject.ID,
-		GitLabURL:       gitlabProject.WebURL,
-		RepositoryURL:   gitlabProject.HTTPURLToRepo,
-		DefaultBranch:   gitlabProject.DefaultBranch,
-		ReadmeContent:   readmeContent,
-		WikiEnabled:     req.WikiEnabled,
-		IssuesEnabled:   req.IssuesEnabled,
-		MREnabled:       req.MREnabled,
+	// 尝试创建GitLab项目（如果失败，仍继续创建本地项目）
+	gitlabProject, err := s.gitlabService.CreateProjectRepository(req.Name, req.Description, readmeContent, teacher.GitLabID)
+	if err != nil {
+		// GitLab创建失败，记录警告但继续创建本地项目
+		fmt.Printf("WARNING: Failed to create GitLab project: %v\n", err)
+		fmt.Printf("INFO: Creating project without GitLab integration\n")
+	} else {
+		// GitLab创建成功，更新项目信息
+		project.GitLabProjectID = gitlabProject.ID
+		project.GitLabURL = gitlabProject.WebURL
+		project.RepositoryURL = gitlabProject.HTTPURLToRepo
+		project.DefaultBranch = gitlabProject.DefaultBranch
 	}
 
 	if err := s.db.Create(project).Error; err != nil {
@@ -131,10 +133,13 @@ func (s *ProjectService) GetProjectByID(projectID uint) (*models.Project, error)
 }
 
 // GetProjectsByTeacher 获取老师创建的课题列表
-func (s *ProjectService) GetProjectsByTeacher(teacherID uint) ([]models.Project, error) {
+func (s *ProjectService) GetProjectsByTeacher(teacherID uint) ([]ProjectSimple, error) {
 	var projects []models.Project
-	err := s.db.Preload("Teacher").
-		Preload("Class").
+	err := s.db.Preload("Teacher", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, name, username, email, role")
+	}).Preload("Class", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, name, code, teacher_id")
+	}).Select("id, name, description, code, teacher_id, class_id, status, type, start_date, end_date, max_members, total_assignments, completed_assignments, created_at, updated_at").
 		Where("teacher_id = ?", teacherID).
 		Order("created_at DESC").
 		Find(&projects).Error
@@ -143,16 +148,48 @@ func (s *ProjectService) GetProjectsByTeacher(teacherID uint) ([]models.Project,
 		return nil, fmt.Errorf("failed to get projects: %w", err)
 	}
 
-	return projects, nil
+	// 转换为简化的结构
+	simpleProjects := make([]ProjectSimple, len(projects))
+	for i, project := range projects {
+		var className string
+		if project.ClassID != nil && project.Class.ID > 0 {
+			className = project.Class.Name
+		}
+
+		simpleProjects[i] = ProjectSimple{
+			ID:                   project.ID,
+			Name:                 project.Name,
+			Description:          project.Description,
+			Code:                 project.Code,
+			TeacherID:            project.TeacherID,
+			TeacherName:          project.Teacher.Name,
+			ClassID:              project.ClassID,
+			ClassName:            className,
+			Status:               project.Status,
+			Type:                 project.Type,
+			StartDate:            project.StartDate,
+			EndDate:              project.EndDate,
+			MaxMembers:           project.MaxMembers,
+			TotalAssignments:     project.TotalAssignments,
+			CompletedAssignments: project.CompletedAssignments,
+			CreatedAt:            project.CreatedAt,
+			UpdatedAt:            project.UpdatedAt,
+		}
+	}
+
+	return simpleProjects, nil
 }
 
 // GetProjectsByStudent 获取学生参加的课题列表
-func (s *ProjectService) GetProjectsByStudent(studentID uint) ([]models.Project, error) {
+func (s *ProjectService) GetProjectsByStudent(studentID uint) ([]ProjectSimple, error) {
 	var projects []models.Project
-	err := s.db.Preload("Teacher").
-		Preload("Class").
+	err := s.db.Preload("Teacher", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, name, username, email, role")
+	}).Preload("Class", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, name, code, teacher_id")
+	}).Select("projects.id, projects.name, projects.description, projects.code, projects.teacher_id, projects.class_id, projects.status, projects.type, projects.start_date, projects.end_date, projects.max_members, projects.total_assignments, projects.completed_assignments, projects.created_at, projects.updated_at").
 		Joins("JOIN project_members ON projects.id = project_members.project_id").
-		Where("project_members.student_id = ? AND project_members.status = 'active'", studentID).
+		Where("project_members.user_id = ? AND project_members.is_active = ?", studentID, true).
 		Order("project_members.joined_at DESC").
 		Find(&projects).Error
 
@@ -160,7 +197,36 @@ func (s *ProjectService) GetProjectsByStudent(studentID uint) ([]models.Project,
 		return nil, fmt.Errorf("failed to get projects: %w", err)
 	}
 
-	return projects, nil
+	// 转换为简化的结构
+	simpleProjects := make([]ProjectSimple, len(projects))
+	for i, project := range projects {
+		var className string
+		if project.ClassID != nil && project.Class.ID > 0 {
+			className = project.Class.Name
+		}
+
+		simpleProjects[i] = ProjectSimple{
+			ID:                   project.ID,
+			Name:                 project.Name,
+			Description:          project.Description,
+			Code:                 project.Code,
+			TeacherID:            project.TeacherID,
+			TeacherName:          project.Teacher.Name,
+			ClassID:              project.ClassID,
+			ClassName:            className,
+			Status:               project.Status,
+			Type:                 project.Type,
+			StartDate:            project.StartDate,
+			EndDate:              project.EndDate,
+			MaxMembers:           project.MaxMembers,
+			TotalAssignments:     project.TotalAssignments,
+			CompletedAssignments: project.CompletedAssignments,
+			CreatedAt:            project.CreatedAt,
+			UpdatedAt:            project.UpdatedAt,
+		}
+	}
+
+	return simpleProjects, nil
 }
 
 // GetProjectsByClass 获取班级的课题列表
@@ -211,6 +277,87 @@ func (s *ProjectService) GetAllProjects(page, pageSize int) ([]models.Project, i
 	return projects, total, nil
 }
 
+// GetAllProjectsSimple 获取所有课题的简化信息（管理员权限）
+func (s *ProjectService) GetAllProjectsSimple(page, pageSize int) ([]ProjectSimple, int64, error) {
+	var projects []models.Project
+	var total int64
+
+	// 计算总数
+	if err := s.db.Model(&models.Project{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count projects: %w", err)
+	}
+
+	fmt.Printf("DEBUG: Total projects count: %d\n", total)
+
+	// 分页查询，只预加载必要的关联数据
+	offset := (page - 1) * pageSize
+	err := s.db.Preload("Teacher", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, name, username, email, role")
+	}).Preload("Class", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, name, code, teacher_id")
+	}).Select("id, name, description, code, teacher_id, class_id, status, type, start_date, end_date, max_members, total_assignments, completed_assignments, created_at, updated_at").
+		Order("created_at DESC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&projects).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get projects: %w", err)
+	}
+
+	fmt.Printf("DEBUG: Found %d projects\n", len(projects))
+
+	// 转换为简化的结构
+	simpleProjects := make([]ProjectSimple, len(projects))
+	for i, project := range projects {
+		var className string
+		if project.ClassID != nil && project.Class.ID > 0 {
+			className = project.Class.Name
+		}
+
+		simpleProjects[i] = ProjectSimple{
+			ID:                   project.ID,
+			Name:                 project.Name,
+			Description:          project.Description,
+			Code:                 project.Code,
+			TeacherID:            project.TeacherID,
+			TeacherName:          project.Teacher.Name,
+			ClassID:              project.ClassID,
+			ClassName:            className,
+			Status:               project.Status,
+			Type:                 project.Type,
+			StartDate:            project.StartDate,
+			EndDate:              project.EndDate,
+			MaxMembers:           project.MaxMembers,
+			TotalAssignments:     project.TotalAssignments,
+			CompletedAssignments: project.CompletedAssignments,
+			CreatedAt:            project.CreatedAt,
+			UpdatedAt:            project.UpdatedAt,
+		}
+	}
+
+	return simpleProjects, total, nil
+}
+
+// ProjectSimple 简化的项目结构
+type ProjectSimple struct {
+	ID                   uint      `json:"id"`
+	Name                 string    `json:"name"`
+	Description          string    `json:"description"`
+	Code                 string    `json:"code"`
+	TeacherID            uint      `json:"teacher_id"`
+	TeacherName          string    `json:"teacher_name"`
+	Status               string    `json:"status"`
+	Type                 string    `json:"type"`
+	StartDate            time.Time `json:"start_date"`
+	EndDate              time.Time `json:"end_date"`
+	MaxMembers           int       `json:"max_members"`
+	TotalAssignments     int       `json:"total_assignments"`
+	CompletedAssignments int       `json:"completed_assignments"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
+}
+
 // UpdateProject 更新课题信息
 func (s *ProjectService) UpdateProject(projectID uint, req *UpdateProjectRequest) (*models.Project, error) {
 	var project models.Project
@@ -229,10 +376,10 @@ func (s *ProjectService) UpdateProject(projectID uint, req *UpdateProjectRequest
 		project.Status = req.Status
 	}
 	if req.StartDate != nil {
-		project.StartDate = *req.StartDate
+		project.StartDate = req.StartDate.Time
 	}
 	if req.EndDate != nil {
-		project.EndDate = *req.EndDate
+		project.EndDate = req.EndDate.Time
 	}
 
 	if err := s.db.Save(&project).Error; err != nil {

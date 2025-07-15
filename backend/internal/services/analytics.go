@@ -29,18 +29,26 @@ type AdminOverview struct {
 
 // TeacherOverview 教师概览数据
 type TeacherOverview struct {
-	TotalProjects    int64 `json:"total_projects"`
-	TotalAssignments int64 `json:"total_assignments"`
-	TotalStudents    int64 `json:"total_students"`
-	CompletionRate   int   `json:"completion_rate"`
+	TotalProjects    int     `json:"total_projects"`
+	ActiveProjects   int     `json:"active_projects"`
+	TotalAssignments int     `json:"total_assignments"`
+	TotalSubmissions int     `json:"total_submissions"`
+	PendingReviews   int     `json:"pending_reviews"`
+	TotalStudents    int     `json:"total_students"`
+	AverageScore     float64 `json:"average_score"`
+	CompletionRate   float64 `json:"completion_rate"`
 }
 
 // StudentOverview 学生概览数据
 type StudentOverview struct {
-	TotalProjects    int64 `json:"total_projects"`
-	TotalAssignments int64 `json:"total_assignments"`
-	TotalStudents    int64 `json:"total_students"`
-	CompletionRate   int   `json:"completion_rate"`
+	JoinedProjects       int     `json:"joined_projects"`
+	ActiveAssignments    int     `json:"active_assignments"`
+	CompletedAssignments int     `json:"completed_assignments"`
+	PendingAssignments   int     `json:"pending_assignments"`
+	TotalSubmissions     int     `json:"total_submissions"`
+	AverageScore         float64 `json:"average_score"`
+	HighestScore         float64 `json:"highest_score"`
+	LowestScore          float64 `json:"lowest_score"`
 }
 
 // ProjectStat 课题统计数据
@@ -124,72 +132,136 @@ func (s *AnalyticsService) GetAdminOverview(userID uint) (*AdminOverview, error)
 	// 计算完成率
 	overview.CompletionRate = s.calculateOverallCompletionRate()
 
-	return &overview, nil
+	return overview, nil
 }
 
 // GetTeacherOverview 获取教师概览数据
 func (s *AnalyticsService) GetTeacherOverview(userID uint) (*TeacherOverview, error) {
-	var overview TeacherOverview
+	overview := &TeacherOverview{}
 
-	// 获取教师的课题数
-	if err := s.db.Model(&models.Project{}).Where("teacher_id = ?", userID).Count(&overview.TotalProjects); err != nil {
-		return nil, fmt.Errorf("failed to count teacher projects: %w", err)
-	}
+	// 课题统计
+	var totalProjects int64
+	var activeProjects int64
+	s.db.Model(&models.Project{}).Where("teacher_id = ?", userID).Count(&totalProjects)
+	s.db.Model(&models.Project{}).Where("teacher_id = ? AND status = 'active'", userID).Count(&activeProjects)
 
-	// 获取教师的作业数
-	if err := s.db.Model(&models.Assignment{}).
+	// 作业统计
+	var totalAssignments int64
+	s.db.Model(&models.Assignment{}).
 		Joins("JOIN projects ON assignments.project_id = projects.id").
 		Where("projects.teacher_id = ?", userID).
-		Count(&overview.TotalAssignments); err != nil {
-		return nil, fmt.Errorf("failed to count teacher assignments: %w", err)
-	}
+		Count(&totalAssignments)
 
-	// 获取教师的学生数
-	if err := s.db.Model(&models.ProjectMember{}).
-		Select("COUNT(DISTINCT user_id)").
+	// 提交统计
+	var totalSubmissions int64
+	var pendingReviews int64
+	s.db.Model(&models.AssignmentSubmission{}).
+		Joins("JOIN assignments ON assignment_submissions.assignment_id = assignments.id").
+		Joins("JOIN projects ON assignments.project_id = projects.id").
+		Where("projects.teacher_id = ?", userID).
+		Count(&totalSubmissions)
+
+	s.db.Model(&models.AssignmentSubmission{}).
+		Joins("JOIN assignments ON assignment_submissions.assignment_id = assignments.id").
+		Joins("JOIN projects ON assignments.project_id = projects.id").
+		Where("projects.teacher_id = ? AND assignment_submissions.status = 'submitted'", userID).
+		Count(&pendingReviews)
+
+	// 学生统计
+	var totalStudents int64
+	s.db.Model(&models.ProjectMember{}).
 		Joins("JOIN projects ON project_members.project_id = projects.id").
-		Where("projects.teacher_id = ? AND project_members.role = ?", userID, "student").
-		Count(&overview.TotalStudents); err != nil {
-		return nil, fmt.Errorf("failed to count teacher students: %w", err)
+		Where("projects.teacher_id = ? AND project_members.is_active = true", userID).
+		Count(&totalStudents)
+
+	// 平均分和完成率
+	var avgScore struct {
+		AvgScore float64
+		Count    int64
+	}
+	s.db.Model(&models.AssignmentSubmission{}).
+		Select("AVG(score) as avg_score, COUNT(*) as count").
+		Joins("JOIN assignments ON assignment_submissions.assignment_id = assignments.id").
+		Joins("JOIN projects ON assignments.project_id = projects.id").
+		Where("projects.teacher_id = ? AND assignment_submissions.status = 'graded'", userID).
+		Scan(&avgScore)
+
+	completionRate := float64(0)
+	if totalAssignments > 0 {
+		var completedSubmissions int64
+		s.db.Model(&models.AssignmentSubmission{}).
+			Joins("JOIN assignments ON assignment_submissions.assignment_id = assignments.id").
+			Joins("JOIN projects ON assignments.project_id = projects.id").
+			Where("projects.teacher_id = ? AND assignment_submissions.status IN ('submitted', 'graded')", userID).
+			Count(&completedSubmissions)
+		completionRate = float64(completedSubmissions) / float64(totalAssignments) * 100
 	}
 
-	// 计算完成率
-	overview.CompletionRate = s.calculateTeacherCompletionRate(userID)
+	overview.TotalProjects = int(totalProjects)
+	overview.ActiveProjects = int(activeProjects)
+	overview.TotalAssignments = int(totalAssignments)
+	overview.TotalSubmissions = int(totalSubmissions)
+	overview.PendingReviews = int(pendingReviews)
+	overview.TotalStudents = int(totalStudents)
+	overview.AverageScore = avgScore.AvgScore
+	overview.CompletionRate = completionRate
 
-	return &overview, nil
+	return overview, nil
 }
 
 // GetStudentOverview 获取学生概览数据
 func (s *AnalyticsService) GetStudentOverview(userID uint) (*StudentOverview, error) {
-	var overview StudentOverview
+	overview := &StudentOverview{}
 
-	// 获取学生参与的课题数
-	if err := s.db.Model(&models.ProjectMember{}).
-		Where("user_id = ? AND role = ?", userID, "student").
-		Count(&overview.TotalProjects); err != nil {
-		return nil, fmt.Errorf("failed to count student projects: %w", err)
+	// 参与的课题数量
+	var joinedProjects int64
+	s.db.Model(&models.ProjectMember{}).
+		Where("user_id = ? AND is_active = true", userID).
+		Count(&joinedProjects)
+
+	// 作业统计
+	var activeAssignments int64
+	var completedAssignments int64
+	var totalSubmissions int64
+
+	// 活跃作业（未提交的）
+	s.db.Model(&models.Assignment{}).
+		Joins("JOIN project_members ON assignments.project_id = project_members.project_id").
+		Joins("LEFT JOIN assignment_submissions ON assignments.id = assignment_submissions.assignment_id AND assignment_submissions.student_id = ?", userID).
+		Where("project_members.user_id = ? AND project_members.is_active = true AND assignments.status = 'active' AND assignment_submissions.id IS NULL", userID).
+		Count(&activeAssignments)
+
+	// 已完成作业（已提交的）
+	s.db.Model(&models.AssignmentSubmission{}).
+		Where("student_id = ?", userID).
+		Count(&totalSubmissions)
+
+	s.db.Model(&models.AssignmentSubmission{}).
+		Where("student_id = ? AND status IN ('submitted', 'graded')", userID).
+		Count(&completedAssignments)
+
+	pendingAssignments := int(activeAssignments)
+
+	// 分数统计
+	var scoreStats struct {
+		AvgScore float64
+		MaxScore float64
+		MinScore float64
+		Count    int64
 	}
+	s.db.Model(&models.AssignmentSubmission{}).
+		Select("AVG(score) as avg_score, MAX(score) as max_score, MIN(score) as min_score, COUNT(*) as count").
+		Where("student_id = ? AND status = 'graded'", userID).
+		Scan(&scoreStats)
 
-	// 获取学生的作业数
-	if err := s.db.Model(&models.Assignment{}).
-		Joins("JOIN projects ON assignments.project_id = projects.id").
-		Joins("JOIN project_members ON project_members.project_id = projects.id").
-		Where("project_members.user_id = ? AND project_members.role = ?", userID, "student").
-		Count(&overview.TotalAssignments); err != nil {
-		return nil, fmt.Errorf("failed to count student assignments: %w", err)
-	}
-
-	// 学生视角的"学生数"实际上是同学数
-	if err := s.db.Model(&models.ProjectMember{}).
-		Select("COUNT(DISTINCT user_id)").
-		Joins("JOIN project_members pm2 ON pm2.project_id = project_members.project_id").
-		Where("project_members.user_id = ? AND pm2.role = ?", userID, "student").
-		Count(&overview.TotalStudents); err != nil {
-		return nil, fmt.Errorf("failed to count student classmates: %w", err)
-	}
-
-	// 计算完成率
-	overview.CompletionRate = s.calculateStudentCompletionRate(userID)
+	overview.JoinedProjects = int(joinedProjects)
+	overview.ActiveAssignments = int(activeAssignments)
+	overview.CompletedAssignments = int(completedAssignments)
+	overview.PendingAssignments = pendingAssignments
+	overview.TotalSubmissions = int(totalSubmissions)
+	overview.AverageScore = scoreStats.AvgScore
+	overview.HighestScore = scoreStats.MaxScore
+	overview.LowestScore = scoreStats.MinScore
 
 	return &overview, nil
 }

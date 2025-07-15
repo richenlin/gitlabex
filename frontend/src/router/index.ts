@@ -24,20 +24,26 @@ const router = createRouter({
       meta: { title: 'GitLabEx - 教育协作平台', requiresAuth: true }
     },
     
-    // 班级管理（仅老师可见）
+    // 权限管理（仅管理员可见）
     {
-      path: '/classes',
-      name: 'classes',
-      component: () => import('../views/ClassesView.vue'),
-      meta: { title: '班级管理', requiresAuth: true, requiresRole: 'teacher' }
+      path: '/permissions',
+      name: 'permissions',
+      component: () => import('../views/PermissionsView.vue'),
+      meta: { title: '权限管理', requiresAuth: true, requiresRole: 'admin' }
     },
     {
-      path: '/classes/:id',
-      name: 'class-detail',
-      component: () => import('../views/ClassDetailView.vue'),
-      meta: { title: '班级详情', requiresAuth: true, requiresRole: 'teacher' }
+      path: '/permissions/users',
+      name: 'permission-users',
+      component: () => import('../views/PermissionUsersView.vue'),
+      meta: { title: '用户管理', requiresAuth: true, requiresRole: 'admin' }
     },
-    
+    {
+      path: '/permissions/groups',
+      name: 'permission-groups',
+      component: () => import('../views/PermissionGroupsView.vue'),
+      meta: { title: '分组管理', requiresAuth: true, requiresRole: 'admin' }
+    },
+
     // 课题管理（老师和学生可见）
     {
       path: '/projects',

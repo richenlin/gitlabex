@@ -400,9 +400,19 @@ export class ApiService {
     return response.data
   }
 
-  static async getProjects(): Promise<any> {
-    const response = await api.get('/api/projects')
-    return response.data
+  static async getProjects(params?: { 
+    class_id?: number; 
+    page?: number; 
+    page_size?: number; 
+    status?: string; 
+    type?: string 
+  }): Promise<any> {
+    const response = await api.get('/api/projects', { params })
+    // 响应拦截器返回response.data，如果后端返回{data: [...], total: number}
+    // 那么这里的response就是{data: [...], total: number}
+    // 如果后端直接返回数组，那么这里的response就是数组
+    console.log('ApiService.getProjects response:', response)
+    return response
   }
 
   static async getProject(id: number): Promise<any> {
@@ -410,13 +420,40 @@ export class ApiService {
     return response.data
   }
 
-  static async createProject(project: any): Promise<any> {
-    const response = await api.post('/api/projects', project)
+  static async createProject(data: {
+    name: string;
+    description: string;
+    type: string;
+    class_id?: number;
+    start_date: string;
+    end_date: string;
+    max_members?: number;
+    wiki_enabled?: boolean;
+    issues_enabled?: boolean;
+    mr_enabled?: boolean;
+  }): Promise<any> {
+    const response = await api.post('/api/projects', data)
     return response.data
   }
 
-  static async updateProject(id: number, project: any): Promise<any> {
-    const response = await api.put(`/api/projects/${id}`, project)
+  static async updateProject(id: number, data: {
+    name?: string;
+    description?: string;
+    status?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<any> {
+    const response = await api.put(`/api/projects/${id}`, data)
+    return response.data
+  }
+
+  static async deleteProject(id: number): Promise<any> {
+    const response = await api.delete(`/api/projects/${id}`)
+    return response.data
+  }
+
+  static async joinProject(code: string): Promise<any> {
+    const response = await api.post('/api/projects/join', { code })
     return response.data
   }
 

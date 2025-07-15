@@ -41,11 +41,11 @@
     <!-- 快速操作 - 教育功能 -->
     <el-row :gutter="24" class="quick-actions-section">
       <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="action-card" shadow="hover" @click="$router.push('/classes')">
+        <el-card class="action-card" shadow="hover" @click="$router.push('/permissions')" v-if="isAdmin">
           <div class="action-content">
             <el-icon class="action-icon" size="32" color="#409EFF"><School /></el-icon>
-            <h4>班级管理</h4>
-            <p>创建和管理班级</p>
+            <h4>权限管理</h4>
+            <p>管理用户权限和角色</p>
           </div>
         </el-card>
       </el-col>
@@ -82,7 +82,7 @@
     <el-row :gutter="24" class="stats-section">
       <el-col :xs="24" :sm="12" :lg="6">
         <el-card>
-          <el-statistic title="我的班级" :value="educationStats.classesCount" />
+          <el-statistic title="我的课题" :value="educationStats.activeProjectsCount" />
           <template #suffix>
             <el-icon><School /></el-icon>
           </template>
@@ -146,9 +146,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiService, type User } from '@/services/api'
+import { useAuthStore } from '@/stores/auth'
 import { 
   Refresh, 
   User as UserIcon, 
@@ -162,8 +163,15 @@ import {
 } from '@element-plus/icons-vue'
 
 // 响应式数据
+const authStore = useAuthStore()
 const userLoading = ref(false)
 const currentUser = ref<User | null>(null)
+
+// 计算属性
+const isAdmin = computed(() => {
+  const userRole = authStore.userRole
+  return userRole === 1 // 1: 管理员
+})
 const stats = ref({
   documentsCount: 0,
   activeUsers: 0,
@@ -171,7 +179,6 @@ const stats = ref({
 })
 
 const educationStats = ref({
-  classesCount: 0,
   activeProjectsCount: 0,
   pendingAssignmentsCount: 0,
   documentsCount: 0
@@ -233,7 +240,6 @@ const loadEducationStats = async () => {
     if (response.ok) {
       const data = await response.json()
       educationStats.value = data.data || {
-        classesCount: 0,
         activeProjectsCount: 0,
         pendingAssignmentsCount: 0,
         documentsCount: 0
@@ -241,7 +247,6 @@ const loadEducationStats = async () => {
     } else {
       // 使用模拟数据
       educationStats.value = {
-        classesCount: Math.floor(Math.random() * 5) + 1,
         activeProjectsCount: Math.floor(Math.random() * 8) + 2,
         pendingAssignmentsCount: Math.floor(Math.random() * 10) + 1,
         documentsCount: Math.floor(Math.random() * 15) + 3
@@ -251,7 +256,6 @@ const loadEducationStats = async () => {
     console.error('获取教育统计数据失败:', error)
     // 使用模拟数据
     educationStats.value = {
-      classesCount: Math.floor(Math.random() * 5) + 1,
       activeProjectsCount: Math.floor(Math.random() * 8) + 2,
       pendingAssignmentsCount: Math.floor(Math.random() * 10) + 1,
       documentsCount: Math.floor(Math.random() * 15) + 3

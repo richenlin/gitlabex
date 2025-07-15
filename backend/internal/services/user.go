@@ -13,6 +13,7 @@ import (
 type UserService struct {
 	db                *gorm.DB
 	permissionService *PermissionService
+	gitlabService     *GitLabService
 }
 
 // NewUserService 创建用户管理服务

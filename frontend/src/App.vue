@@ -42,6 +42,12 @@ const isTeacherOrAdmin = computed(() => {
   return userRole === 1 || userRole === 2 // 1: 管理员, 2: 教师
 })
 
+// 是否为管理员
+const isAdmin = computed(() => {
+  const userRole = authStore.userRole
+  return userRole === 1 // 1: 管理员
+})
+
 // 生命周期
 onMounted(() => {
   // 路由守卫已经处理了用户认证，这里不需要再次加载
@@ -176,10 +182,6 @@ const logout = async () => {
             <el-icon><DataBoard /></el-icon>
             <span>首页</span>
           </el-menu-item>
-          <el-menu-item index="/classes" v-if="isTeacherOrAdmin">
-            <el-icon><School /></el-icon>
-            <span>班级管理</span>
-          </el-menu-item>
           <el-menu-item index="/projects">
             <el-icon><FolderOpened /></el-icon>
             <span>课题管理</span>
@@ -191,6 +193,10 @@ const logout = async () => {
           <el-menu-item index="/analytics">
             <el-icon><TrendCharts /></el-icon>
             <span>统计分析</span>
+          </el-menu-item>
+          <el-menu-item v-if="isAdmin" index="/permissions">
+            <el-icon><UserIcon /></el-icon>
+            <span>权限管理</span>
           </el-menu-item>
           <el-menu-item index="/documents">
             <el-icon><Document /></el-icon>

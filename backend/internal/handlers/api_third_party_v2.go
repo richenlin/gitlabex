@@ -15,7 +15,6 @@ import (
 type ThirdPartyAPIV2Handler struct {
 	// 现有Handler代理
 	userHandler         *UserHandler
-	classHandler        *ClassHandler
 	projectHandler      *ProjectHandler
 	assignmentHandler   *AssignmentHandler
 	notificationHandler *NotificationHandler
@@ -30,7 +29,6 @@ type ThirdPartyAPIV2Handler struct {
 // NewThirdPartyAPIV2Handler 创建第三方API处理器V2
 func NewThirdPartyAPIV2Handler(
 	userHandler *UserHandler,
-	classHandler *ClassHandler,
 	projectHandler *ProjectHandler,
 	assignmentHandler *AssignmentHandler,
 	notificationHandler *NotificationHandler,
@@ -39,7 +37,6 @@ func NewThirdPartyAPIV2Handler(
 ) *ThirdPartyAPIV2Handler {
 	return &ThirdPartyAPIV2Handler{
 		userHandler:         userHandler,
-		classHandler:        classHandler,
 		projectHandler:      projectHandler,
 		assignmentHandler:   assignmentHandler,
 		notificationHandler: notificationHandler,
@@ -84,19 +81,6 @@ func (h *ThirdPartyAPIV2Handler) RegisterRoutes(router *gin.RouterGroup) {
 			repos.GET("/:id/files", h.GetRepositoryFiles)          // 获取文件列表
 			repos.GET("/:id/files/*filepath", h.GetFileContent)    // 获取文件内容
 			repos.PUT("/:id/files/*filepath", h.UpdateFileContent) // 更新文件内容
-		}
-
-		// 班级管理API - 代理到现有班级API
-		groups := api.Group("/groups")
-		{
-			groups.POST("", h.proxyToClassCreate)                              // 代理到班级创建
-			groups.GET("", h.proxyToClassList)                                 // 代理到班级列表
-			groups.GET("/:id", h.proxyToClassDetail)                           // 代理到班级详情
-			groups.PUT("/:id", h.proxyToClassUpdate)                           // 代理到班级更新
-			groups.DELETE("/:id", h.proxyToClassDelete)                        // 代理到班级删除
-			groups.POST("/:id/members", h.proxyToClassAddMember)               // 代理到添加成员
-			groups.DELETE("/:id/members/:user_id", h.proxyToClassRemoveMember) // 代理到移除成员
-			groups.GET("/:id/members", h.proxyToClassGetMembers)               // 代理到获取成员
 		}
 
 		// 用户管理API - 代理到现有用户API + 扩展
@@ -262,39 +246,6 @@ func (h *ThirdPartyAPIV2Handler) proxyToProjectUpdate(c *gin.Context) {
 
 func (h *ThirdPartyAPIV2Handler) proxyToProjectDelete(c *gin.Context) {
 	h.projectHandler.DeleteProject(c)
-}
-
-// 班级API代理
-func (h *ThirdPartyAPIV2Handler) proxyToClassCreate(c *gin.Context) {
-	h.classHandler.CreateClass(c)
-}
-
-func (h *ThirdPartyAPIV2Handler) proxyToClassList(c *gin.Context) {
-	h.classHandler.ListClasses(c)
-}
-
-func (h *ThirdPartyAPIV2Handler) proxyToClassDetail(c *gin.Context) {
-	h.classHandler.GetClass(c)
-}
-
-func (h *ThirdPartyAPIV2Handler) proxyToClassUpdate(c *gin.Context) {
-	h.classHandler.UpdateClass(c)
-}
-
-func (h *ThirdPartyAPIV2Handler) proxyToClassDelete(c *gin.Context) {
-	h.classHandler.DeleteClass(c)
-}
-
-func (h *ThirdPartyAPIV2Handler) proxyToClassAddMember(c *gin.Context) {
-	h.classHandler.AddMember(c)
-}
-
-func (h *ThirdPartyAPIV2Handler) proxyToClassRemoveMember(c *gin.Context) {
-	h.classHandler.RemoveMember(c)
-}
-
-func (h *ThirdPartyAPIV2Handler) proxyToClassGetMembers(c *gin.Context) {
-	h.classHandler.GetMembers(c)
 }
 
 // 用户API代理

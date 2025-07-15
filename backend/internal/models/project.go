@@ -11,7 +11,6 @@ type Project struct {
 	Description          string    `json:"description"`
 	Code                 string    `gorm:"unique;not null" json:"code"`    // 课题代码，用于学生加入
 	TeacherID            uint      `gorm:"not null" json:"teacher_id"`     // 创建课题的老师ID
-	ClassID              uint      `json:"class_id"`                       // 所属班级ID（可选）
 	Status               string    `gorm:"default:'active'" json:"status"` // active, completed, archived
 	Type                 string    `gorm:"default:'practice'" json:"type"` // graduation, research, competition, practice
 	StartDate            time.Time `json:"start_date"`
@@ -49,7 +48,6 @@ type Project struct {
 
 	// 关联关系 - 仅用于查询填充，无强制外键约束
 	Teacher     User            `gorm:"foreignKey:TeacherID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"teacher,omitempty"`
-	Class       Class           `gorm:"foreignKey:ClassID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"class,omitempty"`
 	Members     []ProjectMember `gorm:"foreignKey:ProjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"members,omitempty"`
 	Students    []User          `gorm:"many2many:project_members;" json:"students,omitempty"`
 	Assignments []Assignment    `gorm:"foreignKey:ProjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"assignments,omitempty"`

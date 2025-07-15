@@ -160,16 +160,24 @@ func (s *PermissionService) CanAccessProject(user *models.User, projectID uint, 
 		return false
 	}
 
-	// 老师可以访问自己创建的课题
-	if user.Role == RoleTeacher && project.TeacherID == user.ID {
-		return true
+	// 教师角色权限检查
+	if user.Role == RoleTeacher {
+		// 只有课题创建者可以进行管理操作
+		if project.TeacherID == user.ID {
+			return true
+		}
+		// 其他教师只能读取
+		if permission == PermissionRead {
+			return true
+		}
+		return false
 	}
 
 	// 学生只能查看自己参加的课题
 	if user.Role == RoleStudent && permission == PermissionRead {
 		var member models.ProjectMember
-		err := s.db.Where("project_id = ? AND student_id = ? AND status = 'active'",
-			projectID, user.ID).First(&member).Error
+		err := s.db.Where("project_id = ? AND user_id = ? AND is_active = ?",
+			projectID, user.ID, true).First(&member).Error
 		return err == nil
 	}
 

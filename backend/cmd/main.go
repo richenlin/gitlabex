@@ -62,7 +62,6 @@ func main() {
 	if err != nil {
 		log.Printf("Failed to initialize GitLab service: %v", err)
 	}
-	classService := services.NewClassService(db, permissionService, gitlabService)
 	projectService := services.NewProjectService(db, permissionService, gitlabService)
 	assignmentService := services.NewAssignmentService(db, permissionService, gitlabService, projectService)
 	notificationService := services.NewNotificationService(db, permissionService, gitlabService)
@@ -74,7 +73,6 @@ func main() {
 	// 初始化处理器
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService, userService)
 	userHandler := handlers.NewUserHandler(userService)
-	classHandler := handlers.NewClassHandler(classService, userService)
 	projectHandler := handlers.NewProjectHandler(projectService, permissionService)
 	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, userService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, userService)
@@ -84,7 +82,7 @@ func main() {
 
 	// 初始化重构后的第三方API Handler
 	thirdPartyHandler := handlers.NewThirdPartyAPIV2Handler(
-		userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler,
+		userHandler, projectHandler, assignmentHandler, notificationHandler,
 		oauthMiddleware, gitlabService)
 	educationHandler := handlers.NewEducationHandler(educationService, userService)
 	wikiHandler := handlers.NewWikiHandler(gitlabService, onlyofficeService, documentService)
@@ -93,7 +91,7 @@ func main() {
 	gin.SetMode(cfg.Server.Mode)
 
 	// 初始化路由
-	router := setupRoutes(authService, permissionService, analyticsHandler, userHandler, classHandler, projectHandler, assignmentHandler, notificationHandler, discussionHandler, thirdPartyHandler, educationHandler, wikiHandler)
+	router := setupRoutes(authService, permissionService, analyticsHandler, userHandler, projectHandler, assignmentHandler, notificationHandler, discussionHandler, thirdPartyHandler, educationHandler, wikiHandler)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -143,12 +141,8 @@ func initDatabase(cfg *config.Config) (*gorm.DB, error) {
 // autoMigrate 自动迁移数据库表
 func autoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
-		// 用户和权限相关
+		// 用户管理相关
 		&models.User{},
-
-		// 班级管理相关
-		&models.Class{},
-		&models.ClassMember{},
 
 		// 课题管理相关
 		&models.Project{},
@@ -176,7 +170,7 @@ func autoMigrate(db *gorm.DB) error {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, permissionService *services.PermissionService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, discussionHandler *handlers.DiscussionHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
+func setupRoutes(authService *services.AuthService, permissionService *services.PermissionService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, projectHandler *handlers.ProjectHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, discussionHandler *handlers.DiscussionHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
 	router := gin.New()
 
 	// 中间件
@@ -256,9 +250,6 @@ func setupRoutes(authService *services.AuthService, permissionService *services.
 			users.GET("/dashboard", userHandler.GetUserDashboard)
 			users.POST("/sync/:gitlab_id", userHandler.SyncUserFromGitLab)
 		}
-
-		// 班级管理路由
-		classHandler.RegisterRoutes(api)
 
 		// 课题管理路由（需要认证）
 		projectsAuth := api.Group("")

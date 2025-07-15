@@ -166,15 +166,6 @@ const getUserRoleText = (role: number) => {
 
     <!-- 快速操作 - 教育功能 -->
     <el-row :gutter="24" class="quick-actions-section">
-      <el-col :xs="24" :sm="12" :md="6" v-if="isTeacherOrAdmin">
-        <el-card class="action-card" shadow="hover" @click="$router.push('/classes')">
-          <div class="action-content">
-            <el-icon class="action-icon" size="32" color="#409EFF"><School /></el-icon>
-            <h4>班级管理</h4>
-            <p>创建和管理班级</p>
-          </div>
-        </el-card>
-      </el-col>
       <el-col :xs="24" :sm="12" :md="6">
         <el-card class="action-card" shadow="hover" @click="$router.push('/projects')">
           <div class="action-content">

@@ -136,8 +136,8 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 			pageSize = 20
 		}
 
-		fmt.Printf("DEBUG: Calling GetAllProjects with page=%d, pageSize=%d\n", page, pageSize)
-		projects, total, err := h.projectService.GetAllProjects(page, pageSize)
+		fmt.Printf("DEBUG: Calling GetAllProjectsSimple with page=%d, pageSize=%d\n", page, pageSize)
+		projects, total, err := h.projectService.GetAllProjectsSimple(page, pageSize)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to get projects",

@@ -35,7 +35,7 @@ GitLabEx 是一个基于 GitLab 的教育协作平台，专为教学场景设计
 ├─────────────────────────────────────────────────────────────────┤
 │                          前端层 (Vue 3)                          │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│  │   仪表板     │ │   班级管理   │ │   课题管理   │ │   作业管理   │ │
+│  │   仪表板     │ │   用户管理   │ │   课题管理   │ │   作业管理   │ │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
 │  │   文档管理   │ │   话题讨论   │ │   统计分析   │ │   通知管理   │ │
@@ -43,13 +43,13 @@ GitLabEx 是一个基于 GitLab 的教育协作平台，专为教学场景设计
 ├─────────────────────────────────────────────────────────────────┤
 │                        后端服务层 (Go)                           │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│  │  认证服务    │ │  用户服务    │ │  班级服务    │ │  课题服务    │ │
+│  │  认证服务    │ │  用户服务    │ │  课题服务    │ │  作业服务    │ │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│  │  作业服务    │ │  讨论服务    │ │  文档服务    │ │  通知服务    │ │
+│  │  讨论服务    │ │  文档服务    │ │  通知服务    │ │  统计服务    │ │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│  │  权限服务    │ │  分析服务    │ │ 第三方API   │ │  GitLab服务 │ │
+│  │  分析服务    │ │ 第三方API   │ │  GitLab服务 │ │    (空位)    │ │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
 │                        数据存储层                                │
@@ -111,27 +111,6 @@ sequenceDiagram
     F->>F: 存储Token，登录成功
 ```
 
-### 班级管理流程
-
-```mermaid
-sequenceDiagram
-    participant T as 教师
-    participant S as 系统
-    participant G as GitLab
-    
-    T->>S: 创建班级
-    S->>G: 创建GitLab Group
-    G->>S: 返回Group信息
-    S->>S: 保存班级记录
-    S->>T: 返回班级创建成功
-    
-    T->>S: 添加学生到班级
-    S->>G: 添加用户到GitLab Group
-    G->>S: 确认添加成功
-    S->>S: 更新班级成员记录
-    S->>T: 返回添加成功
-```
-
 ### 课题管理流程
 
 ```mermaid
@@ -145,14 +124,34 @@ sequenceDiagram
     S->>G: 创建GitLab Project
     G->>S: 返回Project信息
     S->>S: 保存课题记录
-    S->>T: 返回课题创建成功
+    S->>T: 返回课题创建成功及课题代码
     
-    T->>S: 邀请学生参与课题
-    S->>G: 添加学生到Project
+    St->>S: 使用课题代码加入课题
+    S->>S: 验证课题代码和成员限制
+    S->>G: 添加学生到GitLab Project
     G->>S: 确认添加成功
     S->>G: 为学生创建个人分支
     G->>S: 返回分支信息
-    S->>St: 发送参与通知
+    S->>St: 返回加入成功通知
+```
+
+### 权限管理流程
+
+```mermaid
+sequenceDiagram
+    participant A as 管理员
+    participant G as GitLab
+    participant S as 系统
+    participant U as 用户
+    
+    A->>G: 在GitLab中管理用户权限
+    G->>G: 设置用户角色和组权限
+    
+    U->>S: 用户登录系统
+    S->>G: 查询用户GitLab权限
+    G->>S: 返回用户权限信息
+    S->>S: 映射为教育平台角色
+    S->>U: 授权访问相应功能
 ```
 
 ### 作业提交流程
@@ -200,37 +199,41 @@ const (
 ### 权限控制规则
 
 #### 1. 系统级权限
-- **管理员（Admin）**: 系统管理员，拥有所有权限
-- **教师（Teacher）**: 可以创建和管理班级、课题、作业
-- **学生（Student）**: 可以参与班级和课题，提交作业
+- **管理员（Admin）**: 系统管理员，拥有所有权限，可以管理用户组和权限分配
+- **教师（Teacher）**: 可以创建和管理课题、作业，查看所有学生提交
+- **学生（Student）**: 可以参与课题，提交作业，查看个人统计
 - **访客（Guest）**: 只读权限，无法进入系统
 
-#### 2. 班级级权限
-- **班级创建者**: 完全管理权限
-- **班级教师**: 管理班级成员和课题
-- **班级学生**: 参与班级活动和课题
+#### 2. GitLab权限映射
+- **GitLab Owner**: 自动映射为系统管理员
+- **GitLab Maintainer**: 自动映射为教师角色
+- **GitLab Developer**: 自动映射为助教角色（可选）
+- **GitLab Reporter**: 自动映射为学生角色
 
 #### 3. 课题级权限
 - **课题创建者**: 完全管理权限，包括添加学生、管理作业、评审提交
-- **课题教师**: 管理课题进度和作业评审
-- **课题学生**: 参与课题开发、提交作业、在个人分支进行开发
+- **课题参与学生**: 参与课题开发、提交作业、在个人分支进行开发
 
 #### 4. 资源级权限
 - **文档权限**: 基于GitLab Wiki权限
 - **代码权限**: 基于GitLab Project权限
 - **讨论权限**: 基于GitLab Issues权限
+- **作业权限**: 教师管理所有作业，学生只能访问自己的作业
 
 ### 权限检查机制
 
 ```go
-// 权限检查接口
+// 权限检查接口 - 基于GitLab权限
 type PermissionChecker interface {
-    CanAccessClass(userID, classID uint, permission string) bool
+    GetUserRole(userID uint, resourceType string, resourceID uint) (EducationRole, error)
     CanAccessProject(userID, projectID uint, permission string) bool
     CanAccessAssignment(userID, assignmentID uint, permission string) bool
     CanCreateDiscussion(userID, projectID uint) bool
     CanEditDiscussion(userID, discussionID uint) bool
     CanDeleteDiscussion(userID, discussionID uint) bool
+    IsTeacher(userID uint) bool
+    IsAdmin(userID uint) bool
+    IsProjectOwner(userID, projectID uint) bool
 }
 ```
 
@@ -269,22 +272,22 @@ PUT  /api/users/current          # 更新当前用户信息
 POST /api/users/sync/{gitlab_id} # 同步GitLab用户信息
 ```
 
-### 2. 班级管理模块
+### 2. 用户管理模块
 
 #### 功能特性
-- **GitLab Group映射**: 班级对应GitLab Group
-- **成员管理**: 自动管理班级成员权限
-- **加入码机制**: 学生通过加入码加入班级
-- **权限同步**: 班级权限与GitLab Group权限同步
-- **统计分析**: 班级成员学习进度统计
+- **GitLab OAuth认证**: 完全基于GitLab的用户认证和授权
+- **角色自动映射**: GitLab权限自动映射到教育平台角色（管理员、教师、学生）
+- **权限直接同步**: 权限控制完全依赖GitLab的用户和组权限
+- **用户信息同步**: 实时同步GitLab用户信息和权限状态
+- **简化权限管理**: 管理员通过GitLab界面管理用户权限
 
 #### 核心API
 ```
-POST /api/classes                # 创建班级
-GET  /api/classes                # 获取班级列表
-PUT  /api/classes/{id}           # 更新班级信息
-POST /api/classes/join           # 学生加入班级
-POST /api/classes/{id}/members   # 添加班级成员
+GET  /api/users/current          # 获取当前用户信息
+GET  /api/users/active           # 获取活跃用户列表
+PUT  /api/users/current          # 更新当前用户信息
+POST /api/users/sync/{gitlab_id} # 同步GitLab用户信息
+GET  /api/permissions/check/{resource}/{action} # 检查权限
 ```
 
 ### 3. 课题管理模块
@@ -295,14 +298,16 @@ POST /api/classes/{id}/members   # 添加班级成员
 - **学生分支管理**: 学生参与时自动创建个人分支
 - **权限同步**: 课题权限与GitLab Project权限完全同步
 - **进度跟踪**: 基于学生作业提交并通过教师评审的比例计算完成进度
-- **成员管理**: 支持教师和学生两种角色，教师负责管理和评审，学生负责开发和提交
+- **课题代码加入**: 学生通过课题代码自主加入课题
+- **教师直接管理**: 教师创建课题并直接管理参与学生
 
 #### 核心API
 ```
 POST /api/projects               # 创建课题
 GET  /api/projects               # 获取课题列表
 PUT  /api/projects/{id}          # 更新课题信息
-POST /api/projects/{id}/members  # 添加课题成员
+POST /api/projects/join          # 学生加入课题（使用课题代码）
+DELETE /api/projects/{id}/members/{user_id} # 移除课题成员
 GET  /api/projects/{id}/stats    # 获取课题统计
 ```
 
@@ -312,16 +317,19 @@ GET  /api/projects/{id}/stats    # 获取课题统计
 - **GitLab Issues映射**: 作业对应GitLab Issues
 - **分支作业提交**: 学生在个人分支提交作业
 - **版本控制**: 利用Git实现作业版本管理
-- **自动通知**: 作业提交和评审自动通知
-- **批量评审**: 教师批量评审学生作业
+- **教师权限**: 教师可以管理自己创建的所有课题的作业
+- **学生权限**: 学生只能提交作业和查看个人作业状态
+- **评审报告**: 教师可以评审作业并生成详细报告
+- **状态管理**: Git提交后自动更新作业状态
 
 #### 核心API
 ```
-POST /api/assignments            # 创建作业
-GET  /api/assignments            # 获取作业列表
-POST /api/assignments/{id}/submit # 提交作业
-GET  /api/assignments/{id}/submissions # 获取作业提交
-PUT  /api/assignments/{id}/review # 评审作业
+POST /api/assignments            # 创建作业（教师）
+GET  /api/assignments            # 获取作业列表（按权限过滤）
+POST /api/assignments/{id}/submit # 提交作业（学生）
+GET  /api/assignments/{id}/submissions # 获取作业提交（教师）
+PUT  /api/assignments/{id}/review # 评审作业（教师）
+GET  /api/assignments/my         # 获取我的作业（学生）
 ```
 
 ### 5. 话题讨论模块
@@ -381,18 +389,21 @@ DELETE /api/notifications/{id}   # 删除通知
 ### 8. 统计分析模块
 
 #### 功能特性
-- **多维度统计**: 用户、班级、课题、作业多维度统计
+- **教师统计视图**: 教师可以查看自己创建的所有课题相关数据统计
+- **学生统计视图**: 学生可以查看自己的作业提交和评审相关数据统计
 - **实时数据**: 基于GitLab API的实时数据统计
 - **可视化图表**: 丰富的数据可视化展示
 - **导出功能**: 支持统计数据导出
-- **权限控制**: 基于角色的统计数据访问
+- **权限控制**: 严格的基于角色和所有权的统计数据访问
 
 #### 核心API
 ```
-GET  /api/analytics/overview     # 获取统计概览
-GET  /api/analytics/project-stats # 获取项目统计
-GET  /api/analytics/student-stats # 获取学生统计
-GET  /api/analytics/assignment-stats # 获取作业统计
+GET  /api/analytics/teacher/overview  # 获取教师统计概览
+GET  /api/analytics/teacher/projects  # 获取教师课题统计
+GET  /api/analytics/teacher/assignments # 获取教师作业统计
+GET  /api/analytics/student/overview  # 获取学生统计概览
+GET  /api/analytics/student/assignments # 获取学生作业统计
+GET  /api/analytics/student/progress  # 获取学生学习进度
 ```
 
 ### 9. 互动开发模块

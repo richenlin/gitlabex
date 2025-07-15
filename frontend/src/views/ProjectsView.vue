@@ -6,7 +6,7 @@
         <p>创建和管理研究课题、项目</p>
       </div>
       <div class="header-actions">
-        <el-button type="primary" @click="showCreateDialog = true">
+        <el-button type="primary" @click="showCreateDialog = true" v-if="canCreateProject">
           <el-icon><Plus /></el-icon>
           创建课题
         </el-button>
@@ -50,6 +50,12 @@
 
     <!-- 课题列表 -->
     <div class="projects-grid">
+      <div v-if="projects.length === 0" class="loading-state">
+        <el-empty description="暂无课题数据">
+          <el-button type="primary" @click="loadProjects">重新加载</el-button>
+        </el-empty>
+      </div>
+      
       <el-card
         v-for="project in filteredProjects"
         :key="project.id"
@@ -71,13 +77,13 @@
               </div>
             </div>
             <div class="project-actions" @click.stop>
-              <el-dropdown @command="handleAction">
+              <el-dropdown @command="handleAction" trigger="click">
                 <el-button size="small" circle>
                   <el-icon><MoreFilled /></el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item :command="`edit:${project.id}`">
+                    <el-dropdown-item :command="`edit:${project.id}`" v-if="canEditProject">
                       编辑课题
                     </el-dropdown-item>
                     <el-dropdown-item :command="`members:${project.id}`">
@@ -89,7 +95,7 @@
                     <el-dropdown-item :command="`files:${project.id}`">
                       文档管理
                     </el-dropdown-item>
-                    <el-dropdown-item :command="`delete:${project.id}`" divided>
+                    <el-dropdown-item :command="`delete:${project.id}`" divided v-if="canDeleteProject">
                       删除课题
                     </el-dropdown-item>
                   </el-dropdown-menu>
@@ -98,86 +104,55 @@
             </div>
           </div>
         </template>
-        
+
         <div class="project-content">
           <p class="project-description">{{ project.description }}</p>
           
           <div class="project-meta">
-            <div class="meta-row">
-              <div class="meta-item">
-                <el-icon><User /></el-icon>
-                <span>导师：{{ project.supervisor }}</span>
-              </div>
-                             <div class="meta-item">
-                 <el-icon><UserFilled /></el-icon>
-                 <span>{{ project.memberCount }} 名成员</span>
-               </div>
+            <div class="meta-item">
+              <el-icon><User /></el-icon>
+              <span>指导老师：{{ project.supervisor }}</span>
             </div>
-            
-            <div class="meta-row">
-              <div class="meta-item">
-                <el-icon><Calendar /></el-icon>
-                <span>开始：{{ formatDate(project.startDate) }}</span>
-              </div>
-              <div class="meta-item">
-                <el-icon><Clock /></el-icon>
-                <span>预期：{{ formatDate(project.expectedEndDate) }}</span>
-              </div>
+            <div class="meta-item">
+              <el-icon><User /></el-icon>
+              <span>成员：{{ project.memberCount }}/{{ project.maxMembers }}</span>
+            </div>
+            <div class="meta-item">
+              <el-icon><FolderOpened /></el-icon>
+              <span>班级：{{ project.className || '未分配' }}</span>
             </div>
           </div>
 
-          <!-- 进度条 -->
           <div class="project-progress">
-            <div class="progress-info">
-              <span class="progress-label">作业完成进度</span>
-              <span class="progress-percentage">{{ project.completedAssignments }}/{{ project.totalAssignments }} ({{ project.progress }}%)</span>
+            <div class="progress-header">
+              <span>作业进度</span>
+              <span>{{ project.completedAssignments }}/{{ project.totalAssignments }}</span>
             </div>
             <el-progress 
               :percentage="project.progress" 
               :color="getProgressColor(project.progress)"
-              :stroke-width="8"
+              :show-text="false"
             />
-            <div class="progress-detail">
-              <small>基于学生作业提交并通过教师评审的比例</small>
-            </div>
           </div>
 
-          <!-- 里程碑 -->
-          <div class="project-milestones" v-if="project.milestones.length > 0">
-            <div class="milestones-title">近期里程碑</div>
-            <div class="milestones-list">
-              <div 
-                v-for="milestone in project.milestones.slice(0, 2)"
-                :key="milestone.id"
-                class="milestone-item"
-                :class="{ 'completed': milestone.completed }"
-              >
-                <el-icon>
-                  <Check v-if="milestone.completed" />
-                  <Clock v-else />
-                </el-icon>
-                <span>{{ milestone.title }}</span>
-                <span class="milestone-date">{{ formatDate(milestone.dueDate) }}</span>
-              </div>
+          <div class="project-dates">
+            <div class="date-item">
+              <el-icon><Calendar /></el-icon>
+              <span>开始：{{ formatDate(project.startDate) }}</span>
+            </div>
+            <div class="date-item">
+              <el-icon><Calendar /></el-icon>
+              <span>结束：{{ formatDate(project.expectedEndDate) }}</span>
             </div>
           </div>
         </div>
       </el-card>
-
-      <!-- 空状态 -->
-      <div v-if="filteredProjects.length === 0" class="empty-state">
-        <el-empty description="暂无课题">
-          <el-button type="primary" @click="showCreateDialog = true">
-            创建第一个课题
-          </el-button>
-        </el-empty>
-      </div>
     </div>
 
     <!-- 创建课题对话框 -->
     <el-dialog
       v-model="showCreateDialog"
-      title="创建课题"
+      :title="editingProject ? '编辑课题' : '创建课题'"
       width="900px"
       @close="resetForm"
     >
@@ -293,7 +268,7 @@
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
         <el-button type="primary" @click="createProject" :loading="creating">
-          创建课题
+          {{ editingProject ? '更新课题' : '创建课题' }}
         </el-button>
       </template>
     </el-dialog>
@@ -304,6 +279,7 @@
 import { ref, onMounted, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { useAuthStore } from '@/stores/auth'
 import { ApiService } from '@/services/api'
 import { 
   Plus, 
@@ -313,7 +289,8 @@ import {
   UserFilled,
   Calendar, 
   Clock,
-  Check
+  Check,
+  FolderOpened
 } from '@element-plus/icons-vue'
 
 // 类型定义
@@ -340,16 +317,28 @@ interface Project {
   expectedEndDate: string
   milestones: Milestone[]
   createdAt: string
+  classId: number
+  className: string
 }
 
 // 路由
 const router = useRouter()
+const authStore = useAuthStore()
 
 // 响应式数据
 const projects = ref<Project[]>([])
 const showCreateDialog = ref(false)
 const creating = ref(false)
 const createFormRef = ref<FormInstance>()
+const editingProject = ref<Project | null>(null)
+
+// 权限控制计算属性
+const isAdmin = computed(() => authStore.userRole === 1)
+const isTeacher = computed(() => authStore.userRole === 2)
+const isStudent = computed(() => authStore.userRole === 3)
+const canCreateProject = computed(() => isAdmin.value || isTeacher.value)
+const canEditProject = computed(() => isAdmin.value || isTeacher.value)
+const canDeleteProject = computed(() => isAdmin.value || isTeacher.value)
 
 // 筛选条件
 const filters = reactive({
@@ -395,186 +384,241 @@ const createRules: FormRules = {
   ]
 }
 
-// 计算属性 - 过滤后的课题列表
+// 筛选后的课题列表
 const filteredProjects = computed(() => {
+  console.log('=== filteredProjects 计算 ===')
+  console.log('原始 projects.value:', projects.value)
+  console.log('filters:', filters)
+  
   let result = projects.value
-
+  
+  // 状态筛选
   if (filters.status) {
-    result = result.filter(p => p.status === filters.status)
+    result = result.filter(project => project.status === filters.status)
+    console.log('状态筛选后:', result.length, '个项目')
   }
-
+  
+  // 类型筛选
   if (filters.type) {
-    result = result.filter(p => p.type === filters.type)
+    result = result.filter(project => project.type === filters.type)
+    console.log('类型筛选后:', result.length, '个项目')
   }
-
-  if (filters.search) {
+  
+  // 搜索筛选
+  if (filters.search.trim()) {
     const searchTerm = filters.search.toLowerCase()
-    result = result.filter(p => 
-      p.title.toLowerCase().includes(searchTerm) ||
-      p.description.toLowerCase().includes(searchTerm)
+    result = result.filter(project => 
+      project.title.toLowerCase().includes(searchTerm) ||
+      project.description.toLowerCase().includes(searchTerm) ||
+      project.supervisor.toLowerCase().includes(searchTerm)
     )
+    console.log('搜索筛选后:', result.length, '个项目')
   }
-
+  
+  console.log('最终筛选结果:', result)
+  console.log('=== filteredProjects 计算结束 ===')
   return result
 })
 
 // 组件挂载时加载数据
 onMounted(() => {
+  console.log('ProjectsView mounted, loading projects...')
+  console.log('Auth store:', authStore.user, 'Role:', authStore.userRole)
   loadProjects()
 })
 
 // 加载课题列表
 const loadProjects = async () => {
+  console.log('=== loadProjects 开始 ===')
+  console.log('当前用户角色:', authStore.userRole)
+  console.log('权限检查 - canCreateProject:', canCreateProject.value)
+  
   try {
+    console.log('调用 ApiService.getProjects()...')
     const response = await ApiService.getProjects()
-    projects.value = response.data || []
-  } catch (error) {
-    console.error('加载课题列表失败:', error)
-    // 使用模拟数据作为备用
-    projects.value = [
-    {
-      id: 1,
-      title: '基于Vue3的在线教育平台设计与实现',
-      description: '设计并实现一个现代化的在线教育平台，支持视频播放、在线测试、作业管理等功能',
-      type: 'graduation',
-      status: 'ongoing',
-      supervisor: '张教授',
-      memberCount: 3,
-      maxMembers: 4,
-      totalAssignments: 6,
-      completedAssignments: 4,
-      progress: Math.round((4 / 6) * 100), // 基于作业完成率计算
-      startDate: '2024-02-01',
-      expectedEndDate: '2024-06-01',
-      milestones: [
-        { id: 1, title: '需求分析完成', dueDate: '2024-02-15', completed: true },
-        { id: 2, title: '系统设计完成', dueDate: '2024-03-15', completed: true },
-        { id: 3, title: '前端开发完成', dueDate: '2024-04-15', completed: false }
-      ],
-      createdAt: '2024-01-15'
-    },
-    {
-      id: 2,
-      title: '机器学习在图像识别中的应用研究',
-      description: '研究深度学习算法在图像分类和目标检测中的应用，提出改进方案',
-      type: 'research',
-      status: 'ongoing',
-      supervisor: '李研究员',
-      memberCount: 2,
-      maxMembers: 3,
-      totalAssignments: 4,
-      completedAssignments: 2,
-      progress: Math.round((2 / 4) * 100), // 基于作业完成率计算
-      startDate: '2024-01-01',
-      expectedEndDate: '2024-12-01',
-      milestones: [
-        { id: 4, title: '文献调研完成', dueDate: '2024-01-31', completed: true },
-        { id: 5, title: '数据集准备完成', dueDate: '2024-02-28', completed: true },
-        { id: 6, title: '模型训练完成', dueDate: '2024-04-30', completed: false }
-      ],
-      createdAt: '2023-12-15'
-    },
-    {
-      id: 3,
-      title: '智能物流管理系统',
-      description: '为参加全国大学生软件设计大赛开发的智能物流管理系统，包含路径优化、库存管理等功能',
-      type: 'competition',
-      status: 'planning',
-      supervisor: '王老师',
-      memberCount: 4,
-      maxMembers: 5,
-      totalAssignments: 3,
-      completedAssignments: 1,
-      progress: Math.round((1 / 3) * 100), // 基于作业完成率计算
-      startDate: '2024-03-01',
-      expectedEndDate: '2024-08-01',
-      milestones: [
-        { id: 7, title: '团队组建完成', dueDate: '2024-03-10', completed: true },
-        { id: 8, title: '技术选型完成', dueDate: '2024-03-20', completed: false }
-      ],
-      createdAt: '2024-02-20'
+    console.log('=== API响应详情 ===')
+    console.log('Response type:', typeof response)
+    console.log('Response:', response)
+    console.log('Response.data type:', typeof response?.data)
+    console.log('Response.data:', response?.data)
+    
+    // 处理不同的响应格式
+    let projectsData: any[] = []
+    
+    if (Array.isArray(response)) {
+      // 后端直接返回数组
+      console.log('处理直接数组响应')
+      projectsData = response
+    } else if (response && response.data && Array.isArray(response.data)) {
+      // 后端返回包装对象 { data: [...], total: number }
+      console.log('处理包装对象响应')
+      projectsData = response.data
+    } else {
+      console.warn('未知的API响应格式:', response)
+      projectsData = []
     }
-  ]
+    
+    if (projectsData.length > 0) {
+      console.log('开始处理', projectsData.length, '个项目...')
+      
+      projects.value = projectsData.map((project: any, index: number) => {
+        console.log(`处理项目 ${index + 1}:`, project)
+        
+        const mappedProject = {
+          id: project.id,
+          title: project.name, // 后端字段是name，前端期望title
+          description: project.description,
+          type: project.type,
+          status: project.status,
+          supervisor: project.teacher_name || '未知导师',
+          memberCount: 1, // 简化数据中没有成员信息，使用默认值
+          maxMembers: project.max_members,
+          totalAssignments: project.total_assignments,
+          completedAssignments: project.completed_assignments,
+          progress: project.total_assignments > 0 
+            ? Math.round((project.completed_assignments / project.total_assignments) * 100) 
+            : 0,
+          startDate: project.start_date,
+          expectedEndDate: project.end_date,
+          milestones: [], // 简化数据中没有milestones，使用空数组
+          createdAt: project.created_at,
+          classId: project.class_id,
+          className: project.class_name
+        }
+        
+        console.log(`映射后的项目 ${index + 1}:`, mappedProject)
+        return mappedProject
+      })
+      
+      console.log('=== 最终项目列表 ===')
+      console.log('Projects count:', projects.value.length)
+      console.log('Projects:', projects.value)
+      
+      ElMessage.success(`成功加载 ${projects.value.length} 个课题`)
+    } else {
+      console.log('没有找到项目数据')
+      projects.value = []
+      ElMessage.warning('未获取到课题数据')
+    }
+  } catch (error) {
+    console.error('=== 加载课题列表失败 ===')
+    console.error('Error:', error)
+    console.error('Error details:', error instanceof Error ? error.message : 'Unknown error')
+    ElMessage.error('加载课题列表失败: ' + (error instanceof Error ? error.message : '未知错误'))
+    // 当API失败时，不使用模拟数据，让用户知道真实状态
+    projects.value = []
   }
+  
+  console.log('=== loadProjects 结束 ===')
+  console.log('Final projects.value:', projects.value)
 }
 
-// 创建课题
-const createProject = async () => {
-  if (!createFormRef.value) return
-
-  try {
-    const isValid = await createFormRef.value.validate()
-    if (!isValid) return
-
-    creating.value = true
-
-    // 模拟API调用
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    const newProject: Project = {
-      id: Date.now(),
-      title: createForm.title,
-      description: createForm.description,
-      type: createForm.type as any,
-      status: 'planning',
-      supervisor: createForm.supervisor,
-      memberCount: 1, // 创建者
-      maxMembers: createForm.maxMembers,
-      totalAssignments: 0,
-      completedAssignments: 0,
-      progress: 0,
-      startDate: createForm.startDate,
-      expectedEndDate: createForm.expectedEndDate,
-      milestones: [],
-      createdAt: new Date().toISOString().split('T')[0]
-    }
-
-    projects.value.unshift(newProject)
-    showCreateDialog.value = false
-    ElMessage.success('课题创建成功')
-  } catch (error) {
-    ElMessage.error('创建课题失败')
-  } finally {
-    creating.value = false
+// 课题操作处理
+const handleAction = (command: string) => {
+  const [action, projectId] = command.split(':')
+  const project = projects.value.find(p => p.id === parseInt(projectId))
+  
+  switch (action) {
+    case 'edit':
+      editProject(project)
+      break
+    case 'members':
+      manageMembers(project)
+      break
+    case 'progress':
+      manageProgress(project)
+      break
+    case 'files':
+      manageFiles(project)
+      break
+    case 'delete':
+      deleteProject(project)
+      break
+    default:
+      console.warn('未知操作:', action)
   }
 }
 
 // 查看课题详情
-const viewProject = (project: Project) => {
+const viewProject = (project: any) => {
   router.push(`/projects/${project.id}`)
 }
 
-// 处理操作
-const handleAction = (command: string) => {
-  const [action, id] = command.split(':')
-  const project = projects.value.find(p => p.id === Number(id))
-  
-  if (!project) return
-
-  switch (action) {
-    case 'edit':
-      ElMessage.info(`编辑课题: ${project.title}`)
-      break
-    case 'members':
-      ElMessage.info(`管理 ${project.title} 的成员`)
-      break
-    case 'progress':
-      ElMessage.info(`管理 ${project.title} 的进度`)
-      break
-    case 'files':
-      ElMessage.info(`管理 ${project.title} 的文档`)
-      break
-    case 'delete':
-      handleDelete(project)
-      break
+// 编辑课题
+const editProject = (project: any) => {
+  // 检查权限：只有管理员和教师可以编辑课题
+  if (!canEditProject.value) {
+    ElMessage.warning('您没有权限编辑课题')
+    return
   }
+  
+  // 检查是否是课题的创建者（教师只能编辑自己创建的课题）
+  if (isTeacher.value && project.supervisor !== authStore.user?.name) {
+    ElMessage.warning('您只能编辑自己创建的课题')
+    return
+  }
+  
+  // 填充编辑表单
+  Object.assign(createForm, {
+    title: project.title,
+    description: project.description,
+    type: project.type,
+    supervisor: project.supervisor,
+    maxMembers: project.maxMembers,
+    startDate: project.startDate,
+    expectedEndDate: project.expectedEndDate,
+    techRequirements: [],
+    evaluationCriteria: ''
+  })
+  
+  editingProject.value = project
+  showCreateDialog.value = true
+}
+
+// 管理成员
+const manageMembers = (project: any) => {
+  if (!canEditProject.value) {
+    ElMessage.warning('您没有权限管理课题成员')
+    return
+  }
+  
+  ElMessage.info('课题成员管理功能开发中')
+  // TODO: 实现成员管理功能
+}
+
+// 管理进度
+const manageProgress = (project: any) => {
+  ElMessage.info('进度管理功能开发中')
+  // TODO: 实现进度管理功能
+}
+
+// 管理文档
+const manageFiles = (project: any) => {
+  router.push(`/projects/${project.id}/documents`)
 }
 
 // 删除课题
-const handleDelete = async (project: Project) => {
+const deleteProject = async (project: any) => {
+  if (!canDeleteProject.value) {
+    ElMessage.warning('您没有权限删除课题')
+    return
+  }
+  
+  // 检查是否是课题的创建者（教师只能删除自己创建的课题）
+  if (isTeacher.value && project.supervisor !== authStore.user?.name) {
+    ElMessage.warning('您只能删除自己创建的课题')
+    return
+  }
+  
+  // 检查是否有作业，如果有则不能删除
+  if (project.totalAssignments > 0) {
+    ElMessage.warning('该课题已有作业，无法删除')
+    return
+  }
+  
   try {
     await ElMessageBox.confirm(
-      `确定要删除课题"${project.title}"吗？此操作不可撤销。`,
+      `确定要删除课题 "${project.title}" 吗？此操作无法撤销。`,
       '删除确认',
       {
         confirmButtonText: '确定删除',
@@ -583,14 +627,88 @@ const handleDelete = async (project: Project) => {
       }
     )
 
+    // 调用删除API
+    await ApiService.deleteProject(project.id)
+    
+    // 从列表中移除
     const index = projects.value.findIndex(p => p.id === project.id)
     if (index > -1) {
       projects.value.splice(index, 1)
       ElMessage.success('课题删除成功')
     }
-  } catch {
-    // 用户取消删除
+  } catch (error) {
+    if (error !== 'cancel') { // 不是用户取消操作
+      console.error('删除课题失败:', error)
+      ElMessage.error('删除课题失败')
+    }
   }
+}
+
+// 创建课题
+const createProject = async () => {
+  if (!createFormRef.value) return
+  
+  await createFormRef.value.validate(async (valid: boolean) => {
+    if (!valid) return
+    
+    creating.value = true
+    try {
+      if (editingProject.value) {
+        // 更新现有课题
+        const updateData = {
+          name: createForm.title,
+          description: createForm.description,
+          status: editingProject.value.status,
+          start_date: createForm.startDate,
+          end_date: createForm.expectedEndDate
+        }
+        
+        const updatedProject = await ApiService.updateProject(editingProject.value.id, updateData)
+        
+        // 更新列表中的项目
+        const index = projects.value.findIndex(p => p.id === editingProject.value!.id)
+        if (index > -1) {
+          projects.value[index] = {
+            ...projects.value[index],
+            title: updatedProject.name,
+            description: updatedProject.description,
+            startDate: updatedProject.start_date,
+            expectedEndDate: updatedProject.end_date
+          }
+        }
+        
+        ElMessage.success('课题更新成功')
+      } else {
+        // 创建新课题
+        const createData = {
+          name: createForm.title,
+          description: createForm.description,
+          type: createForm.type,
+          start_date: createForm.startDate,
+          end_date: createForm.expectedEndDate,
+          max_members: createForm.maxMembers,
+          wiki_enabled: true,
+          issues_enabled: true,
+          mr_enabled: true
+        }
+        
+        const newProject = await ApiService.createProject(createData)
+        
+        // 重新加载项目列表以获取最新数据
+        await loadProjects()
+        
+        ElMessage.success('课题创建成功')
+      }
+      
+      showCreateDialog.value = false
+      resetForm()
+    } catch (error) {
+      console.error('操作课题失败:', error)
+      ElMessage.error(editingProject.value ? '课题更新失败' : '课题创建失败')
+    } finally {
+      creating.value = false
+    }
+  })
 }
 
 // 搜索处理
@@ -614,6 +732,7 @@ const resetForm = () => {
     techRequirements: [],
     evaluationCriteria: ''
   })
+  editingProject.value = null
 }
 
 // 获取状态类型
@@ -762,12 +881,6 @@ const formatDate = (dateString: string) => {
   margin-bottom: 16px;
 }
 
-.meta-row {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 8px;
-}
-
 .meta-item {
   display: flex;
   align-items: center;
@@ -780,7 +893,7 @@ const formatDate = (dateString: string) => {
   margin-bottom: 16px;
 }
 
-.progress-info {
+.progress-header {
   display: flex;
   justify-content: space-between;
   margin-bottom: 6px;
@@ -842,7 +955,29 @@ const formatDate = (dateString: string) => {
   font-size: 12px;
 }
 
+.project-dates {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #ebeef5;
+  display: flex;
+  justify-content: space-between;
+}
+
+.date-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #909399;
+  font-size: 14px;
+}
+
 .empty-state {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.loading-state {
   grid-column: 1 / -1;
   text-align: center;
   padding: 60px 20px;
