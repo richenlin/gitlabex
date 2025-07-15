@@ -277,7 +277,7 @@ export class ApiService {
     return response.data
   }
 
-  static async getProjectStats(): Promise<any> {
+  static async getAnalyticsProjectStats(): Promise<any> {
     const response = await api.get('/api/analytics/project-stats')
     return response.data
   }
@@ -402,6 +402,46 @@ export class ApiService {
 
   static async getProjects(): Promise<any> {
     const response = await api.get('/api/projects')
+    return response.data
+  }
+
+  static async getProject(id: number): Promise<any> {
+    const response = await api.get(`/api/projects/${id}`)
+    return response.data
+  }
+
+  static async createProject(project: any): Promise<any> {
+    const response = await api.post('/api/projects', project)
+    return response.data
+  }
+
+  static async updateProject(id: number, project: any): Promise<any> {
+    const response = await api.put(`/api/projects/${id}`, project)
+    return response.data
+  }
+
+  static async getProjectMembers(id: number): Promise<any> {
+    const response = await api.get(`/api/projects/${id}/members`)
+    return response.data
+  }
+
+  static async addProjectMember(id: number, userId: number): Promise<any> {
+    const response = await api.post(`/api/projects/${id}/members`, { user_id: userId })
+    return response.data
+  }
+
+  static async removeProjectMember(id: number, userId: number): Promise<any> {
+    const response = await api.delete(`/api/projects/${id}/members/${userId}`)
+    return response.data
+  }
+
+  static async getProjectStats(id: number): Promise<any> {
+    const response = await api.get(`/api/projects/${id}/stats`)
+    return response.data
+  }
+
+  static async getProjectAssignments(id: number): Promise<any> {
+    const response = await api.get(`/api/projects/${id}/assignments`)
     return response.data
   }
 }

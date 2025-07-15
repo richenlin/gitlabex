@@ -291,9 +291,9 @@ func (s *AssignmentService) SubmitAssignment(studentID uint, assignmentID uint, 
 
 		// 如果需要自动创建MR
 		if req.AutoCreateMR || assignment.AutoCreateMR {
-			mrTitle := fmt.Sprintf("Assignment: %s - %s", assignment.Title, member.Student.Username)
+			mrTitle := fmt.Sprintf("Assignment: %s - %s", assignment.Title, member.User.Username)
 			mrDescription := fmt.Sprintf("Assignment submission for: %s\n\nSubmitted by: %s\nSubmission time: %s",
-				assignment.Title, member.Student.Username, time.Now().Format("2006-01-02 15:04:05"))
+				assignment.Title, member.User.Username, time.Now().Format("2006-01-02 15:04:05"))
 
 			mr, err := s.gitlabService.CreateMergeRequestForAssignment(
 				assignment.Project.GitLabProjectID,

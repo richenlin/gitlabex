@@ -129,14 +129,17 @@
           <!-- 进度条 -->
           <div class="project-progress">
             <div class="progress-info">
-              <span class="progress-label">完成进度</span>
-              <span class="progress-percentage">{{ project.progress }}%</span>
+              <span class="progress-label">作业完成进度</span>
+              <span class="progress-percentage">{{ project.completedAssignments }}/{{ project.totalAssignments }} ({{ project.progress }}%)</span>
             </div>
             <el-progress 
               :percentage="project.progress" 
               :color="getProgressColor(project.progress)"
               :stroke-width="8"
             />
+            <div class="progress-detail">
+              <small>基于学生作业提交并通过教师评审的比例</small>
+            </div>
           </div>
 
           <!-- 里程碑 -->
@@ -299,7 +302,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ApiService } from '@/services/api'
 import { 
   Plus, 
   Search, 
@@ -328,12 +333,17 @@ interface Project {
   supervisor: string
   memberCount: number
   maxMembers: number
+  totalAssignments: number
+  completedAssignments: number
   progress: number
   startDate: string
   expectedEndDate: string
   milestones: Milestone[]
   createdAt: string
 }
+
+// 路由
+const router = useRouter()
 
 // 响应式数据
 const projects = ref<Project[]>([])
@@ -414,9 +424,14 @@ onMounted(() => {
 })
 
 // 加载课题列表
-const loadProjects = () => {
-  // 模拟数据
-  projects.value = [
+const loadProjects = async () => {
+  try {
+    const response = await ApiService.getProjects()
+    projects.value = response.data || []
+  } catch (error) {
+    console.error('加载课题列表失败:', error)
+    // 使用模拟数据作为备用
+    projects.value = [
     {
       id: 1,
       title: '基于Vue3的在线教育平台设计与实现',
@@ -426,7 +441,9 @@ const loadProjects = () => {
       supervisor: '张教授',
       memberCount: 3,
       maxMembers: 4,
-      progress: 65,
+      totalAssignments: 6,
+      completedAssignments: 4,
+      progress: Math.round((4 / 6) * 100), // 基于作业完成率计算
       startDate: '2024-02-01',
       expectedEndDate: '2024-06-01',
       milestones: [
@@ -445,7 +462,9 @@ const loadProjects = () => {
       supervisor: '李研究员',
       memberCount: 2,
       maxMembers: 3,
-      progress: 45,
+      totalAssignments: 4,
+      completedAssignments: 2,
+      progress: Math.round((2 / 4) * 100), // 基于作业完成率计算
       startDate: '2024-01-01',
       expectedEndDate: '2024-12-01',
       milestones: [
@@ -464,7 +483,9 @@ const loadProjects = () => {
       supervisor: '王老师',
       memberCount: 4,
       maxMembers: 5,
-      progress: 20,
+      totalAssignments: 3,
+      completedAssignments: 1,
+      progress: Math.round((1 / 3) * 100), // 基于作业完成率计算
       startDate: '2024-03-01',
       expectedEndDate: '2024-08-01',
       milestones: [
@@ -474,6 +495,7 @@ const loadProjects = () => {
       createdAt: '2024-02-20'
     }
   ]
+  }
 }
 
 // 创建课题
@@ -498,6 +520,8 @@ const createProject = async () => {
       supervisor: createForm.supervisor,
       memberCount: 1, // 创建者
       maxMembers: createForm.maxMembers,
+      totalAssignments: 0,
+      completedAssignments: 0,
       progress: 0,
       startDate: createForm.startDate,
       expectedEndDate: createForm.expectedEndDate,
@@ -517,8 +541,7 @@ const createProject = async () => {
 
 // 查看课题详情
 const viewProject = (project: Project) => {
-  ElMessage.info(`查看课题: ${project.title}`)
-  // TODO: 路由到课题详情页
+  router.push(`/projects/${project.id}`)
 }
 
 // 处理操作
@@ -761,6 +784,16 @@ const formatDate = (dateString: string) => {
   display: flex;
   justify-content: space-between;
   margin-bottom: 6px;
+}
+
+.progress-detail {
+  margin-top: 4px;
+  text-align: center;
+}
+
+.progress-detail small {
+  color: #909399;
+  font-size: 12px;
 }
 
 .progress-label {

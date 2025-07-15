@@ -234,7 +234,7 @@ func (s *NotificationService) NotifyAssignmentCreated(assignment *models.Assignm
 	// 为每个成员创建通知
 	for _, member := range members {
 		notification := &models.Notification{
-			UserID:     member.StudentID,
+			UserID:     member.UserID,
 			Title:      "新作业发布",
 			Content:    fmt.Sprintf("课题中发布了新作业「%s」，截止时间：%s", assignment.Title, assignment.DueDate.Format("2006-01-02 15:04")),
 			Type:       models.NotificationTypeAssignmentCreated,
@@ -520,12 +520,12 @@ func (s *NotificationService) NotifyIssueCreated(projectID uint, userID uint, is
 	}
 
 	for _, member := range members {
-		if member.StudentID == userID {
+		if member.UserID == userID {
 			continue // 不通知自己
 		}
 
 		notification := &models.Notification{
-			UserID:     member.StudentID,
+			UserID:     member.UserID,
 			Title:      "新的讨论",
 			Content:    fmt.Sprintf("%s 在课题「%s」中创建了新的讨论：%s", user.Name, project.Name, issueTitle),
 			Type:       models.NotificationTypeIssueCreated,
@@ -534,7 +534,7 @@ func (s *NotificationService) NotifyIssueCreated(projectID uint, userID uint, is
 		}
 
 		if err := s.CreateNotification(notification); err != nil {
-			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.StudentID, err)
+			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.UserID, err)
 		}
 	}
 
@@ -578,12 +578,12 @@ func (s *NotificationService) NotifyWikiPageCreated(projectID uint, userID uint,
 	}
 
 	for _, member := range members {
-		if member.StudentID == userID {
+		if member.UserID == userID {
 			continue // 不通知自己
 		}
 
 		notification := &models.Notification{
-			UserID:     member.StudentID,
+			UserID:     member.UserID,
 			Title:      "新的Wiki页面",
 			Content:    fmt.Sprintf("%s 在课题「%s」中创建了新的Wiki页面：%s", user.Name, project.Name, wikiTitle),
 			Type:       models.NotificationTypeWikiCreated,
@@ -592,7 +592,7 @@ func (s *NotificationService) NotifyWikiPageCreated(projectID uint, userID uint,
 		}
 
 		if err := s.CreateNotification(notification); err != nil {
-			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.StudentID, err)
+			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.UserID, err)
 		}
 	}
 
@@ -616,10 +616,10 @@ func (s *NotificationService) NotifyAssignmentDue(assignmentID uint, hours int) 
 	// 检查哪些学生还没有提交作业
 	for _, member := range members {
 		var submission models.AssignmentSubmission
-		if err := s.db.Where("assignment_id = ? AND student_id = ?", assignmentID, member.StudentID).First(&submission).Error; err != nil {
+		if err := s.db.Where("assignment_id = ? AND student_id = ?", assignmentID, member.UserID).First(&submission).Error; err != nil {
 			// 学生还没有提交作业，发送通知
 			notification := &models.Notification{
-				UserID:     member.StudentID,
+				UserID:     member.UserID,
 				Title:      "作业即将到期",
 				Content:    fmt.Sprintf("作业「%s」将在 %d 小时后到期，请及时提交", assignment.Title, hours),
 				Type:       models.NotificationTypeAssignmentDue,
@@ -628,7 +628,7 @@ func (s *NotificationService) NotifyAssignmentDue(assignmentID uint, hours int) 
 			}
 
 			if err := s.CreateNotification(notification); err != nil {
-				fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.StudentID, err)
+				fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.UserID, err)
 			}
 		}
 	}

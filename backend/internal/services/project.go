@@ -32,9 +32,11 @@ func NewProjectService(db *gorm.DB, permissionService *PermissionService, gitlab
 type CreateProjectRequest struct {
 	Name        string    `json:"name" binding:"required"`
 	Description string    `json:"description"`
+	Type        string    `json:"type"` // graduation, research, competition, practice
 	ClassID     uint      `json:"class_id"`
 	StartDate   time.Time `json:"start_date"`
 	EndDate     time.Time `json:"end_date"`
+	MaxMembers  int       `json:"max_members"`
 	// GitLab相关字段
 	WikiEnabled   bool `json:"wiki_enabled"`
 	IssuesEnabled bool `json:"issues_enabled"`
@@ -186,6 +188,8 @@ func (s *ProjectService) GetAllProjects(page, pageSize int) ([]models.Project, i
 		return nil, 0, fmt.Errorf("failed to count projects: %w", err)
 	}
 
+	fmt.Printf("DEBUG: Total projects count: %d\n", total)
+
 	// 分页查询
 	offset := (page - 1) * pageSize
 	err := s.db.Preload("Teacher").
@@ -198,6 +202,8 @@ func (s *ProjectService) GetAllProjects(page, pageSize int) ([]models.Project, i
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get projects: %w", err)
 	}
+
+	fmt.Printf("DEBUG: Found %d projects\n", len(projects))
 
 	return projects, total, nil
 }
@@ -327,10 +333,10 @@ func (s *ProjectService) AddStudentToProject(projectID uint, studentID uint, rol
 	// 创建项目成员记录
 	member := &models.ProjectMember{
 		ProjectID: projectID,
-		StudentID: studentID,
+		UserID:    studentID,
 		Role:      role,
 		JoinedAt:  time.Now(),
-		Status:    "active",
+		IsActive:  true,
 		// GitLab相关字段
 		GitLabAccessLevel: int(accessLevel),
 		PersonalBranch:    branchName,
@@ -351,7 +357,7 @@ func (s *ProjectService) RemoveStudentFromProject(projectID uint, studentID uint
 		return fmt.Errorf("student not found in project: %w", err)
 	}
 
-	member.Status = "inactive"
+	member.IsActive = false
 	if err := s.db.Save(&member).Error; err != nil {
 		return fmt.Errorf("failed to remove student from project: %w", err)
 	}
@@ -375,18 +381,18 @@ func (s *ProjectService) UpdateStudentRole(projectID uint, studentID uint, role 
 }
 
 // GetProjectMembers 获取课题成员列表
-func (s *ProjectService) GetProjectMembers(projectID uint) ([]models.User, error) {
-	var students []models.User
-	err := s.db.Joins("JOIN project_members ON users.id = project_members.student_id").
-		Where("project_members.project_id = ? AND project_members.status = 'active'", projectID).
-		Order("project_members.joined_at DESC").
-		Find(&students).Error
+func (s *ProjectService) GetProjectMembers(projectID uint) ([]models.ProjectMember, error) {
+	var members []models.ProjectMember
+	err := s.db.Preload("User").
+		Where("project_id = ? AND is_active = ?", projectID, true).
+		Order("joined_at ASC").
+		Find(&members).Error
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project members: %w", err)
 	}
 
-	return students, nil
+	return members, nil
 }
 
 // GetProjectStats 获取课题统计信息
@@ -396,7 +402,7 @@ func (s *ProjectService) GetProjectStats(projectID uint) (*models.ProjectStats, 
 	// 成员数量
 	var memberCount int64
 	if err := s.db.Model(&models.ProjectMember{}).
-		Where("project_id = ? AND status = 'active'", projectID).
+		Where("project_id = ? AND is_active = ?", projectID, true).
 		Count(&memberCount).Error; err != nil {
 		return nil, fmt.Errorf("failed to count members: %w", err)
 	}
@@ -411,10 +417,11 @@ func (s *ProjectService) GetProjectStats(projectID uint) (*models.ProjectStats, 
 	}
 	stats.AssignmentCount = int(assignmentCount)
 
-	// 已完成作业数量
+	// 已完成作业数量（基于评分的作业提交）
 	var completedCount int64
-	if err := s.db.Model(&models.Assignment{}).
-		Where("project_id = ? AND status = 'closed'", projectID).
+	if err := s.db.Table("assignment_submissions").
+		Joins("JOIN assignments ON assignments.id = assignment_submissions.assignment_id").
+		Where("assignments.project_id = ? AND assignment_submissions.status = ?", projectID, "graded").
 		Count(&completedCount).Error; err != nil {
 		return nil, fmt.Errorf("failed to count completed assignments: %w", err)
 	}
@@ -591,4 +598,18 @@ type GitLabProjectInfo struct {
 	DefaultBranch string             `json:"default_branch"`
 	Statistics    *ProjectStatistics `json:"statistics"`
 	Discussions   []*gitlab.Issue    `json:"discussions"`
+}
+
+// GetProjectAssignments 获取课题作业列表
+func (s *ProjectService) GetProjectAssignments(projectID uint) ([]models.Assignment, error) {
+	var assignments []models.Assignment
+	err := s.db.Where("project_id = ?", projectID).
+		Order("created_at DESC").
+		Find(&assignments).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project assignments: %w", err)
+	}
+
+	return assignments, nil
 }

@@ -48,6 +48,51 @@
         </el-descriptions>
       </el-card>
 
+      <!-- 快速操作 -->
+      <el-card class="quick-actions-card" shadow="never">
+        <template #header>
+          <span>快速操作</span>
+        </template>
+        
+        <div class="quick-actions">
+          <el-button 
+            type="primary" 
+            size="large"
+            @click="enterInteractiveDev"
+            :icon="EditPen"
+          >
+            进入互动开发
+          </el-button>
+          
+          <el-button 
+            type="success" 
+            size="large"
+            @click="viewGitLabRepo"
+            :icon="Link"
+          >
+            查看GitLab仓库
+          </el-button>
+          
+          <el-button 
+            type="info" 
+            size="large"
+            @click="viewAssignments"
+            :icon="Document"
+          >
+            查看作业
+          </el-button>
+          
+          <el-button 
+            type="warning" 
+            size="large"
+            @click="viewMembers"
+            :icon="User"
+          >
+            管理成员
+          </el-button>
+        </div>
+      </el-card>
+
       <!-- 课题统计 -->
       <el-card class="stats-card" shadow="never">
         <template #header>
@@ -81,7 +126,7 @@
               size="small" 
               @click="addMemberDialog = true"
             >
-              添加成员
+              添加学生
             </el-button>
           </div>
         </template>
@@ -92,8 +137,8 @@
           <el-table-column prop="username" label="用户名" />
           <el-table-column label="角色">
             <template #default="{ row }">
-              <el-tag :type="row.role === 'leader' ? 'warning' : 'info'">
-                {{ row.role === 'leader' ? '组长' : '成员' }}
+              <el-tag :type="row.role === 'teacher' ? 'warning' : 'info'">
+                {{ row.role === 'teacher' ? '教师' : '学生' }}
               </el-tag>
             </template>
           </el-table-column>
@@ -102,16 +147,10 @@
               {{ formatDate(row.joined_at) }}
             </template>
           </el-table-column>
-          <el-table-column v-if="canManageProject" label="操作" width="150">
+          <el-table-column v-if="canManageProject" label="操作" width="80">
             <template #default="{ row }">
               <el-button 
-                type="warning" 
-                size="small" 
-                @click="updateRole(row.id, row.role)"
-              >
-                {{ row.role === 'leader' ? '取消组长' : '设为组长' }}
-              </el-button>
-              <el-button 
+                v-if="row.role === 'student'"
                 type="danger" 
                 size="small" 
                 @click="removeMember(row.id)"
@@ -205,8 +244,8 @@
       </template>
     </el-dialog>
 
-    <!-- 添加成员对话框 -->
-    <el-dialog v-model="addMemberDialog" title="添加成员" width="400px">
+    <!-- 添加学生对话框 -->
+    <el-dialog v-model="addMemberDialog" title="添加学生" width="400px">
       <el-form :model="addMemberForm" label-width="80px">
         <el-form-item label="选择学生">
           <el-select 
@@ -223,16 +262,11 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="角色">
-          <el-select v-model="addMemberForm.role" style="width: 100%">
-            <el-option label="成员" value="member" />
-            <el-option label="组长" value="leader" />
-          </el-select>
-        </el-form-item>
+
       </el-form>
       <template #footer>
         <el-button @click="addMemberDialog = false">取消</el-button>
-        <el-button type="primary" @click="addMember">添加</el-button>
+        <el-button type="primary" @click="addMember">添加学生</el-button>
       </template>
     </el-dialog>
   </div>
@@ -243,6 +277,8 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { EditPen, Link, Document, User } from '@element-plus/icons-vue'
+import { ApiService } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -271,8 +307,7 @@ const editForm = ref({
 })
 
 const addMemberForm = ref({
-  student_id: null,
-  role: 'member'
+  student_id: null
 })
 
 const canManageProject = computed(() => {
@@ -302,21 +337,42 @@ const getStatusText = (status: string) => {
   return texts[status] || status
 }
 
+// 快速操作方法
+const enterInteractiveDev = () => {
+  const projectId = route.params.id
+  router.push(`/projects/${projectId}/interactive-dev`)
+}
+
+const viewGitLabRepo = () => {
+  if (projectInfo.value?.gitlab_url) {
+    window.open(projectInfo.value.gitlab_url, '_blank')
+  } else {
+    // 构造GitLab仓库URL
+    const projectId = route.params.id
+    const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL || 'http://localhost:8081'
+    const repoUrl = `${gitlabBaseUrl}/projects/${projectId}`
+    window.open(repoUrl, '_blank')
+  }
+}
+
+const viewAssignments = () => {
+  router.push('/assignments')
+}
+
+const viewMembers = () => {
+  // 滚动到成员部分
+  const membersCard = document.querySelector('.members-card')
+  if (membersCard) {
+    membersCard.scrollIntoView({ behavior: 'smooth' })
+  }
+}
+
 const loadProjectDetail = async () => {
   loading.value.project = true
   try {
-    // 临时使用静态数据
-    projectInfo.value = {
-      id: 1,
-      name: 'Web开发课题',
-      code: 'WEB2024001',
-      description: '学习现代Web开发技术，包括前端和后端开发',
-      teacher: { name: '李教授' },
-      teacher_id: 1,
-      class: { name: '计算机科学基础班' },
-      status: 'active',
-      created_at: new Date().toISOString()
-    }
+    const projectId = route.params.id as string
+    const response = await ApiService.getProject(parseInt(projectId))
+    projectInfo.value = response.data
     
     // 设置编辑表单
     editForm.value = {
@@ -334,13 +390,9 @@ const loadProjectDetail = async () => {
 
 const loadProjectStats = async () => {
   try {
-    // 临时使用静态数据
-    projectStats.value = {
-      member_count: 8,
-      assignment_count: 4,
-      completed_assignments: 2,
-      pending_assignments: 2
-    }
+    const projectId = route.params.id as string
+    const response = await ApiService.getProjectStats(parseInt(projectId))
+    projectStats.value = response.data
   } catch (error) {
     console.error('获取课题统计失败:', error)
   }
@@ -349,12 +401,9 @@ const loadProjectStats = async () => {
 const loadProjectMembers = async () => {
   loading.value.members = true
   try {
-    // 临时使用静态数据
-    projectMembers.value = [
-      { id: 1, name: '李同学', email: 'li@example.com', username: 'li_student', role: 'leader', joined_at: new Date().toISOString() },
-      { id: 2, name: '王同学', email: 'wang@example.com', username: 'wang_student', role: 'member', joined_at: new Date().toISOString() },
-      { id: 3, name: '张同学', email: 'zhang@example.com', username: 'zhang_student', role: 'member', joined_at: new Date().toISOString() }
-    ]
+    const projectId = route.params.id as string
+    const response = await ApiService.getProjectMembers(parseInt(projectId))
+    projectMembers.value = response.data
   } catch (error) {
     ElMessage.error('获取课题成员失败')
     console.error(error)
@@ -366,25 +415,9 @@ const loadProjectMembers = async () => {
 const loadProjectAssignments = async () => {
   loading.value.assignments = true
   try {
-    // 临时使用静态数据
-    projectAssignments.value = [
-      { 
-        id: 1, 
-        title: 'HTML基础练习', 
-        description: '完成HTML页面设计', 
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        max_score: 100,
-        status: 'active'
-      },
-      { 
-        id: 2, 
-        title: 'CSS样式设计', 
-        description: '学习CSS布局和样式', 
-        due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        max_score: 100,
-        status: 'active'
-      }
-    ]
+    const projectId = route.params.id as string
+    const response = await ApiService.getProjectAssignments(parseInt(projectId))
+    projectAssignments.value = response.data
   } catch (error) {
     console.error('获取课题作业失败:', error)
   } finally {
@@ -426,7 +459,7 @@ const addMember = async () => {
     // TODO: 实现API调用
     ElMessage.success('添加成员成功')
     addMemberDialog.value = false
-    addMemberForm.value = { student_id: null, role: 'member' }
+    addMemberForm.value = { student_id: null }
     await loadProjectMembers()
     await loadProjectStats()
   } catch (error) {
@@ -453,18 +486,7 @@ const removeMember = async (studentId: number) => {
   }
 }
 
-const updateRole = async (studentId: number, currentRole: string) => {
-  const newRole = currentRole === 'leader' ? 'member' : 'leader'
-  
-  try {
-    // TODO: 实现API调用
-    ElMessage.success(`${newRole === 'leader' ? '设置组长' : '取消组长'}成功`)
-    await loadProjectMembers()
-  } catch (error) {
-    ElMessage.error('更新角色失败')
-    console.error(error)
-  }
-}
+
 
 const viewAssignment = (assignmentId: number) => {
   router.push(`/assignments/${assignmentId}`)

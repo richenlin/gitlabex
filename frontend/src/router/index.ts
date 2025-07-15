@@ -51,6 +51,12 @@ const router = createRouter({
       component: () => import('../views/ProjectDetailView.vue'),
       meta: { title: '课题详情', requiresAuth: true }
     },
+    {
+      path: '/projects/:id/interactive-dev',
+      name: 'interactive-dev',
+      component: () => import('../views/InteractiveDevView.vue'),
+      meta: { title: '互动开发', requiresAuth: true }
+    },
     
     // 作业管理（老师和学生可见）
     {
