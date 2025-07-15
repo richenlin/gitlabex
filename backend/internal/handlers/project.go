@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -119,8 +120,11 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 		return
 	}
 
+	fmt.Printf("DEBUG: User role: %d, RoleAdmin: %d\n", currentUser.Role, services.RoleAdmin)
+
 	switch currentUser.Role {
 	case services.RoleAdmin:
+		fmt.Printf("DEBUG: Admin case - getting all projects\n")
 		// 管理员获取所有课题
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
@@ -132,6 +136,7 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 			pageSize = 20
 		}
 
+		fmt.Printf("DEBUG: Calling GetAllProjects with page=%d, pageSize=%d\n", page, pageSize)
 		projects, total, err := h.projectService.GetAllProjects(page, pageSize)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -142,13 +147,8 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message": "Success",
-			"data": gin.H{
-				"projects":  projects,
-				"total":     total,
-				"page":      page,
-				"page_size": pageSize,
-			},
+			"data":  projects,
+			"total": total,
 		})
 
 	case services.RoleTeacher:
@@ -163,8 +163,8 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message": "Success",
-			"data":    projects,
+			"data":  projects,
+			"total": len(projects),
 		})
 
 	case services.RoleStudent:
@@ -179,8 +179,8 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"message": "Success",
-			"data":    projects,
+			"data":  projects,
+			"total": len(projects),
 		})
 
 	default:
@@ -498,7 +498,7 @@ func (h *ProjectHandler) RegisterRoutes(router *gin.RouterGroup, permissionServi
 		projects.POST("/join", permissionService.RequireRole(services.RoleStudent), h.JoinProject)
 
 		// 特定课题操作
-		projectGroup := projects.Group("/:id")
+		projectGroup := projects.Group("/:project_id")
 		{
 			// 获取课题详情（需要访问权限）
 			projectGroup.GET("", permissionService.RequireProjectAccess(services.PermissionRead), h.GetProject)
@@ -518,22 +518,22 @@ func (h *ProjectHandler) RegisterRoutes(router *gin.RouterGroup, permissionServi
 
 			// 统计信息
 			projectGroup.GET("/stats", permissionService.RequireProjectAccess(services.PermissionRead), h.GetProjectStats)
+
+			// GitLab集成相关路由
+			gitlab := projectGroup.Group("/gitlab")
+			{
+				gitlab.GET("/stats",
+					permissionService.RequireRole(services.RoleAdmin, services.RoleTeacher, services.RoleStudent),
+					h.GetProjectWithGitLabStats)
+
+				gitlab.GET("/info",
+					permissionService.RequireRole(services.RoleAdmin, services.RoleTeacher, services.RoleStudent),
+					h.GetProjectGitLabInfo)
+
+				gitlab.POST("/submit",
+					permissionService.RequireRole(services.RoleStudent),
+					h.SubmitAssignmentToGitLab)
+			}
 		}
-	}
-
-	// GitLab集成相关路由
-	projectsGroup := projects.Group("/:project_id")
-	{
-		projectsGroup.GET("/gitlab/stats",
-			permissionService.RequireRole(services.RoleAdmin, services.RoleTeacher, services.RoleStudent),
-			h.GetProjectWithGitLabStats)
-
-		projectsGroup.GET("/gitlab/info",
-			permissionService.RequireRole(services.RoleAdmin, services.RoleTeacher, services.RoleStudent),
-			h.GetProjectGitLabInfo)
-
-		projectsGroup.POST("/gitlab/submit",
-			permissionService.RequireRole(services.RoleStudent),
-			h.SubmitAssignmentToGitLab)
 	}
 }

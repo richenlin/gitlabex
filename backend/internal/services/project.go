@@ -194,6 +194,9 @@ func (s *ProjectService) GetAllProjects(page, pageSize int) ([]models.Project, i
 	offset := (page - 1) * pageSize
 	err := s.db.Preload("Teacher").
 		Preload("Class").
+		Preload("Members").
+		Preload("Students").
+		Preload("Assignments").
 		Order("created_at DESC").
 		Limit(pageSize).
 		Offset(offset).
@@ -246,20 +249,30 @@ func (s *ProjectService) UpdateProject(projectID uint, req *UpdateProjectRequest
 
 // DeleteProject 删除课题
 func (s *ProjectService) DeleteProject(projectID uint) error {
+	// 检查是否存在作业
+	var assignmentCount int64
+	if err := s.db.Model(&models.Assignment{}).Where("project_id = ?", projectID).Count(&assignmentCount).Error; err != nil {
+		return fmt.Errorf("failed to check assignments: %w", err)
+	}
+
+	if assignmentCount > 0 {
+		return fmt.Errorf("cannot delete project with existing assignments")
+	}
+
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		// 删除课题成员关系
 		if err := tx.Where("project_id = ?", projectID).Delete(&models.ProjectMember{}).Error; err != nil {
 			return fmt.Errorf("failed to delete project members: %w", err)
 		}
 
-		// 删除作业提交
-		if err := tx.Where("assignment_id IN (SELECT id FROM assignments WHERE project_id = ?)", projectID).Delete(&models.AssignmentSubmission{}).Error; err != nil {
-			return fmt.Errorf("failed to delete assignment submissions: %w", err)
+		// 删除课题文件
+		if err := tx.Where("project_id = ?", projectID).Delete(&models.ProjectFile{}).Error; err != nil {
+			return fmt.Errorf("failed to delete project files: %w", err)
 		}
 
-		// 删除作业
-		if err := tx.Where("project_id = ?", projectID).Delete(&models.Assignment{}).Error; err != nil {
-			return fmt.Errorf("failed to delete assignments: %w", err)
+		// 删除编辑会话
+		if err := tx.Where("project_id = ?", projectID).Delete(&models.CodeEditSession{}).Error; err != nil {
+			return fmt.Errorf("failed to delete code edit sessions: %w", err)
 		}
 
 		// 删除课题

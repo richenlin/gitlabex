@@ -37,10 +37,25 @@ func main() {
 	analyticsService := services.NewAnalyticsService(db)
 
 	// 调试：输出GitLab配置
+	clientIDPreview := "empty"
+	secretPreview := "empty"
+
+	if cfg.GitLab.ClientID != "" {
+		clientIDPreview = cfg.GitLab.ClientID
+		if len(clientIDPreview) > 10 {
+			clientIDPreview = clientIDPreview[:10] + "..."
+		}
+	}
+
+	if cfg.GitLab.ClientSecret != "" {
+		secretPreview = cfg.GitLab.ClientSecret
+		if len(secretPreview) > 10 {
+			secretPreview = secretPreview[:10] + "..."
+		}
+	}
+
 	fmt.Printf("DEBUG: GitLab Config - ClientID: %s, ClientSecret: %s, URL: %s\n",
-		cfg.GitLab.ClientID[:10]+"...",
-		cfg.GitLab.ClientSecret[:10]+"...",
-		cfg.GitLab.URL)
+		clientIDPreview, secretPreview, cfg.GitLab.URL)
 
 	authService := services.NewAuthService(db, cfg)
 	gitlabService, err := services.NewGitLabService(cfg, nil, db)
@@ -60,7 +75,7 @@ func main() {
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService, userService)
 	userHandler := handlers.NewUserHandler(userService)
 	classHandler := handlers.NewClassHandler(classService, userService)
-	projectHandler := handlers.NewProjectSimpleHandler(projectService, userService)
+	projectHandler := handlers.NewProjectHandler(projectService, permissionService)
 	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, userService)
 	notificationHandler := handlers.NewNotificationHandler(notificationService, userService)
 	discussionHandler := handlers.NewDiscussionHandler(discussionService, userService)
@@ -161,7 +176,7 @@ func autoMigrate(db *gorm.DB) error {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, permissionService *services.PermissionService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectSimpleHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, discussionHandler *handlers.DiscussionHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
+func setupRoutes(authService *services.AuthService, permissionService *services.PermissionService, analyticsHandler *handlers.AnalyticsHandler, userHandler *handlers.UserHandler, classHandler *handlers.ClassHandler, projectHandler *handlers.ProjectHandler, assignmentHandler *handlers.AssignmentHandler, notificationHandler *handlers.NotificationHandler, discussionHandler *handlers.DiscussionHandler, thirdPartyHandler *handlers.ThirdPartyAPIV2Handler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
 	router := gin.New()
 
 	// 中间件
@@ -245,8 +260,11 @@ func setupRoutes(authService *services.AuthService, permissionService *services.
 		// 班级管理路由
 		classHandler.RegisterRoutes(api)
 
-		// 课题管理路由
-		projectHandler.RegisterRoutes(api)
+		// 课题管理路由（需要认证）
+		projectsAuth := api.Group("")
+		projectsAuth.Use(authService.AuthMiddleware())
+		projectsAuth.Use(permissionService.RequireAuth())
+		projectHandler.RegisterRoutes(projectsAuth, permissionService)
 
 		// 作业管理路由
 		assignmentHandler.RegisterRoutes(api)

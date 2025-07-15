@@ -11,7 +11,7 @@ type Class struct {
 	Description string `json:"description"`
 	Code        string `gorm:"unique;not null" json:"code"` // 班级代码，用于学生加入
 	TeacherID   uint   `gorm:"not null" json:"teacher_id"`  // 创建班级的老师ID
-	Teacher     User   `gorm:"foreignKey:TeacherID" json:"teacher,omitempty"`
+	Teacher     User   `gorm:"foreignKey:TeacherID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"teacher,omitempty"`
 	Active      bool   `gorm:"default:true" json:"is_active"`
 
 	// GitLab集成字段
@@ -25,8 +25,8 @@ type Class struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 
-	// 关联关系
-	Members  []ClassMember `gorm:"foreignKey:ClassID" json:"members,omitempty"`
+	// 关联关系 - 仅用于查询填充，无强制外键约束
+	Members  []ClassMember `gorm:"foreignKey:ClassID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"members,omitempty"`
 	Students []User        `gorm:"many2many:class_members;" json:"students,omitempty"`
 }
 
@@ -82,9 +82,9 @@ type ClassMember struct {
 	GitLabLastSyncAt *time.Time `gorm:"column:gitlab_last_sync_at" json:"gitlab_last_sync_at,omitempty"`       // GitLab最后同步时间
 	GitLabSyncError  string     `gorm:"column:gitlab_sync_error;type:text" json:"gitlab_sync_error,omitempty"` // GitLab同步错误
 
-	// 关联关系
-	Class   Class `gorm:"foreignKey:ClassID" json:"class,omitempty"`
-	Student User  `gorm:"foreignKey:StudentID" json:"student,omitempty"`
+	// 关联关系 - 仅用于查询填充，无强制外键约束
+	Class   Class `gorm:"foreignKey:ClassID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"class,omitempty"`
+	Student User  `gorm:"foreignKey:StudentID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"student,omitempty"`
 }
 
 // TableName 指定表名

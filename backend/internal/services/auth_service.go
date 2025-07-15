@@ -163,9 +163,13 @@ func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
 		tokenURL = fmt.Sprintf("%s/oauth/token", s.config.GitLab.URL)
 	}
 
+	fmt.Printf("DEBUG: GitLab InternalURL: %s\n", s.config.GitLab.InternalURL)
+	fmt.Printf("DEBUG: GitLab URL: %s\n", s.config.GitLab.URL)
 	fmt.Printf("DEBUG: Exchange token URL: %s\n", tokenURL)
 	fmt.Printf("DEBUG: Client ID: %s\n", s.config.GitLab.ClientID[:10]+"...")
+	fmt.Printf("DEBUG: Client Secret: %s\n", s.config.GitLab.ClientSecret[:10]+"...")
 	fmt.Printf("DEBUG: Redirect URI: %s\n", s.config.GitLab.RedirectURI)
+	fmt.Printf("DEBUG: Authorization Code: %s\n", code[:10]+"...")
 
 	// 使用HTTP Basic认证发送client credentials
 	formData := map[string][]string{
@@ -176,35 +180,43 @@ func (s *AuthService) exchangeCodeForToken(code string) (*GitLabToken, error) {
 
 	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(url.Values(formData).Encode()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// 设置Basic认证头
 	req.SetBasicAuth(s.config.GitLab.ClientID, s.config.GitLab.ClientSecret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
+	fmt.Printf("DEBUG: Request headers: %v\n", req.Header)
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("DEBUG: HTTP request error: %v\n", err)
-		return nil, err
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	fmt.Printf("DEBUG: Response status: %s\n", resp.Status)
 	fmt.Printf("DEBUG: Response headers: %v\n", resp.Header)
 
+	// 读取响应体
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("DEBUG: Failed to read response body: %v\n", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	fmt.Printf("DEBUG: Response body: %s\n", string(body))
+
 	if resp.StatusCode != http.StatusOK {
-		// 读取错误响应内容
-		body, _ := io.ReadAll(resp.Body)
-		fmt.Printf("DEBUG: Error response body: %s\n", string(body))
-		return nil, fmt.Errorf("failed to exchange token: %s", resp.Status)
+		return nil, fmt.Errorf("GitLab OAuth error (status %d): %s", resp.StatusCode, string(body))
 	}
 
 	var token GitLabToken
-	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+	if err := json.Unmarshal(body, &token); err != nil {
 		fmt.Printf("DEBUG: JSON decode error: %v\n", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to decode token response: %w", err)
 	}
 
 	fmt.Printf("DEBUG: Token exchange successful, access_token length: %d\n", len(token.AccessToken))

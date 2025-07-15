@@ -1,0 +1,141 @@
+# docker-compose.dev.yml - 开发环境配置
+
+services:
+  # GitLab CE服务
+  gitlab:
+    image: gitlab/gitlab-ce:17.10.1-ce.0
+    container_name: gitlabex-gitlab
+    restart: unless-stopped
+    hostname: 'gitlab'
+    ports:
+      - "8081:80"
+      - "2222:22"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+      - ./config:/config:ro
+      - gitlab_oauth_config:/shared
+    environment:
+      GITLAB_ROOT_PASSWORD: b75hZ0qcwLKD
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8081'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        gitlab_rails['initial_root_password'] = ENV['GITLAB_ROOT_PASSWORD']
+        gitlab_rails['gitlab_signup_enabled'] = true
+        nginx['listen_port'] = 80
+        nginx['redirect_http_to_https'] = false
+        # 强制设置正确的external URL用于重定向
+        gitlab_rails['gitlab_host'] = 'localhost'
+        gitlab_rails['gitlab_port'] = 8081
+        gitlab_rails['gitlab_https'] = false
+        
+        # 禁用内置PostgreSQL
+        postgresql['enable'] = false
+        gitlab_rails['db_adapter'] = 'postgresql'
+        gitlab_rails['db_encoding'] = 'utf8'
+        gitlab_rails['db_host'] = 'postgres'
+        gitlab_rails['db_port'] = 5432
+        gitlab_rails['db_username'] = 'gitlab'
+        gitlab_rails['db_password'] = 'password123'
+        gitlab_rails['db_database'] = 'gitlab'
+        
+        # 禁用内置Redis
+        redis['enable'] = false
+        gitlab_rails['redis_host'] = 'redis'
+        gitlab_rails['redis_port'] = 6379
+        gitlab_rails['redis_password'] = 'password123'
+    networks:
+      - gitlabex-network
+    healthcheck:
+      test: ["CMD", "/opt/gitlab/bin/gitlab-ctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  # GitLab OAuth应用自动初始化服务
+  gitlab-init:
+    image: alpine:3.19
+    container_name: gitlabex-gitlab-init
+    restart: "no"  # 只运行一次
+    user: root
+    depends_on:
+      gitlab:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./config:/config:ro
+      - gitlab_oauth_config:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - GITLAB_ROOT_PASSWORD=${GITLAB_ROOT_PASSWORD:-b75hZ0qcwLKD}
+      - GITLAB_CONTAINER=gitlabex-gitlab
+      - OAUTH_CONFIG_FILE=/config/oauth.env
+      - SHARED_DIR=/shared
+    networks:
+      - gitlabex-network
+    command: >
+      sh -c "apk add --no-cache bash curl docker-cli &&
+             /scripts/init-oauth-rails.sh"
+
+  # PostgreSQL数据库 - 支持外部连接
+  postgres:
+    image: postgres:15
+    container_name: gitlabex-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gitlab
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: gitlab
+      # 为GitLabEx创建额外的数据库
+      POSTGRES_MULTIPLE_DATABASES: gitlabex
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./config/init-postgres.sql:/docker-entrypoint-initdb.d/init-postgres.sql:ro
+    ports:
+      - "5432:5432"  # 暴露端口供外部连接
+    networks:
+      - gitlabex-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitlab"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Redis缓存 - 支持外部连接
+  redis:
+    image: redis:7-alpine
+    container_name: gitlabex-redis
+    restart: unless-stopped
+    command: redis-server --requirepass password123
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"  # 暴露端口供外部连接
+    networks:
+      - gitlabex-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "password123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+  postgres_data:
+  redis_data:
+  gitlab_oauth_config:
+
+networks:
+  gitlabex-network:
+    driver: bridge 

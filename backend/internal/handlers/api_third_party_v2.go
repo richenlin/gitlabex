@@ -16,7 +16,7 @@ type ThirdPartyAPIV2Handler struct {
 	// 现有Handler代理
 	userHandler         *UserHandler
 	classHandler        *ClassHandler
-	projectHandler      *ProjectSimpleHandler
+	projectHandler      *ProjectHandler
 	assignmentHandler   *AssignmentHandler
 	notificationHandler *NotificationHandler
 
@@ -31,7 +31,7 @@ type ThirdPartyAPIV2Handler struct {
 func NewThirdPartyAPIV2Handler(
 	userHandler *UserHandler,
 	classHandler *ClassHandler,
-	projectHandler *ProjectSimpleHandler,
+	projectHandler *ProjectHandler,
 	assignmentHandler *AssignmentHandler,
 	notificationHandler *NotificationHandler,
 	oauthMiddleware *middleware.OAuthMiddleware,
@@ -249,7 +249,7 @@ func (h *ThirdPartyAPIV2Handler) GetCloneInfo(c *gin.Context) {
 
 // proxyToProjectList 代理到项目列表
 func (h *ThirdPartyAPIV2Handler) proxyToProjectList(c *gin.Context) {
-	h.projectHandler.ListProjects(c)
+	h.projectHandler.GetProjects(c)
 }
 
 func (h *ThirdPartyAPIV2Handler) proxyToProjectDetail(c *gin.Context) {

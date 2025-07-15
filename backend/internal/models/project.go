@@ -47,13 +47,13 @@ type Project struct {
 	EnableLinting        bool     `gorm:"default:true" json:"enable_linting"`             // 是否启用代码检查
 	EnableFormatting     bool     `gorm:"default:true" json:"enable_formatting"`          // 是否启用代码格式化
 
-	// 关联关系
-	Teacher     User            `gorm:"foreignKey:TeacherID" json:"teacher,omitempty"`
-	Class       Class           `gorm:"foreignKey:ClassID" json:"class,omitempty"`
-	Members     []ProjectMember `gorm:"foreignKey:ProjectID" json:"members,omitempty"`
+	// 关联关系 - 仅用于查询填充，无强制外键约束
+	Teacher     User            `gorm:"foreignKey:TeacherID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"teacher,omitempty"`
+	Class       Class           `gorm:"foreignKey:ClassID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"class,omitempty"`
+	Members     []ProjectMember `gorm:"foreignKey:ProjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"members,omitempty"`
 	Students    []User          `gorm:"many2many:project_members;" json:"students,omitempty"`
-	Assignments []Assignment    `gorm:"foreignKey:ProjectID" json:"assignments,omitempty"`
-	Files       []ProjectFile   `gorm:"foreignKey:ProjectID" json:"files,omitempty"`
+	Assignments []Assignment    `gorm:"foreignKey:ProjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"assignments,omitempty"`
+	Files       []ProjectFile   `gorm:"foreignKey:ProjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"files,omitempty"`
 }
 
 // TableName 指定表名
@@ -89,9 +89,9 @@ type ProjectMember struct {
 	EditorPreferences string     `json:"editor_preferences"`                      // 编辑器偏好设置(JSON)
 	LastActiveTime    *time.Time `json:"last_active_time"`                        // 最后活跃时间
 
-	// 关联关系
-	Project Project `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	User    User    `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	// 关联关系 - 仅用于查询填充，无强制外键约束
+	Project Project `gorm:"foreignKey:ProjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"project,omitempty"`
+	User    User    `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
 }
 
 // TableName 指定表名
@@ -186,9 +186,9 @@ type CodeEditSession struct {
 	ChangesCount int        `gorm:"default:0" json:"changes_count"`
 	SavedCount   int        `gorm:"default:0" json:"saved_count"`
 
-	// 关联关系
-	Project Project `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	User    User    `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	// 关联关系 - 仅用于查询填充，无强制外键约束
+	Project Project `gorm:"foreignKey:ProjectID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"project,omitempty"`
+	User    User    `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
 }
 
 // TableName 指定表名
