@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -153,7 +153,7 @@ export class ApiService {
   }
 
   static async getUserDashboard(): Promise<UserDashboard> {
-    const response = await api.get('/api/users/me/dashboard')
+    const response = await api.get('/api/users/current')
     return response.data
   }
 
@@ -232,7 +232,7 @@ export class ApiService {
   // 通知系统相关API
   static async getNotifications(params?: { type?: string; read?: string }): Promise<any> {
     const response = await api.get('/api/notifications', { params })
-    return response.data.data
+    return response.data
   }
 
   static async markNotificationAsRead(notificationId: number): Promise<any> {

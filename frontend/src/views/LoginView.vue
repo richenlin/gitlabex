@@ -50,8 +50,8 @@
 <script setup lang="ts">
 const loginWithGitLab = () => {
   // 使用环境变量配置的API基础URL
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
-  const authUrl = `${apiBaseUrl}/auth/gitlab`;
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+  const authUrl = `${apiBaseUrl}/api/auth/gitlab`;
   
   console.log('Redirecting to:', authUrl);
   

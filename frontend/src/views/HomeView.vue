@@ -127,7 +127,7 @@ const getUserRoleText = (role: number) => {
 <template>
   <div class="dashboard-view">
     <div class="dashboard-header">
-      <h1>首页（仪表盘）</h1>
+      <h1>首页</h1>
       <p>欢迎使用 GitLabEx 教育协作平台</p>
     </div>
 

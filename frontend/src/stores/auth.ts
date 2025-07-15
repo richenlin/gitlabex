@@ -53,8 +53,12 @@ export const useAuthStore = defineStore('auth', () => {
   const login = async (authToken: string) => {
     loading.value = true
     try {
-      // 设置token
-      setToken(authToken)
+      // 先设置token到localStorage，确保API调用时能读取到
+      localStorage.setItem('authToken', authToken)
+      
+      // 设置内存中的token状态
+      token.value = authToken
+      isAuthenticated.value = true
       
       // 获取用户信息
       const userData = await ApiService.getCurrentUser()

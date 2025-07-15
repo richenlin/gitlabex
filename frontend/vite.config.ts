@@ -12,21 +12,6 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/gitlab': {
-        target: 'http://localhost:8081',
-        changeOrigin: true,
-      },
-      '/onlyoffice': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        ws: true,
-      },
-    },
   },
   define: {
     __APP_ENV__: JSON.stringify(process.env.NODE_ENV),

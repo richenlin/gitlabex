@@ -395,11 +395,10 @@ const formatDate = (dateString: string) => {
 
 const getRoleText = (role: number) => {
   const roleMap: { [key: number]: string } = {
-    1: '访客',
-    2: '学生',
-    3: '助教',
-    4: '教师',
-    5: '管理员'
+    1: '管理员',
+    2: '教师',
+    3: '学生',
+    4: '访客'
   }
   return roleMap[role] || '未知'
 }

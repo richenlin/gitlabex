@@ -174,7 +174,7 @@ const logout = async () => {
         >
           <el-menu-item index="/">
             <el-icon><DataBoard /></el-icon>
-            <span>首页（仪表盘）</span>
+            <span>首页</span>
           </el-menu-item>
           <el-menu-item index="/classes" v-if="isTeacherOrAdmin">
             <el-icon><School /></el-icon>
