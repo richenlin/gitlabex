@@ -304,7 +304,7 @@ func (s *DocumentService) CheckWikiEditPermission(userID uint, projectID uint) (
 	}
 
 	// 检查用户角色
-	if user.Role == RoleAdmin || user.Role == RoleTeacher {
+	if user.Role == 1 || user.Role == 2 { // Admin or Teacher
 		return true, nil
 	}
 

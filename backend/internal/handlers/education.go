@@ -10,12 +10,12 @@ import (
 
 // EducationHandler 教育管理处理器
 type EducationHandler struct {
-	educationService *services.EducationServiceSimplified
+	educationService *services.EducationService
 	userService      *services.UserService
 }
 
 // NewEducationHandler 创建教育管理处理器
-func NewEducationHandler(educationService *services.EducationServiceSimplified, userService *services.UserService) *EducationHandler {
+func NewEducationHandler(educationService *services.EducationService, userService *services.UserService) *EducationHandler {
 	return &EducationHandler{
 		educationService: educationService,
 		userService:      userService,

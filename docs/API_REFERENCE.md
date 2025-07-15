@@ -1236,7 +1236,7 @@ Authorization: Bearer YOUR_API_KEY
 - **简化的课题流程**: 学生通过课题代码直接加入课题
 
 ### 架构优化
-- **服务V2版本**: ProjectServiceV2、AssignmentServiceV2、UserServiceV2
+- **服务V2版本**: ProjectServiceV2、AssignmentServiceV2、UserService
 - **权限集成**: 完全基于GitLab权限系统
 - **数据统计**: 基于角色的统计视图（教师视图、学生视图）
 - **API简化**: 移除班级相关API，简化课题管理API

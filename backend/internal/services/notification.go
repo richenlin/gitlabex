@@ -278,59 +278,10 @@ func (s *NotificationService) NotifyProjectJoined(projectID uint, studentID uint
 	return s.CreateNotification(notification)
 }
 
-// NotifyClassJoined 通知班级加入
-func (s *NotificationService) NotifyClassJoined(classID uint, studentID uint) error {
-	// 获取班级信息
-	var class models.Class
-	if err := s.db.First(&class, classID).Error; err != nil {
-		return fmt.Errorf("failed to get class: %w", err)
-	}
-
-	// 获取学生信息
-	var student models.User
-	if err := s.db.First(&student, studentID).Error; err != nil {
-		return fmt.Errorf("failed to get student: %w", err)
-	}
-
-	// 通知老师
-	notification := &models.Notification{
-		UserID:     class.TeacherID,
-		Title:      "新学生加入班级",
-		Content:    fmt.Sprintf("学生 %s 加入了班级「%s」", student.Name, class.Name),
-		Type:       models.NotificationTypeClassJoined,
-		TargetType: "class",
-		TargetID:   classID,
-	}
-
-	return s.CreateNotification(notification)
-}
-
 // NotifyProjectCreated 通知课题创建
 func (s *NotificationService) NotifyProjectCreated(project *models.Project) error {
-	// 如果课题关联了班级，通知班级成员
-	if project.ClassID != 0 {
-		var members []models.ClassMember
-		if err := s.db.Where("class_id = ? AND status = 'active'", project.ClassID).Find(&members).Error; err != nil {
-			return fmt.Errorf("failed to get class members: %w", err)
-		}
-
-		// 为每个班级成员创建通知
-		for _, member := range members {
-			notification := &models.Notification{
-				UserID:     member.StudentID,
-				Title:      "新课题发布",
-				Content:    fmt.Sprintf("班级中发布了新课题「%s」", project.Name),
-				Type:       models.NotificationTypeProjectCreated,
-				TargetType: "project",
-				TargetID:   project.ID,
-			}
-
-			if err := s.CreateNotification(notification); err != nil {
-				// 记录错误但不中断流程
-				continue
-			}
-		}
-	}
+	// 课题创建通知现在基于直接邀请机制，不需要班级依赖
+	// 当学生加入课题时会通过NotifyProjectJoined发送通知
 
 	return nil
 }
@@ -419,16 +370,16 @@ func (s *NotificationService) CleanupOldNotifications(days int) error {
 
 // NotifyGitLabProjectCreated 通知GitLab项目创建
 func (s *NotificationService) NotifyGitLabProjectCreated(project *models.Project) error {
-	// 获取班级成员
-	var classMembers []models.ClassMember
-	if err := s.db.Where("class_id = ? AND status = 'active'", project.ClassID).Find(&classMembers).Error; err != nil {
-		return fmt.Errorf("failed to get class members: %w", err)
+	// 获取课题成员
+	var projectMembers []models.ProjectMember
+	if err := s.db.Where("project_id = ? AND is_active = true", project.ID).Find(&projectMembers).Error; err != nil {
+		return fmt.Errorf("failed to get project members: %w", err)
 	}
 
-	// 为每个班级成员创建通知
-	for _, member := range classMembers {
+	// 为每个课题成员创建通知
+	for _, member := range projectMembers {
 		notification := &models.Notification{
-			UserID:     member.StudentID,
+			UserID:     member.UserID,
 			Title:      "新课题发布",
 			Content:    fmt.Sprintf("课题「%s」已发布，现在可以加入并开始学习", project.Name),
 			Type:       models.NotificationTypeProjectCreated,
@@ -438,7 +389,7 @@ func (s *NotificationService) NotifyGitLabProjectCreated(project *models.Project
 
 		if err := s.CreateNotification(notification); err != nil {
 			// 单个通知失败不影响其他通知
-			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.StudentID, err)
+			fmt.Printf("Warning: Failed to create notification for user %d: %v\n", member.UserID, err)
 		}
 	}
 

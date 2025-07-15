@@ -16,28 +16,28 @@ type EducationStats struct {
 	DocumentsCount          int `json:"documents_count"`
 }
 
-// EducationServiceSimplified 简化版教育服务 - 专注于核心功能
-type EducationServiceSimplified struct {
+// EducationService 简化版教育服务 - 专注于核心功能
+type EducationService struct {
 	gitlab *GitLabService
 	db     *gorm.DB
 }
 
-// NewEducationServiceSimplified 创建简化版教育服务
-func NewEducationServiceSimplified(gitlabService *GitLabService, db *gorm.DB) *EducationServiceSimplified {
-	return &EducationServiceSimplified{
+// NewEducationService 创建简化版教育服务
+func NewEducationService(gitlabService *GitLabService, db *gorm.DB) *EducationService {
+	return &EducationService{
 		gitlab: gitlabService,
 		db:     db,
 	}
 }
 
 // 辅助方法：将字符串切片转换为 GitLab 标签选项
-func (s *EducationServiceSimplified) toLabels(labels []string) *gitlab.LabelOptions {
+func (s *EducationService) toLabels(labels []string) *gitlab.LabelOptions {
 	labelOptions := gitlab.LabelOptions(labels)
 	return &labelOptions
 }
 
 // CreateSimpleProject 创建简单的课题项目
-func (s *EducationServiceSimplified) CreateSimpleProject(groupID int, title, description string) (*gitlab.Project, error) {
+func (s *EducationService) CreateSimpleProject(groupID int, title, description string) (*gitlab.Project, error) {
 	// 创建项目
 	project, _, err := s.gitlab.client.Projects.CreateProject(&gitlab.CreateProjectOptions{
 		Name:        gitlab.String(title),
@@ -54,7 +54,7 @@ func (s *EducationServiceSimplified) CreateSimpleProject(groupID int, title, des
 }
 
 // CreateSimpleAssignment 创建简单的作业Issue
-func (s *EducationServiceSimplified) CreateSimpleAssignment(projectID int, title, description string) (*gitlab.Issue, error) {
+func (s *EducationService) CreateSimpleAssignment(projectID int, title, description string) (*gitlab.Issue, error) {
 	// 创建作业Issue
 	issue, _, err := s.gitlab.client.Issues.CreateIssue(projectID, &gitlab.CreateIssueOptions{
 		Title:       gitlab.String(title),
@@ -66,7 +66,7 @@ func (s *EducationServiceSimplified) CreateSimpleAssignment(projectID int, title
 }
 
 // CreateSimpleAnnouncement 创建简单的公告Issue
-func (s *EducationServiceSimplified) CreateSimpleAnnouncement(projectID int, title, content string) (*gitlab.Issue, error) {
+func (s *EducationService) CreateSimpleAnnouncement(projectID int, title, content string) (*gitlab.Issue, error) {
 	// 创建公告Issue
 	issue, _, err := s.gitlab.client.Issues.CreateIssue(projectID, &gitlab.CreateIssueOptions{
 		Title:       gitlab.String(title),
@@ -78,7 +78,7 @@ func (s *EducationServiceSimplified) CreateSimpleAnnouncement(projectID int, tit
 }
 
 // SubmitSimpleAssignment 学生提交作业（简化版）
-func (s *EducationServiceSimplified) SubmitSimpleAssignment(projectID int, issueID int, studentID int, branchName string) (*gitlab.MergeRequest, error) {
+func (s *EducationService) SubmitSimpleAssignment(projectID int, issueID int, studentID int, branchName string) (*gitlab.MergeRequest, error) {
 	// 创建作业提交MR
 	mr, _, err := s.gitlab.client.MergeRequests.CreateMergeRequest(projectID, &gitlab.CreateMergeRequestOptions{
 		Title:        gitlab.String(fmt.Sprintf("作业提交 - Issue #%d", issueID)),
@@ -102,7 +102,7 @@ func (s *EducationServiceSimplified) SubmitSimpleAssignment(projectID int, issue
 }
 
 // GradeSimpleAssignment 教师批改作业（简化版）
-func (s *EducationServiceSimplified) GradeSimpleAssignment(projectID int, mrID int, grade float64, feedback string) error {
+func (s *EducationService) GradeSimpleAssignment(projectID int, mrID int, grade float64, feedback string) error {
 	// 添加批改评论
 	_, _, err := s.gitlab.client.Notes.CreateMergeRequestNote(projectID, mrID, &gitlab.CreateMergeRequestNoteOptions{
 		Body: gitlab.String(fmt.Sprintf("## 作业批改\n\n**成绩**: %.1f分\n\n**反馈**: %s", grade, feedback)),
@@ -121,7 +121,7 @@ func (s *EducationServiceSimplified) GradeSimpleAssignment(projectID int, mrID i
 }
 
 // GetSimpleAssignments 获取简单的作业列表
-func (s *EducationServiceSimplified) GetSimpleAssignments(projectID int) ([]*gitlab.Issue, error) {
+func (s *EducationService) GetSimpleAssignments(projectID int) ([]*gitlab.Issue, error) {
 	// 获取作业Issues
 	issues, _, err := s.gitlab.client.Issues.ListProjectIssues(projectID, &gitlab.ListProjectIssuesOptions{
 		Labels: s.toLabels([]string{"作业", "assignment"}),
@@ -132,7 +132,7 @@ func (s *EducationServiceSimplified) GetSimpleAssignments(projectID int) ([]*git
 }
 
 // GetSimpleSubmissions 获取简单的提交列表
-func (s *EducationServiceSimplified) GetSimpleSubmissions(projectID int) ([]*gitlab.MergeRequest, error) {
+func (s *EducationService) GetSimpleSubmissions(projectID int) ([]*gitlab.MergeRequest, error) {
 	// 获取作业提交MR
 	mrs, _, err := s.gitlab.client.MergeRequests.ListProjectMergeRequests(projectID, &gitlab.ListProjectMergeRequestsOptions{
 		Labels: s.toLabels([]string{"作业提交", "assignment-submission"}),
@@ -143,7 +143,7 @@ func (s *EducationServiceSimplified) GetSimpleSubmissions(projectID int) ([]*git
 }
 
 // GetSimpleAnnouncements 获取简单的公告列表
-func (s *EducationServiceSimplified) GetSimpleAnnouncements(projectID int) ([]*gitlab.Issue, error) {
+func (s *EducationService) GetSimpleAnnouncements(projectID int) ([]*gitlab.Issue, error) {
 	// 获取公告Issues
 	issues, _, err := s.gitlab.client.Issues.ListProjectIssues(projectID, &gitlab.ListProjectIssuesOptions{
 		Labels: s.toLabels([]string{"公告", "announcement"}),
@@ -154,7 +154,7 @@ func (s *EducationServiceSimplified) GetSimpleAnnouncements(projectID int) ([]*g
 }
 
 // GetSimpleEducationStats 获取简单的教育统计数据
-func (s *EducationServiceSimplified) GetSimpleEducationStats(userID int) (*EducationStats, error) {
+func (s *EducationService) GetSimpleEducationStats(userID int) (*EducationStats, error) {
 	// 获取用户所属的Groups
 	groups, _, err := s.gitlab.client.Groups.ListGroups(&gitlab.ListGroupsOptions{
 		MinAccessLevel: gitlab.AccessLevel(gitlab.ReporterPermissions),
@@ -197,7 +197,7 @@ func (s *EducationServiceSimplified) GetSimpleEducationStats(userID int) (*Educa
 }
 
 // TestEducationWorkflow 测试教育工作流
-func (s *EducationServiceSimplified) TestEducationWorkflow(groupID int) (*WorkflowTestResult, error) {
+func (s *EducationService) TestEducationWorkflow(groupID int) (*WorkflowTestResult, error) {
 	result := &WorkflowTestResult{
 		Steps: []WorkflowStep{},
 	}

@@ -71,7 +71,7 @@ func (h *UserHandler) GetUserDashboard(c *gin.Context) {
 		currentUser = user.(*models.User)
 	}
 
-	dashboard, err := h.userService.GetUserDashboard(currentUser)
+	dashboard, err := h.userService.GetUserDashboard(currentUser.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "获取仪表板数据失败",
@@ -112,8 +112,7 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	}
 
 	// 获取默认角色
-	role := user.GetDefaultEducationRole()
-	profile := h.userService.ToProfile(user, role)
+	profile := h.userService.ToProfile(user)
 
 	c.JSON(http.StatusOK, gin.H{
 		"data": profile,
@@ -134,8 +133,7 @@ func (h *UserHandler) ListActiveUsers(c *gin.Context) {
 	// 转换为用户资料列表
 	profiles := make([]*services.UserProfile, len(users))
 	for i, user := range users {
-		role := user.GetDefaultEducationRole()
-		profiles[i] = h.userService.ToProfile(user, role)
+		profiles[i] = h.userService.ToProfile(&user)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -144,49 +142,98 @@ func (h *UserHandler) ListActiveUsers(c *gin.Context) {
 	})
 }
 
-// UpdateUser 更新用户信息
-func (h *UserHandler) UpdateUser(c *gin.Context) {
-	currentUser, exists := c.Get("current_user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "未登录",
-		})
-		return
-	}
+// GetUsers 获取用户列表（管理员权限）
+func (h *UserHandler) GetUsers(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
-	user := currentUser.(*models.User)
-
-	var updateData struct {
-		Name   string `json:"name" binding:"omitempty,min=1,max=255"`
-		Avatar string `json:"avatar" binding:"omitempty,url"`
-	}
-
-	if err := c.ShouldBindJSON(&updateData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "无效的请求数据",
+	users, total, err := h.userService.GetAllUsers(page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取用户列表失败",
 			"details": err.Error(),
 		})
 		return
 	}
 
-	// 构建更新字段
-	updates := make(map[string]interface{})
-	if updateData.Name != "" {
-		updates["name"] = updateData.Name
-	}
-	if updateData.Avatar != "" {
-		updates["avatar"] = updateData.Avatar
+	// 转换为用户资料
+	profiles := make([]*services.UserProfile, len(users))
+	for i, userWithRole := range users {
+		profiles[i] = h.userService.ToProfile(userWithRole.User)
 	}
 
-	if len(updates) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "没有要更新的字段",
+	c.JSON(http.StatusOK, gin.H{
+		"data":  profiles,
+		"total": total,
+	})
+}
+
+// SearchUsers 搜索用户
+func (h *UserHandler) SearchUsers(c *gin.Context) {
+	keyword := c.Query("keyword")
+	roleStr := c.Query("role")
+	activeStr := c.Query("active")
+
+	var role *int
+	if roleStr != "" {
+		if r, err := strconv.Atoi(roleStr); err == nil {
+			role = &r
+		}
+	}
+
+	var active *bool
+	if activeStr != "" {
+		if a, err := strconv.ParseBool(activeStr); err == nil {
+			active = &a
+		}
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+
+	users, total, err := h.userService.SearchUsers(keyword, role, active, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "搜索用户失败",
+			"details": err.Error(),
 		})
 		return
 	}
 
-	err := h.userService.UpdateUserFields(user, updates)
+	c.JSON(http.StatusOK, gin.H{
+		"data":  users,
+		"total": total,
+	})
+}
+
+// UpdateUser 更新用户信息
+func (h *UserHandler) UpdateUser(c *gin.Context) {
+	userID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "无效的用户ID",
+		})
+		return
+	}
+
+	user, err := h.userService.GetUserByID(uint(userID))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "用户不存在",
+		})
+		return
+	}
+
+	var updates map[string]interface{}
+	if err := c.ShouldBindJSON(&updates); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "请求参数错误",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	if err := h.userService.UpdateUserFields(user.ID, updates); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "更新用户信息失败",
 			"details": err.Error(),
@@ -194,8 +241,8 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	// 重新获取更新后的用户信息
-	updatedUser, err := h.userService.GetUserByID(user.ID)
+	// 获取更新后的用户信息
+	updatedUser, err := h.userService.GetUserByID(uint(userID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "获取更新后的用户信息失败",
@@ -203,8 +250,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	role := updatedUser.GetDefaultEducationRole()
-	profile := h.userService.ToProfile(updatedUser, role)
+	profile := h.userService.ToProfile(updatedUser)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "用户信息更新成功",

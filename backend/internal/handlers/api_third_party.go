@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ThirdPartyAPIV2Handler 第三方API处理器V2 - 重构版本
-type ThirdPartyAPIV2Handler struct {
+// ThirdPartyAPIHandler 第三方API处理器
+type ThirdPartyAPIHandler struct {
 	// 现有Handler代理
 	userHandler         *UserHandler
 	projectHandler      *ProjectHandler
@@ -26,16 +26,16 @@ type ThirdPartyAPIV2Handler struct {
 	gitlabService *services.GitLabService
 }
 
-// NewThirdPartyAPIV2Handler 创建第三方API处理器V2
-func NewThirdPartyAPIV2Handler(
+// NewThirdPartyAPIHandler 创建第三方API处理器
+func NewThirdPartyAPIHandler(
 	userHandler *UserHandler,
 	projectHandler *ProjectHandler,
 	assignmentHandler *AssignmentHandler,
 	notificationHandler *NotificationHandler,
 	oauthMiddleware *middleware.OAuthMiddleware,
 	gitlabService *services.GitLabService,
-) *ThirdPartyAPIV2Handler {
-	return &ThirdPartyAPIV2Handler{
+) *ThirdPartyAPIHandler {
+	return &ThirdPartyAPIHandler{
 		userHandler:         userHandler,
 		projectHandler:      projectHandler,
 		assignmentHandler:   assignmentHandler,
@@ -46,7 +46,7 @@ func NewThirdPartyAPIV2Handler(
 }
 
 // RegisterRoutes 注册第三方API路由
-func (h *ThirdPartyAPIV2Handler) RegisterRoutes(router *gin.RouterGroup) {
+func (h *ThirdPartyAPIHandler) RegisterRoutes(router *gin.RouterGroup) {
 	// 第三方API组，使用OAuth认证
 	api := router.Group("/third-party")
 	{
@@ -126,7 +126,7 @@ func (h *ThirdPartyAPIV2Handler) RegisterRoutes(router *gin.RouterGroup) {
 // ===== 认证管理 =====
 
 // GenerateAPIKey 生成API Key
-func (h *ThirdPartyAPIV2Handler) GenerateAPIKey(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GenerateAPIKey(c *gin.Context) {
 	user, exists := c.Get("current_user")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -150,7 +150,7 @@ func (h *ThirdPartyAPIV2Handler) GenerateAPIKey(c *gin.Context) {
 }
 
 // ValidateToken 验证Token
-func (h *ThirdPartyAPIV2Handler) ValidateToken(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) ValidateToken(c *gin.Context) {
 	user, exists := c.Get("current_user")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -176,7 +176,7 @@ func (h *ThirdPartyAPIV2Handler) ValidateToken(c *gin.Context) {
 // ===== Git仓库管理扩展 =====
 
 // CreateRepository 创建Git仓库（扩展版）
-func (h *ThirdPartyAPIV2Handler) CreateRepository(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) CreateRepository(c *gin.Context) {
 	var req struct {
 		Name        string `json:"name" binding:"required"`
 		Description string `json:"description"`
@@ -209,7 +209,7 @@ func (h *ThirdPartyAPIV2Handler) CreateRepository(c *gin.Context) {
 }
 
 // GetCloneInfo 获取克隆信息
-func (h *ThirdPartyAPIV2Handler) GetCloneInfo(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetCloneInfo(c *gin.Context) {
 	repoID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -232,64 +232,64 @@ func (h *ThirdPartyAPIV2Handler) GetCloneInfo(c *gin.Context) {
 // ===== 代理方法 =====
 
 // proxyToProjectList 代理到项目列表
-func (h *ThirdPartyAPIV2Handler) proxyToProjectList(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToProjectList(c *gin.Context) {
 	h.projectHandler.GetProjects(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToProjectDetail(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToProjectDetail(c *gin.Context) {
 	h.projectHandler.GetProject(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToProjectUpdate(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToProjectUpdate(c *gin.Context) {
 	h.projectHandler.UpdateProject(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToProjectDelete(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToProjectDelete(c *gin.Context) {
 	h.projectHandler.DeleteProject(c)
 }
 
 // 用户API代理
-func (h *ThirdPartyAPIV2Handler) proxyToUserList(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToUserList(c *gin.Context) {
 	h.userHandler.ListActiveUsers(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToUserDetail(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToUserDetail(c *gin.Context) {
 	h.userHandler.GetUserByID(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToUserUpdate(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToUserUpdate(c *gin.Context) {
 	h.userHandler.UpdateUser(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToUserSync(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToUserSync(c *gin.Context) {
 	h.userHandler.SyncUserFromGitLab(c)
 }
 
 // 作业API代理
-func (h *ThirdPartyAPIV2Handler) proxyToAssignmentCreate(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToAssignmentCreate(c *gin.Context) {
 	h.assignmentHandler.CreateAssignment(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToAssignmentList(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToAssignmentList(c *gin.Context) {
 	h.assignmentHandler.ListAssignments(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToAssignmentDetail(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToAssignmentDetail(c *gin.Context) {
 	h.assignmentHandler.GetAssignment(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToAssignmentUpdate(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToAssignmentUpdate(c *gin.Context) {
 	h.assignmentHandler.UpdateAssignment(c)
 }
 
-func (h *ThirdPartyAPIV2Handler) proxyToAssignmentDelete(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) proxyToAssignmentDelete(c *gin.Context) {
 	h.assignmentHandler.DeleteAssignment(c)
 }
 
 // ===== 第三方特有功能 =====
 
 // CreateUserForThirdParty 为第三方创建用户（简化版）
-func (h *ThirdPartyAPIV2Handler) CreateUserForThirdParty(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) CreateUserForThirdParty(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" binding:"required"`
 		Email    string `json:"email" binding:"required,email"`
@@ -319,7 +319,7 @@ func (h *ThirdPartyAPIV2Handler) CreateUserForThirdParty(c *gin.Context) {
 }
 
 // GetAllRoles 获取所有角色
-func (h *ThirdPartyAPIV2Handler) GetAllRoles(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetAllRoles(c *gin.Context) {
 	roles := []gin.H{
 		{"id": 1, "name": "admin", "label": "管理员", "description": "系统管理员，拥有所有权限"},
 		{"id": 2, "name": "teacher", "label": "教师", "description": "可以创建和管理班级、课题、作业"},
@@ -333,7 +333,7 @@ func (h *ThirdPartyAPIV2Handler) GetAllRoles(c *gin.Context) {
 }
 
 // CheckPermission 检查权限
-func (h *ThirdPartyAPIV2Handler) CheckPermission(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) CheckPermission(c *gin.Context) {
 	var req struct {
 		UserID       uint   `json:"user_id" binding:"required"`
 		ResourceType string `json:"resource_type" binding:"required"`
@@ -381,7 +381,7 @@ func (h *ThirdPartyAPIV2Handler) CheckPermission(c *gin.Context) {
 }
 
 // GetSystemStatus 获取系统状态
-func (h *ThirdPartyAPIV2Handler) GetSystemStatus(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetSystemStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "healthy",
 		"version": "1.0.0",
@@ -400,42 +400,42 @@ func (h *ThirdPartyAPIV2Handler) GetSystemStatus(c *gin.Context) {
 
 // ===== 未实现的GitLab扩展功能（占位符） =====
 
-func (h *ThirdPartyAPIV2Handler) RevokeAPIKey(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) RevokeAPIKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "API Key revocation not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) GetRepositoryCommits(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetRepositoryCommits(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Repository commits feature not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) GetRepositoryBranches(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetRepositoryBranches(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Repository branches feature not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) CreateBranch(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) CreateBranch(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Create branch feature not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) GetRepositoryFiles(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetRepositoryFiles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Repository files feature not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) GetFileContent(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetFileContent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "File content feature not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) UpdateFileContent(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) UpdateFileContent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Update file content feature not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) UpdateUserRole(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) UpdateUserRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Update user role feature not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) GetUserPermissions(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetUserPermissions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Get user permissions feature not implemented"})
 }
 
-func (h *ThirdPartyAPIV2Handler) GetSystemStats(c *gin.Context) {
+func (h *ThirdPartyAPIHandler) GetSystemStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "System stats feature not implemented"})
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"gitlabex/internal/config"
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 
@@ -120,24 +121,16 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 		return
 	}
 
-	fmt.Printf("DEBUG: User role: %d, RoleAdmin: %d\n", currentUser.Role, services.RoleAdmin)
+	fmt.Printf("DEBUG: User role: %d, RoleAdmin: %d\n", currentUser.Role, config.RoleAdmin)
 
 	switch currentUser.Role {
-	case services.RoleAdmin:
+	case config.RoleAdmin:
 		fmt.Printf("DEBUG: Admin case - getting all projects\n")
 		// 管理员获取所有课题
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
-		if page < 1 {
-			page = 1
-		}
-		if pageSize < 1 || pageSize > 100 {
-			pageSize = 20
-		}
-
-		fmt.Printf("DEBUG: Calling GetAllProjectsSimple with page=%d, pageSize=%d\n", page, pageSize)
-		projects, total, err := h.projectService.GetAllProjectsSimple(page, pageSize)
+		projects, total, err := h.projectService.GetAllProjects(page, pageSize)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to get projects",
@@ -147,27 +140,29 @@ func (h *ProjectHandler) GetProjects(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"data":  projects,
-			"total": total,
+			"projects": projects,
+			"total":    total,
+			"page":     page,
+			"pageSize": pageSize,
 		})
 
-	case services.RoleTeacher:
-		// 老师获取自己创建的课题
+	case config.RoleTeacher:
+		fmt.Printf("DEBUG: Teacher case - getting teacher's projects\n")
+		// 教师获取自己的课题
 		projects, err := h.projectService.GetProjectsByTeacher(currentUser.ID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "Failed to get projects",
+				"error":   "Failed to get teacher projects",
 				"details": err.Error(),
 			})
 			return
 		}
 
 		c.JSON(http.StatusOK, gin.H{
-			"data":  projects,
-			"total": len(projects),
+			"projects": projects,
 		})
 
-	case services.RoleStudent:
+	case config.RoleStudent:
 		// 学生获取自己参加的课题
 		projects, err := h.projectService.GetProjectsByStudent(currentUser.ID)
 		if err != nil {
@@ -495,43 +490,39 @@ func (h *ProjectHandler) RegisterRoutes(router *gin.RouterGroup, permissionServi
 		projects.POST("", permissionService.RequireTeacher(), h.CreateProject)
 
 		// 学生加入课题
-		projects.POST("/join", permissionService.RequireRole(services.RoleStudent), h.JoinProject)
+		projects.POST("/join", permissionService.RequireRole(models.EducationRole(config.RoleStudent)), h.JoinProject)
 
 		// 特定课题操作
 		projectGroup := projects.Group("/:project_id")
 		{
 			// 获取课题详情（需要访问权限）
-			projectGroup.GET("", permissionService.RequireProjectAccess(services.PermissionRead), h.GetProject)
+			projectGroup.GET("", permissionService.RequireProjectAccess(config.PermissionRead), h.GetProject)
 
-			// 更新和删除课题（需要管理权限）
-			projectGroup.PUT("", permissionService.RequireProjectAccess(services.PermissionManage), h.UpdateProject)
-			projectGroup.DELETE("", permissionService.RequireProjectAccess(services.PermissionManage), h.DeleteProject)
+			// 更新课题信息（需要管理权限）
+			projectGroup.PUT("", permissionService.RequireProjectAccess(config.PermissionManage), h.UpdateProject)
 
-			// 成员管理
-			members := projectGroup.Group("/members")
-			{
-				members.GET("", permissionService.RequireProjectAccess(services.PermissionRead), h.GetProjectMembers)
-				members.POST("/:student_id", permissionService.RequireProjectAccess(services.PermissionManage), h.AddStudentToProject)
-				members.PUT("/:student_id/role", permissionService.RequireProjectAccess(services.PermissionManage), h.UpdateStudentRole)
-				members.DELETE("/:student_id", permissionService.RequireProjectAccess(services.PermissionManage), h.RemoveStudentFromProject)
-			}
+			// 删除课题（需要管理权限）
+			projectGroup.DELETE("", permissionService.RequireProjectAccess(config.PermissionManage), h.DeleteProject)
 
-			// 统计信息
-			projectGroup.GET("/stats", permissionService.RequireProjectAccess(services.PermissionRead), h.GetProjectStats)
+			// 移除课题成员（需要管理权限）
+			projectGroup.DELETE("/members/:student_id", permissionService.RequireProjectAccess(config.PermissionManage), h.RemoveStudentFromProject)
+
+			// 课题统计信息
+			projectGroup.GET("/stats", permissionService.RequireProjectAccess(config.PermissionRead), h.GetProjectStats)
 
 			// GitLab集成相关路由
 			gitlab := projectGroup.Group("/gitlab")
 			{
 				gitlab.GET("/stats",
-					permissionService.RequireRole(services.RoleAdmin, services.RoleTeacher, services.RoleStudent),
+					permissionService.RequireRole(models.EducationRole(config.RoleStudent)), // 学生及以上权限
 					h.GetProjectWithGitLabStats)
 
 				gitlab.GET("/info",
-					permissionService.RequireRole(services.RoleAdmin, services.RoleTeacher, services.RoleStudent),
+					permissionService.RequireRole(models.EducationRole(config.RoleStudent)), // 学生及以上权限
 					h.GetProjectGitLabInfo)
 
 				gitlab.POST("/submit",
-					permissionService.RequireRole(services.RoleStudent),
+					permissionService.RequireRole(models.EducationRole(config.RoleStudent)),
 					h.SubmitAssignmentToGitLab)
 			}
 		}

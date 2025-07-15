@@ -137,9 +137,7 @@ func (s *ProjectService) GetProjectsByTeacher(teacherID uint) ([]ProjectSimple, 
 	var projects []models.Project
 	err := s.db.Preload("Teacher", func(db *gorm.DB) *gorm.DB {
 		return db.Select("id, name, username, email, role")
-	}).Preload("Class", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id, name, code, teacher_id")
-	}).Select("id, name, description, code, teacher_id, class_id, status, type, start_date, end_date, max_members, total_assignments, completed_assignments, created_at, updated_at").
+	}).Select("id, name, description, code, teacher_id, status, type, start_date, end_date, max_members, total_assignments, completed_assignments, created_at, updated_at").
 		Where("teacher_id = ?", teacherID).
 		Order("created_at DESC").
 		Find(&projects).Error
@@ -151,11 +149,6 @@ func (s *ProjectService) GetProjectsByTeacher(teacherID uint) ([]ProjectSimple, 
 	// 转换为简化的结构
 	simpleProjects := make([]ProjectSimple, len(projects))
 	for i, project := range projects {
-		var className string
-		if project.ClassID != nil && project.Class.ID > 0 {
-			className = project.Class.Name
-		}
-
 		simpleProjects[i] = ProjectSimple{
 			ID:                   project.ID,
 			Name:                 project.Name,
@@ -163,8 +156,6 @@ func (s *ProjectService) GetProjectsByTeacher(teacherID uint) ([]ProjectSimple, 
 			Code:                 project.Code,
 			TeacherID:            project.TeacherID,
 			TeacherName:          project.Teacher.Name,
-			ClassID:              project.ClassID,
-			ClassName:            className,
 			Status:               project.Status,
 			Type:                 project.Type,
 			StartDate:            project.StartDate,
@@ -185,9 +176,7 @@ func (s *ProjectService) GetProjectsByStudent(studentID uint) ([]ProjectSimple, 
 	var projects []models.Project
 	err := s.db.Preload("Teacher", func(db *gorm.DB) *gorm.DB {
 		return db.Select("id, name, username, email, role")
-	}).Preload("Class", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id, name, code, teacher_id")
-	}).Select("projects.id, projects.name, projects.description, projects.code, projects.teacher_id, projects.class_id, projects.status, projects.type, projects.start_date, projects.end_date, projects.max_members, projects.total_assignments, projects.completed_assignments, projects.created_at, projects.updated_at").
+	}).Select("projects.id, projects.name, projects.description, projects.code, projects.teacher_id, projects.status, projects.type, projects.start_date, projects.end_date, projects.max_members, projects.total_assignments, projects.completed_assignments, projects.created_at, projects.updated_at").
 		Joins("JOIN project_members ON projects.id = project_members.project_id").
 		Where("project_members.user_id = ? AND project_members.is_active = ?", studentID, true).
 		Order("project_members.joined_at DESC").
@@ -200,11 +189,6 @@ func (s *ProjectService) GetProjectsByStudent(studentID uint) ([]ProjectSimple, 
 	// 转换为简化的结构
 	simpleProjects := make([]ProjectSimple, len(projects))
 	for i, project := range projects {
-		var className string
-		if project.ClassID != nil && project.Class.ID > 0 {
-			className = project.Class.Name
-		}
-
 		simpleProjects[i] = ProjectSimple{
 			ID:                   project.ID,
 			Name:                 project.Name,
@@ -212,8 +196,6 @@ func (s *ProjectService) GetProjectsByStudent(studentID uint) ([]ProjectSimple, 
 			Code:                 project.Code,
 			TeacherID:            project.TeacherID,
 			TeacherName:          project.Teacher.Name,
-			ClassID:              project.ClassID,
-			ClassName:            className,
 			Status:               project.Status,
 			Type:                 project.Type,
 			StartDate:            project.StartDate,
@@ -293,9 +275,7 @@ func (s *ProjectService) GetAllProjectsSimple(page, pageSize int) ([]ProjectSimp
 	offset := (page - 1) * pageSize
 	err := s.db.Preload("Teacher", func(db *gorm.DB) *gorm.DB {
 		return db.Select("id, name, username, email, role")
-	}).Preload("Class", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id, name, code, teacher_id")
-	}).Select("id, name, description, code, teacher_id, class_id, status, type, start_date, end_date, max_members, total_assignments, completed_assignments, created_at, updated_at").
+	}).Select("id, name, description, code, teacher_id, status, type, start_date, end_date, max_members, total_assignments, completed_assignments, created_at, updated_at").
 		Order("created_at DESC").
 		Limit(pageSize).
 		Offset(offset).
@@ -310,11 +290,6 @@ func (s *ProjectService) GetAllProjectsSimple(page, pageSize int) ([]ProjectSimp
 	// 转换为简化的结构
 	simpleProjects := make([]ProjectSimple, len(projects))
 	for i, project := range projects {
-		var className string
-		if project.ClassID != nil && project.Class.ID > 0 {
-			className = project.Class.Name
-		}
-
 		simpleProjects[i] = ProjectSimple{
 			ID:                   project.ID,
 			Name:                 project.Name,
@@ -322,8 +297,6 @@ func (s *ProjectService) GetAllProjectsSimple(page, pageSize int) ([]ProjectSimp
 			Code:                 project.Code,
 			TeacherID:            project.TeacherID,
 			TeacherName:          project.Teacher.Name,
-			ClassID:              project.ClassID,
-			ClassName:            className,
 			Status:               project.Status,
 			Type:                 project.Type,
 			StartDate:            project.StartDate,

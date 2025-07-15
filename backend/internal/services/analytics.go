@@ -112,7 +112,7 @@ type DashboardStats struct {
 
 // GetAdminOverview 获取管理员概览数据
 func (s *AnalyticsService) GetAdminOverview(userID uint) (*AdminOverview, error) {
-	var overview AdminOverview
+	overview := &AdminOverview{}
 
 	// 获取总课题数
 	if err := s.db.Model(&models.Project{}).Count(&overview.TotalProjects); err != nil {
@@ -263,7 +263,7 @@ func (s *AnalyticsService) GetStudentOverview(userID uint) (*StudentOverview, er
 	overview.HighestScore = scoreStats.MaxScore
 	overview.LowestScore = scoreStats.MinScore
 
-	return &overview, nil
+	return overview, nil
 }
 
 // GetProjectStats 获取课题统计数据

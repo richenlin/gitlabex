@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gitlabex/internal/config"
 	"gitlabex/internal/models"
 
 	"gorm.io/gorm"
@@ -12,48 +13,38 @@ import (
 // UserService 用户管理服务
 type UserService struct {
 	db                *gorm.DB
-	permissionService *PermissionService
 	gitlabService     *GitLabService
+	permissionService *PermissionService
 }
 
 // NewUserService 创建用户管理服务
-func NewUserService(db *gorm.DB, permissionService *PermissionService) *UserService {
+func NewUserService(db *gorm.DB, gitlabService *GitLabService, permissionService *PermissionService) *UserService {
 	return &UserService{
 		db:                db,
+		gitlabService:     gitlabService,
 		permissionService: permissionService,
 	}
 }
 
-// UpdateUserRequest 更新用户请求
-type UpdateUserRequest struct {
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Avatar string `json:"avatar"`
-	Role   *int   `json:"role"`
-	Active *bool  `json:"active"`
+// UserWithRole 用户信息加角色
+type UserWithRole struct {
+	*models.User
+	RoleName        string `json:"role_name"`
+	DynamicRole     string `json:"dynamic_role"`      // 从GitLab动态获取的角色
+	DynamicRoleName string `json:"dynamic_role_name"` // 动态角色的中文名称
 }
 
-// UserSearchRequest 用户搜索请求
-type UserSearchRequest struct {
-	Keyword  string `json:"keyword"`
-	Role     *int   `json:"role"`
-	Active   *bool  `json:"active"`
-	Page     int    `json:"page"`
-	PageSize int    `json:"page_size"`
+// UserProfile 用户资料信息
+type UserProfile struct {
+	*models.User
+	RoleName        string `json:"role_name"`
+	DynamicRole     string `json:"dynamic_role"`
+	DynamicRoleName string `json:"dynamic_role_name"`
+	ProjectCount    int    `json:"project_count"`
+	AssignmentCount int    `json:"assignment_count"`
 }
 
-// UserStats 用户统计
-type UserStats struct {
-	TotalUsers    int `json:"total_users"`
-	ActiveUsers   int `json:"active_users"`
-	InactiveUsers int `json:"inactive_users"`
-	AdminCount    int `json:"admin_count"`
-	TeacherCount  int `json:"teacher_count"`
-	StudentCount  int `json:"student_count"`
-	GuestCount    int `json:"guest_count"`
-}
-
-// GetUserByID 根据ID获取用户
+// GetUserByID 根据ID获取用户信息
 func (s *UserService) GetUserByID(userID uint) (*models.User, error) {
 	var user models.User
 	if err := s.db.First(&user, userID).Error; err != nil {
@@ -62,585 +53,418 @@ func (s *UserService) GetUserByID(userID uint) (*models.User, error) {
 	return &user, nil
 }
 
-// GetUserByEmail 根据邮箱获取用户
-func (s *UserService) GetUserByEmail(email string) (*models.User, error) {
+// GetUserWithRole 获取用户信息及角色
+func (s *UserService) GetUserWithRole(userID uint) (*UserWithRole, error) {
+	user, err := s.GetUserByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	userWithRole := &UserWithRole{
+		User:     user,
+		RoleName: GetRoleName(user.Role),
+	}
+
+	// 从GitLab获取动态角色
+	if dynamicRole, err := s.GetUserDynamicRole(user.GitLabID); err == nil {
+		userWithRole.DynamicRole = dynamicRole
+		userWithRole.DynamicRoleName = GetDynamicRoleName(dynamicRole)
+	}
+
+	return userWithRole, nil
+}
+
+// GetRoleName 获取角色名称（静态角色）
+func GetRoleName(role int) string {
+	switch role {
+	case int(models.EduRoleAdmin):
+		return "管理员"
+	case int(models.EduRoleTeacher):
+		return "教师"
+	case int(models.EduRoleAssistant):
+		return "助教"
+	case int(models.EduRoleStudent):
+		return "学生"
+	case int(models.EduRoleGuest):
+		return "访客"
+	default:
+		return "未知"
+	}
+}
+
+// GetDynamicRoleName 获取动态角色名称
+func GetDynamicRoleName(role string) string {
+	switch role {
+	case "admin":
+		return "管理员"
+	case "teacher":
+		return "教师"
+	case "assistant":
+		return "助教"
+	case "student":
+		return "学生"
+	case "guest":
+		return "访客"
+	default:
+		return "未知"
+	}
+}
+
+// GetUserDynamicRole 获取用户在GitLab中的动态角色
+func (s *UserService) GetUserDynamicRole(gitlabUserID int) (string, error) {
+	// TODO: 调用GitLab API获取用户的实际权限
+	// 这里暂时返回基于数据库角色的映射
 	var user models.User
-	if err := s.db.Where("email = ?", email).First(&user).Error; err != nil {
+	if err := s.db.Where("gitlab_id = ?", gitlabUserID).First(&user).Error; err != nil {
+		return "guest", err
+	}
+
+	switch user.Role {
+	case int(models.EduRoleAdmin):
+		return "admin", nil
+	case int(models.EduRoleTeacher):
+		return "teacher", nil
+	case int(models.EduRoleAssistant):
+		return "assistant", nil
+	case int(models.EduRoleStudent):
+		return "student", nil
+	default:
+		return "guest", nil
+	}
+}
+
+// GetUserByGitLabID 根据GitLab ID获取用户
+func (s *UserService) GetUserByGitLabID(gitlabID int) (*models.User, error) {
+	var user models.User
+	if err := s.db.Where("gitlab_id = ?", gitlabID).First(&user).Error; err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
 	return &user, nil
 }
 
-// GetUserByUsername 根据用户名获取用户
-func (s *UserService) GetUserByUsername(username string) (*models.User, error) {
-	var user models.User
-	if err := s.db.Where("username = ?", username).First(&user).Error; err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
-	}
-	return &user, nil
+// UpdateUserRole 更新用户角色
+func (s *UserService) UpdateUserRole(userID uint, role int) error {
+	return s.db.Model(&models.User{}).Where("id = ?", userID).Update("role", role).Error
 }
 
-// GetAllUsers 获取所有用户（管理员权限）
-func (s *UserService) GetAllUsers(page, pageSize int) ([]models.User, int64, error) {
+// GetAllUsers 获取所有用户（分页）
+func (s *UserService) GetAllUsers(page, pageSize int) ([]UserWithRole, int64, error) {
 	var users []models.User
 	var total int64
 
-	// 计算总数
+	// 获取总数
 	if err := s.db.Model(&models.User{}).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	err := s.db.Order("created_at DESC").
-		Limit(pageSize).
-		Offset(offset).
-		Find(&users).Error
-
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get users: %w", err)
+	if err := s.db.Offset(offset).Limit(pageSize).Find(&users).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch users: %w", err)
 	}
 
-	return users, total, nil
+	// 转换为UserWithRole
+	var usersWithRole []UserWithRole
+	for _, user := range users {
+		userWithRole := UserWithRole{
+			User:     &user,
+			RoleName: GetRoleName(user.Role),
+		}
+
+		// 获取动态角色
+		if dynamicRole, err := s.GetUserDynamicRole(user.GitLabID); err == nil {
+			userWithRole.DynamicRole = dynamicRole
+			userWithRole.DynamicRoleName = GetDynamicRoleName(dynamicRole)
+		}
+
+		usersWithRole = append(usersWithRole, userWithRole)
+	}
+
+	return usersWithRole, total, nil
 }
 
 // SearchUsers 搜索用户
-func (s *UserService) SearchUsers(req *UserSearchRequest) ([]models.User, int64, error) {
-	var users []models.User
-	var total int64
-
+func (s *UserService) SearchUsers(keyword string, role *int, active *bool, page, pageSize int) ([]UserWithRole, int64, error) {
 	query := s.db.Model(&models.User{})
 
-	// 关键词搜索
-	if req.Keyword != "" {
-		keyword := "%" + strings.ToLower(req.Keyword) + "%"
-		query = query.Where("LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(username) LIKE ?",
-			keyword, keyword, keyword)
+	// 添加搜索条件
+	if keyword != "" {
+		keyword = strings.ToLower(keyword)
+		query = query.Where("LOWER(username) LIKE ? OR LOWER(name) LIKE ? OR LOWER(email) LIKE ?",
+			"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
 	}
 
-	// 角色过滤
-	if req.Role != nil {
-		query = query.Where("role = ?", *req.Role)
+	if role != nil {
+		query = query.Where("role = ?", *role)
 	}
 
-	// 活跃状态过滤
-	if req.Active != nil {
-		query = query.Where("active = ?", *req.Active)
+	if active != nil {
+		query = query.Where("active = ?", *active)
 	}
 
-	// 计算总数
+	// 获取总数
+	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
 
 	// 分页查询
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.PageSize < 1 || req.PageSize > 100 {
-		req.PageSize = 20
-	}
-
-	offset := (req.Page - 1) * req.PageSize
-	err := query.Order("created_at DESC").
-		Limit(req.PageSize).
-		Offset(offset).
-		Find(&users).Error
-
-	if err != nil {
+	var users []models.User
+	offset := (page - 1) * pageSize
+	if err := query.Offset(offset).Limit(pageSize).Find(&users).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to search users: %w", err)
 	}
 
-	return users, total, nil
-}
-
-// GetUsersByRole 根据角色获取用户
-func (s *UserService) GetUsersByRole(role int) ([]models.User, error) {
-	var users []models.User
-	err := s.db.Where("role = ? AND active = true", role).
-		Order("name ASC").
-		Find(&users).Error
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get users by role: %w", err)
-	}
-
-	return users, nil
-}
-
-// GetTeachers 获取所有老师
-func (s *UserService) GetTeachers() ([]models.User, error) {
-	return s.GetUsersByRole(RoleTeacher)
-}
-
-// GetStudents 获取所有学生
-func (s *UserService) GetStudents() ([]models.User, error) {
-	return s.GetUsersByRole(RoleStudent)
-}
-
-// GetAdmins 获取所有管理员
-func (s *UserService) GetAdmins() ([]models.User, error) {
-	return s.GetUsersByRole(RoleAdmin)
-}
-
-// UpdateUser 更新用户信息
-func (s *UserService) UpdateUser(userID uint, req *UpdateUserRequest) (*models.User, error) {
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
-	}
-
-	// 更新字段
-	if req.Name != "" {
-		user.Name = req.Name
-	}
-	if req.Email != "" {
-		// 检查邮箱是否已存在
-		var existingUser models.User
-		if err := s.db.Where("email = ? AND id != ?", req.Email, userID).First(&existingUser).Error; err == nil {
-			return nil, fmt.Errorf("email already exists")
-		}
-		user.Email = req.Email
-	}
-	if req.Avatar != "" {
-		user.Avatar = req.Avatar
-	}
-	if req.Role != nil {
-		if !IsValidRole(*req.Role) {
-			return nil, fmt.Errorf("invalid role: %d", *req.Role)
-		}
-		user.Role = *req.Role
-	}
-	if req.Active != nil {
-		user.Active = *req.Active
-	}
-
-	if err := s.db.Save(&user).Error; err != nil {
-		return nil, fmt.Errorf("failed to update user: %w", err)
-	}
-
-	return &user, nil
-}
-
-// UpdateUserRole 更新用户角色
-func (s *UserService) UpdateUserRole(userID uint, role int) error {
-	if !IsValidRole(role) {
-		return fmt.Errorf("invalid role: %d", role)
-	}
-
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return fmt.Errorf("user not found: %w", err)
-	}
-
-	user.Role = role
-	if err := s.db.Save(&user).Error; err != nil {
-		return fmt.Errorf("failed to update user role: %w", err)
-	}
-
-	return nil
-}
-
-// DeactivateUser 停用用户
-func (s *UserService) DeactivateUser(userID uint) error {
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return fmt.Errorf("user not found: %w", err)
-	}
-
-	user.Active = false
-	if err := s.db.Save(&user).Error; err != nil {
-		return fmt.Errorf("failed to deactivate user: %w", err)
-	}
-
-	return nil
-}
-
-// ActivateUser 激活用户
-func (s *UserService) ActivateUser(userID uint) error {
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return fmt.Errorf("user not found: %w", err)
-	}
-
-	user.Active = true
-	if err := s.db.Save(&user).Error; err != nil {
-		return fmt.Errorf("failed to activate user: %w", err)
-	}
-
-	return nil
-}
-
-// DeleteUser 删除用户（软删除）
-func (s *UserService) DeleteUser(userID uint) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		// 检查用户是否存在
-		var user models.User
-		if err := tx.First(&user, userID).Error; err != nil {
-			return fmt.Errorf("user not found: %w", err)
+	// 转换为UserWithRole
+	var usersWithRole []UserWithRole
+	for _, user := range users {
+		userWithRole := UserWithRole{
+			User:     &user,
+			RoleName: GetRoleName(user.Role),
 		}
 
-		// 移除用户的所有关联关系
-		// 移除班级成员关系
-		if err := tx.Where("student_id = ?", userID).Delete(&models.ClassMember{}).Error; err != nil {
-			return fmt.Errorf("failed to remove class memberships: %w", err)
+		// 获取动态角色
+		if dynamicRole, err := s.GetUserDynamicRole(user.GitLabID); err == nil {
+			userWithRole.DynamicRole = dynamicRole
+			userWithRole.DynamicRoleName = GetDynamicRoleName(dynamicRole)
 		}
 
-		// 移除课题成员关系
-		if err := tx.Where("student_id = ?", userID).Delete(&models.ProjectMember{}).Error; err != nil {
-			return fmt.Errorf("failed to remove project memberships: %w", err)
-		}
+		usersWithRole = append(usersWithRole, userWithRole)
+	}
 
-		// 移除用户的通知
-		if err := tx.Where("user_id = ?", userID).Delete(&models.Notification{}).Error; err != nil {
-			return fmt.Errorf("failed to remove notifications: %w", err)
-		}
-
-		// 软删除用户
-		if err := tx.Delete(&user).Error; err != nil {
-			return fmt.Errorf("failed to delete user: %w", err)
-		}
-
-		return nil
-	})
+	return usersWithRole, total, nil
 }
 
 // GetUserStats 获取用户统计信息
-func (s *UserService) GetUserStats() (*UserStats, error) {
-	stats := &UserStats{}
+func (s *UserService) GetUserStats() (map[string]int, error) {
+	stats := make(map[string]int)
 
 	// 总用户数
 	var totalUsers int64
 	if err := s.db.Model(&models.User{}).Count(&totalUsers).Error; err != nil {
 		return nil, fmt.Errorf("failed to count total users: %w", err)
 	}
-	stats.TotalUsers = int(totalUsers)
+	stats["total"] = int(totalUsers)
 
 	// 活跃用户数
 	var activeUsers int64
 	if err := s.db.Model(&models.User{}).Where("active = true").Count(&activeUsers).Error; err != nil {
 		return nil, fmt.Errorf("failed to count active users: %w", err)
 	}
-	stats.ActiveUsers = int(activeUsers)
+	stats["active"] = int(activeUsers)
 
-	// 非活跃用户数
-	stats.InactiveUsers = stats.TotalUsers - stats.ActiveUsers
-
-	// 按角色统计
-	var adminCount int64
-	if err := s.db.Model(&models.User{}).Where("role = ?", RoleAdmin).Count(&adminCount).Error; err != nil {
-		return nil, fmt.Errorf("failed to count admins: %w", err)
+	// 各角色统计
+	roleStats := []struct {
+		role int
+		key  string
+	}{
+		{int(models.EduRoleAdmin), "admin"},
+		{int(models.EduRoleTeacher), "teacher"},
+		{int(models.EduRoleAssistant), "assistant"},
+		{int(models.EduRoleStudent), "student"},
+		{int(models.EduRoleGuest), "guest"},
 	}
-	stats.AdminCount = int(adminCount)
 
-	var teacherCount int64
-	if err := s.db.Model(&models.User{}).Where("role = ?", RoleTeacher).Count(&teacherCount).Error; err != nil {
-		return nil, fmt.Errorf("failed to count teachers: %w", err)
+	for _, rs := range roleStats {
+		var count int64
+		if err := s.db.Model(&models.User{}).Where("role = ?", rs.role).Count(&count).Error; err != nil {
+			return nil, fmt.Errorf("failed to count users with role %s: %w", rs.key, err)
+		}
+		stats[rs.key] = int(count)
 	}
-	stats.TeacherCount = int(teacherCount)
-
-	var studentCount int64
-	if err := s.db.Model(&models.User{}).Where("role = ?", RoleStudent).Count(&studentCount).Error; err != nil {
-		return nil, fmt.Errorf("failed to count students: %w", err)
-	}
-	stats.StudentCount = int(studentCount)
-
-	var guestCount int64
-	if err := s.db.Model(&models.User{}).Where("role = ?", RoleGuest).Count(&guestCount).Error; err != nil {
-		return nil, fmt.Errorf("failed to count guests: %w", err)
-	}
-	stats.GuestCount = int(guestCount)
 
 	return stats, nil
 }
 
-// GetUserProfile 获取用户完整档案
-func (s *UserService) GetUserProfile(userID uint) (*UserProfile, error) {
-	var user models.User
-	if err := s.db.First(&user, userID).Error; err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
-	}
-
-	profile := &UserProfile{
-		User: user,
-	}
-
-	// 如果是学生，获取参加的班级和课题
-	if user.Role == RoleStudent {
-		// 获取参加的班级
-		var classes []models.Class
-		if err := s.db.Preload("Teacher").
-			Joins("JOIN class_members ON classes.id = class_members.class_id").
-			Where("class_members.student_id = ? AND class_members.status = 'active'", userID).
-			Find(&classes).Error; err == nil {
-			profile.Classes = classes
-		}
-
-		// 获取参加的课题
-		var projects []models.Project
-		if err := s.db.Preload("Teacher").
-			Joins("JOIN project_members ON projects.id = project_members.project_id").
-			Where("project_members.student_id = ? AND project_members.status = 'active'", userID).
-			Find(&projects).Error; err == nil {
-			profile.Projects = projects
-		}
-
-		// 获取作业提交统计
-		var submissionCount int64
-		if err := s.db.Model(&models.AssignmentSubmission{}).
-			Where("student_id = ?", userID).Count(&submissionCount).Error; err == nil {
-			profile.SubmissionCount = int(submissionCount)
-		}
-
-		// 获取已评审的作业数
-		var reviewedCount int64
-		if err := s.db.Model(&models.AssignmentSubmission{}).
-			Where("student_id = ? AND status = 'reviewed'", userID).Count(&reviewedCount).Error; err == nil {
-			profile.ReviewedCount = int(reviewedCount)
-		}
-
-		// 计算平均分
-		if profile.ReviewedCount > 0 {
-			var averageScore float64
-			if err := s.db.Model(&models.AssignmentSubmission{}).
-				Where("student_id = ? AND status = 'reviewed'", userID).
-				Select("AVG(score)").Scan(&averageScore).Error; err == nil {
-				profile.AverageScore = averageScore
-			}
-		}
-	}
-
-	// 如果是老师，获取创建的班级和课题
-	if user.Role == RoleTeacher {
-		// 获取创建的班级
-		var classes []models.Class
-		if err := s.db.Where("teacher_id = ?", userID).Find(&classes).Error; err == nil {
-			profile.Classes = classes
-		}
-
-		// 获取创建的课题
-		var projects []models.Project
-		if err := s.db.Where("teacher_id = ?", userID).Find(&projects).Error; err == nil {
-			profile.Projects = projects
-		}
-
-		// 获取创建的作业数
-		var assignmentCount int64
-		if err := s.db.Model(&models.Assignment{}).
-			Where("teacher_id = ?", userID).Count(&assignmentCount).Error; err == nil {
-			profile.AssignmentCount = int(assignmentCount)
-		}
-
-		// 获取已完成的评审数
-		var reviewCount int64
-		if err := s.db.Model(&models.Review{}).
-			Where("teacher_id = ?", userID).Count(&reviewCount).Error; err == nil {
-			profile.ReviewCount = int(reviewCount)
-		}
-	}
-
-	return profile, nil
-}
-
-// UserProfile 用户档案
-type UserProfile struct {
-	User            models.User      `json:"user"`
-	Classes         []models.Class   `json:"classes,omitempty"`
-	Projects        []models.Project `json:"projects,omitempty"`
-	SubmissionCount int              `json:"submission_count,omitempty"`
-	ReviewedCount   int              `json:"reviewed_count,omitempty"`
-	AverageScore    float64          `json:"average_score,omitempty"`
-	AssignmentCount int              `json:"assignment_count,omitempty"`
-	ReviewCount     int              `json:"review_count,omitempty"`
-}
-
-// ValidateUserPermission 验证用户权限
-func (s *UserService) ValidateUserPermission(userID uint, permission string, resourceType string, resourceID uint) (bool, error) {
-	user, err := s.GetUserByID(userID)
-	if err != nil {
-		return false, err
-	}
-
-	// 管理员拥有所有权限
-	if user.Role == RoleAdmin {
-		return true, nil
-	}
-
-	// 根据资源类型检查权限
-	switch resourceType {
-	case "class":
-		return s.permissionService.CanAccessClass(user, resourceID, permission), nil
-	case "project":
-		return s.permissionService.CanAccessProject(user, resourceID, permission), nil
-	case "assignment":
-		return s.permissionService.CanAccessAssignment(user, resourceID, permission), nil
-	}
-
-	return false, nil
-}
-
-// GetCurrentUser 获取当前用户（用于测试环境）
-func (s *UserService) GetCurrentUser() (*models.User, error) {
-	// 在生产环境中，这个方法应该从上下文中获取当前用户
-	// 这里我们返回一个测试用户
-	var user models.User
-	if err := s.db.Where("role = ?", RoleAdmin).First(&user).Error; err != nil {
-		return nil, fmt.Errorf("failed to get current user: %w", err)
-	}
-	return &user, nil
-}
-
-// GetUserDashboard 获取用户仪表板数据
-func (s *UserService) GetUserDashboard(user *models.User) (*UserDashboard, error) {
-	dashboard := &UserDashboard{
-		User: *user,
-	}
-
-	// 根据用户角色获取不同的仪表板数据
-	switch user.Role {
-	case RoleAdmin:
-		// 管理员看到所有统计数据
-		var totalUsers, totalClasses, totalProjects, totalAssignments int64
-		s.db.Model(&models.User{}).Count(&totalUsers)
-		s.db.Model(&models.Class{}).Count(&totalClasses)
-		s.db.Model(&models.Project{}).Count(&totalProjects)
-		s.db.Model(&models.Assignment{}).Count(&totalAssignments)
-
-		dashboard.TotalUsers = int(totalUsers)
-		dashboard.TotalClasses = int(totalClasses)
-		dashboard.TotalProjects = int(totalProjects)
-		dashboard.TotalAssignments = int(totalAssignments)
-
-	case RoleTeacher:
-		// 老师看到自己的班级和课题统计
-		var myClasses, myProjects, myAssignments int64
-		s.db.Model(&models.Class{}).Where("teacher_id = ?", user.ID).Count(&myClasses)
-		s.db.Model(&models.Project{}).Where("teacher_id = ?", user.ID).Count(&myProjects)
-		s.db.Model(&models.Assignment{}).Where("teacher_id = ?", user.ID).Count(&myAssignments)
-
-		dashboard.MyClasses = int(myClasses)
-		dashboard.MyProjects = int(myProjects)
-		dashboard.MyAssignments = int(myAssignments)
-
-	case RoleStudent:
-		// 学生看到自己参与的统计
-		var myClasses, myProjects, mySubmissions int64
-		s.db.Model(&models.Class{}).
-			Joins("JOIN class_members ON classes.id = class_members.class_id").
-			Where("class_members.student_id = ?", user.ID).Count(&myClasses)
-		s.db.Model(&models.Project{}).
-			Joins("JOIN project_members ON projects.id = project_members.project_id").
-			Where("project_members.student_id = ?", user.ID).Count(&myProjects)
-		s.db.Model(&models.AssignmentSubmission{}).
-			Where("student_id = ?", user.ID).Count(&mySubmissions)
-
-		dashboard.MyClasses = int(myClasses)
-		dashboard.MyProjects = int(myProjects)
-		dashboard.MySubmissions = int(mySubmissions)
-	}
-
-	return dashboard, nil
-}
-
-// ToProfile 将用户转换为用户资料
-func (s *UserService) ToProfile(user *models.User, role models.EducationRole) *UserProfile {
-	profile := &UserProfile{
-		User: *user,
-	}
-
-	// 根据角色添加相关统计信息
-	switch user.Role {
-	case RoleTeacher:
-		// 获取创建的班级
-		var classes []models.Class
-		if err := s.db.Where("teacher_id = ?", user.ID).Find(&classes).Error; err == nil {
-			profile.Classes = classes
-		}
-
-		// 获取创建的课题
-		var projects []models.Project
-		if err := s.db.Where("teacher_id = ?", user.ID).Find(&projects).Error; err == nil {
-			profile.Projects = projects
-		}
-
-		// 获取创建的作业数
-		var assignmentCount int64
-		if err := s.db.Model(&models.Assignment{}).Where("teacher_id = ?", user.ID).Count(&assignmentCount).Error; err == nil {
-			profile.AssignmentCount = int(assignmentCount)
-		}
-
-	case RoleStudent:
-		// 获取参加的班级
-		var classes []models.Class
-		if err := s.db.Preload("Teacher").
-			Joins("JOIN class_members ON classes.id = class_members.class_id").
-			Where("class_members.student_id = ? AND class_members.status = 'active'", user.ID).
-			Find(&classes).Error; err == nil {
-			profile.Classes = classes
-		}
-
-		// 获取参加的课题
-		var projects []models.Project
-		if err := s.db.Preload("Teacher").
-			Joins("JOIN project_members ON projects.id = project_members.project_id").
-			Where("project_members.student_id = ? AND project_members.status = 'active'", user.ID).
-			Find(&projects).Error; err == nil {
-			profile.Projects = projects
-		}
-
-		// 获取作业提交统计
-		var submissionCount int64
-		if err := s.db.Model(&models.AssignmentSubmission{}).
-			Where("student_id = ?", user.ID).Count(&submissionCount).Error; err == nil {
-			profile.SubmissionCount = int(submissionCount)
-		}
-
-		// 获取已评审的作业数
-		var reviewedCount int64
-		if err := s.db.Model(&models.AssignmentSubmission{}).
-			Where("student_id = ? AND status = 'graded'", user.ID).Count(&reviewedCount).Error; err == nil {
-			profile.ReviewedCount = int(reviewedCount)
-		}
-
-		// 计算平均分
-		if profile.ReviewedCount > 0 {
-			var averageScore float64
-			if err := s.db.Model(&models.AssignmentSubmission{}).
-				Where("student_id = ? AND status = 'graded'", user.ID).
-				Select("AVG(score)").Scan(&averageScore).Error; err == nil {
-				profile.AverageScore = averageScore
-			}
-		}
-	}
-
-	return profile
-}
-
 // ListActiveUsers 获取活跃用户列表
-func (s *UserService) ListActiveUsers() ([]*models.User, error) {
-	var users []*models.User
-	err := s.db.Where("active = true").Order("name ASC").Find(&users).Error
-	if err != nil {
+func (s *UserService) ListActiveUsers() ([]models.User, error) {
+	var users []models.User
+	if err := s.db.Where("active = true").Find(&users).Error; err != nil {
 		return nil, fmt.Errorf("failed to list active users: %w", err)
 	}
 	return users, nil
 }
 
-// UpdateUserFields 更新用户信息 (兼容handler期望的签名)
-func (s *UserService) UpdateUserFields(user *models.User, updates map[string]interface{}) error {
-	return s.db.Model(user).Updates(updates).Error
+// IsTeacher 检查用户是否是教师
+func (s *UserService) IsTeacher(userID uint) bool {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false
+	}
+	return user.Role == int(models.EduRoleTeacher) || user.Role == int(models.EduRoleAdmin)
 }
 
-// UserDashboard 用户仪表板数据
-type UserDashboard struct {
-	User             models.User `json:"user"`
-	TotalUsers       int         `json:"total_users,omitempty"`
-	TotalClasses     int         `json:"total_classes,omitempty"`
-	TotalProjects    int         `json:"total_projects,omitempty"`
-	TotalAssignments int         `json:"total_assignments,omitempty"`
-	MyClasses        int         `json:"my_classes,omitempty"`
-	MyProjects       int         `json:"my_projects,omitempty"`
-	MyAssignments    int         `json:"my_assignments,omitempty"`
-	MySubmissions    int         `json:"my_submissions,omitempty"`
-	RecentActivities []string    `json:"recent_activities,omitempty"`
+// IsAdmin 检查用户是否是管理员
+func (s *UserService) IsAdmin(userID uint) bool {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return false
+	}
+	return user.Role == int(models.EduRoleAdmin)
+}
+
+// CheckUserPermission 检查用户权限（通用方法）
+func (s *UserService) CheckUserPermission(userID uint, resourceType string, resourceID uint, permission string) (bool, error) {
+	// 获取用户信息
+	user, err := s.GetUserByID(userID)
+	if err != nil {
+		return false, err
+	}
+
+	// 根据资源类型检查权限
+	switch resourceType {
+	case "project":
+		return s.permissionService.CanAccessProject(user.ID, resourceID, permission), nil
+	case "assignment":
+		return s.permissionService.CanAccessAssignment(user.ID, resourceID, permission), nil
+	}
+
+	return false, nil
+}
+
+// SyncUserFromGitLab 从GitLab同步用户信息
+func (s *UserService) SyncUserFromGitLab(gitlabID int) (*models.User, error) {
+	// TODO: 实现从GitLab同步用户信息的逻辑
+	return s.GetUserByGitLabID(gitlabID)
+}
+
+// GetCurrentUser 获取当前用户（用于测试环境）
+func (s *UserService) GetCurrentUser() (*models.User, error) {
+	// 在生产环境中，这个方法应该从上下文中获取当前用户
+	// 这里返回一个默认的管理员用户用于测试
+	var user models.User
+	if err := s.db.Where("role = ?", int(models.EduRoleAdmin)).First(&user).Error; err != nil {
+		return nil, fmt.Errorf("no admin user found: %w", err)
+	}
+	return &user, nil
+}
+
+// GetUserProfile 获取用户资料信息
+func (s *UserService) GetUserProfile(userID uint) (*UserProfile, error) {
+	user, err := s.GetUserByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 统计用户相关的课题数量
+	var projectCount int64
+	s.db.Table("project_members").Where("user_id = ? AND is_active = true", userID).Count(&projectCount)
+
+	// 统计用户相关的作业数量
+	var assignmentCount int64
+	s.db.Table("assignment_submissions").Where("student_id = ?", userID).Count(&assignmentCount)
+
+	profile := &UserProfile{
+		User:            user,
+		RoleName:        GetRoleName(user.Role),
+		ProjectCount:    int(projectCount),
+		AssignmentCount: int(assignmentCount),
+	}
+
+	// 获取动态角色
+	if dynamicRole, err := s.GetUserDynamicRole(user.GitLabID); err == nil {
+		profile.DynamicRole = dynamicRole
+		profile.DynamicRoleName = GetDynamicRoleName(dynamicRole)
+	}
+
+	return profile, nil
+}
+
+// GetUserDashboard 获取用户仪表板信息
+func (s *UserService) GetUserDashboard(userID uint) (map[string]interface{}, error) {
+	user, err := s.GetUserByID(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	dashboard := map[string]interface{}{
+		"user":      user,
+		"role_name": GetRoleName(user.Role),
+	}
+
+	// 根据角色返回不同的仪表板信息
+	switch user.Role {
+	case int(models.EduRoleTeacher), int(models.EduRoleAdmin):
+		// 教师和管理员看到的统计信息
+		var projectCount, studentCount int64
+		s.db.Model(&models.Project{}).Where("teacher_id = ?", userID).Count(&projectCount)
+		s.db.Table("project_members").Joins("JOIN projects ON projects.id = project_members.project_id").
+			Where("projects.teacher_id = ? AND project_members.is_active = true", userID).Count(&studentCount)
+
+		dashboard["project_count"] = projectCount
+		dashboard["student_count"] = studentCount
+
+	case int(models.EduRoleStudent):
+		// 学生看到的统计信息
+		var projectCount, assignmentCount int64
+		s.db.Table("project_members").Where("user_id = ? AND is_active = true", userID).Count(&projectCount)
+		s.db.Model(&models.AssignmentSubmission{}).Where("student_id = ?", userID).Count(&assignmentCount)
+
+		dashboard["project_count"] = projectCount
+		dashboard["assignment_count"] = assignmentCount
+	}
+
+	return dashboard, nil
+}
+
+// ToProfile 将用户信息转换为UserProfile
+func (s *UserService) ToProfile(user *models.User) *UserProfile {
+	if user == nil {
+		return nil
+	}
+
+	// 统计用户相关信息
+	var projectCount, assignmentCount int64
+	s.db.Table("project_members").Where("user_id = ? AND is_active = true", user.ID).Count(&projectCount)
+	s.db.Table("assignment_submissions").Where("student_id = ?", user.ID).Count(&assignmentCount)
+
+	profile := &UserProfile{
+		User:            user,
+		RoleName:        GetRoleName(user.Role),
+		ProjectCount:    int(projectCount),
+		AssignmentCount: int(assignmentCount),
+	}
+
+	// 获取动态角色
+	if dynamicRole, err := s.GetUserDynamicRole(user.GitLabID); err == nil {
+		profile.DynamicRole = dynamicRole
+		profile.DynamicRoleName = GetDynamicRoleName(dynamicRole)
+	}
+
+	return profile
+}
+
+// UpdateUserFields 更新用户字段
+func (s *UserService) UpdateUserFields(userID uint, updates map[string]interface{}) error {
+	// 验证允许更新的字段
+	allowedFields := map[string]bool{
+		"name":   true,
+		"email":  true,
+		"avatar": true,
+		"role":   true,
+		"active": true,
+	}
+
+	// 过滤只允许更新的字段
+	filteredUpdates := make(map[string]interface{})
+	for field, value := range updates {
+		if allowedFields[field] {
+			filteredUpdates[field] = value
+		}
+	}
+
+	if len(filteredUpdates) == 0 {
+		return fmt.Errorf("no valid fields to update")
+	}
+
+	// 验证角色字段
+	if role, exists := filteredUpdates["role"]; exists {
+		if roleInt, ok := role.(int); ok {
+			if !config.IsValidRole(roleInt) {
+				return fmt.Errorf("invalid role: %d", roleInt)
+			}
+		}
+	}
+
+	return s.db.Model(&models.User{}).Where("id = ?", userID).Updates(filteredUpdates).Error
 }

@@ -87,7 +87,7 @@ func (s *InteractiveDevService) GetProjectFileTree(projectID uint, branch string
 	}
 
 	// 检查权限
-	if !s.permissionService.CanAccessProject(&user, projectID, "read") {
+	if !s.permissionService.CanAccessProject(user.ID, projectID, "read") {
 		return nil, fmt.Errorf("permission denied")
 	}
 
@@ -148,7 +148,7 @@ func (s *InteractiveDevService) GetFileContent(projectID uint, filePath, branch 
 	}
 
 	// 检查权限
-	if !s.permissionService.CanAccessProject(&user, projectID, "read") {
+	if !s.permissionService.CanAccessProject(user.ID, projectID, "read") {
 		return "", fmt.Errorf("permission denied")
 	}
 
@@ -189,7 +189,7 @@ func (s *InteractiveDevService) SaveFileContent(req *CodeEditRequest, userID uin
 	}
 
 	// 检查权限
-	canWrite := s.permissionService.CanAccessProject(&user, req.ProjectID, "write")
+	canWrite := s.permissionService.CanAccessProject(user.ID, req.ProjectID, "write")
 	if !canWrite {
 		return fmt.Errorf("permission denied")
 	}
@@ -306,7 +306,7 @@ func (s *InteractiveDevService) StartEditSession(req *EditSessionRequest, userID
 	}
 
 	// 检查权限
-	if !s.permissionService.CanAccessProject(&user, req.ProjectID, "write") {
+	if !s.permissionService.CanAccessProject(user.ID, req.ProjectID, "write") {
 		return nil, fmt.Errorf("permission denied")
 	}
 

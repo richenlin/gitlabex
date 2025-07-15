@@ -338,7 +338,7 @@ func (h *InteractiveDevHandler) GetActiveEditSessions(c *gin.Context) {
 	}
 
 	// 检查权限
-	if !h.permissionService.CanAccessProject(currentUser, uint(projectID), "read") {
+	if !h.permissionService.CanAccessProject(currentUser.ID, uint(projectID), "read") {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "Permission denied",
 		})
@@ -382,7 +382,7 @@ func (h *InteractiveDevHandler) GetCurrentMember(c *gin.Context) {
 	}
 
 	// 检查权限
-	if !h.permissionService.CanAccessProject(currentUser, uint(projectID), "read") {
+	if !h.permissionService.CanAccessProject(currentUser.ID, uint(projectID), "read") {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": "Permission denied",
 		})
