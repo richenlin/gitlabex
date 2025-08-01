@@ -92,8 +92,9 @@ func main() {
 	// 设置Gin模式
 	gin.SetMode(cfg.Server.Mode)
 
-	// 初始化路由 - 简化版本
-	router := setupSimpleRoutes(authService, permissionService, userHandler, projectHandler, assignmentHandler, thirdPartyHandler)
+	// 初始化路由
+	router := setupRoutes(authService, permissionService,
+		userHandler, projectHandler, assignmentHandler, thirdPartyHandler)
 
 	// 启动服务器
 	addr := cfg.GetServerAddr()
@@ -172,129 +173,7 @@ func autoMigrate(db *gorm.DB) error {
 }
 
 // setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, permissionService *services.PermissionService, analyticsHandler *handlers.AnalyticsHandler,
-	userHandler *handlers.UserHandler, projectHandler *handlers.ProjectHandler, assignmentHandler *handlers.AssignmentHandler,
-	notificationHandler *handlers.NotificationHandler, discussionHandler *handlers.DiscussionHandler,
-	thirdPartyHandler *handlers.ThirdPartyAPIHandler, educationHandler *handlers.EducationHandler, wikiHandler *handlers.WikiHandler) *gin.Engine {
-	router := gin.New()
-
-	// 中间件
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
-	router.Use(corsMiddleware())
-
-	// API路由组
-	api := router.Group("/api")
-	{
-		// 添加调试中间件
-		api.Use(func(c *gin.Context) {
-			fmt.Printf("DEBUG: API request to %s\n", c.Request.URL.Path)
-			c.Next()
-		})
-
-		// 健康检查
-		api.GET("/health", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"status":    "ok",
-				"service":   "gitlabex-backend",
-				"version":   "1.0.0",
-				"timestamp": time.Now().Unix(),
-			})
-		})
-
-		// 测试路由
-		api.GET("/test", func(c *gin.Context) {
-			fmt.Printf("DEBUG: Test route called\n")
-			c.JSON(http.StatusOK, gin.H{
-				"message": "Test route works",
-			})
-		})
-
-		// 认证相关路由
-		auth := api.Group("/auth")
-		{
-			auth.GET("/gitlab", func(c *gin.Context) {
-				// 生成随机state以防止CSRF攻击
-				state := fmt.Sprintf("%d-%d", time.Now().UnixNano(), rand.Int63())
-
-				// 直接使用配置的外部URL生成OAuth URL
-				url := authService.GetGitLabOAuthURL(state)
-
-				// 直接重定向到GitLab OAuth页面
-				c.Redirect(302, url)
-			})
-			auth.GET("/gitlab/callback", authService.HandleGitLabCallback)
-			auth.POST("/gitlab/callback", authService.HandleGitLabCallback)
-			auth.POST("/logout", authService.Logout)
-		}
-
-		// 分析统计路由
-		analytics := api.Group("/analytics")
-		{
-			analytics.GET("/overview", analyticsHandler.GetAnalyticsOverview)
-			analytics.GET("/project-stats", analyticsHandler.GetProjectStats)
-			analytics.GET("/student-stats", analyticsHandler.GetStudentStats)
-			analytics.GET("/assignment-stats", analyticsHandler.GetAssignmentStats)
-			analytics.GET("/submission-trend", analyticsHandler.GetSubmissionTrend)
-			analytics.GET("/project-distribution", analyticsHandler.GetProjectDistribution)
-			analytics.GET("/grade-distribution", analyticsHandler.GetGradeDistribution)
-			analytics.GET("/activity-stats", analyticsHandler.GetActivityStats)
-			analytics.GET("/dashboard-stats", analyticsHandler.GetDashboardStats)
-			analytics.GET("/recent-activities", analyticsHandler.GetRecentActivities)
-		}
-
-		// 用户管理路由
-		users := api.Group("/users")
-		users.Use(authService.AuthMiddleware())    // JWT认证中间件
-		users.Use(permissionService.RequireAuth()) // 权限认证中间件
-		{
-			users.GET("/active", userHandler.ListActiveUsers)
-			users.GET("/current", userHandler.GetCurrentUser)
-			users.GET("/:id", userHandler.GetUserByID)
-			users.PUT("/current", userHandler.UpdateUser)
-			users.GET("/dashboard", userHandler.GetUserDashboard)
-			users.POST("/sync/:gitlab_id", userHandler.SyncUserFromGitLab)
-		}
-
-		// 课题管理路由（需要认证）
-		projectsAuth := api.Group("")
-		projectsAuth.Use(authService.AuthMiddleware())
-		projectsAuth.Use(permissionService.RequireAuth())
-		projectHandler.RegisterRoutes(projectsAuth, permissionService)
-
-		// 作业管理路由
-		assignmentHandler.RegisterRoutes(api)
-
-		// 通知管理路由
-		notificationHandler.RegisterRoutes(api)
-
-		// 话题讨论路由
-		discussionHandler.RegisterRoutes(api)
-
-		// 第三方API路由
-		thirdPartyHandler.RegisterRoutes(api)
-
-		// 教育管理路由
-		educationHandler.RegisterRoutes(api)
-
-		// Wiki管理路由
-		wikiHandler.RegisterRoutes(api)
-	}
-
-	// 根路径
-	router.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "GitLabEx API Server",
-			"version": "1.0.0",
-			"status":  "running",
-		})
-	})
-
-	return router
-}
-
-// setupSimpleRoutes 简化路由设置
-func setupSimpleRoutes(authService *services.AuthService, permissionService *services.PermissionService,
+func setupRoutes(authService *services.AuthService, permissionService *services.PermissionService,
 	userHandler *handlers.UserHandler, projectHandler *handlers.ProjectHandler,
 	assignmentHandler *handlers.AssignmentHandler, thirdPartyHandler *handlers.ThirdPartyAPIHandler) *gin.Engine {
 	router := gin.New()

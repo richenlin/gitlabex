@@ -9,7 +9,7 @@
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "${fileDirname}/backend/cmd/main.go"
+      "program": "${workspaceRoot}/backend/cmd/main.go"
     }
   ]
 }

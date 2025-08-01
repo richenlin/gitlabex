@@ -22,6 +22,7 @@ type Config struct {
 type ServerConfig struct {
 	Port string
 	Mode string
+	Host string
 }
 
 // DatabaseConfig 数据库配置
@@ -128,23 +129,24 @@ func LoadConfig() (*Config, error) {
 		Server: ServerConfig{
 			Port: getEnv("SERVER_PORT", "8080"),
 			Mode: getEnv("GIN_MODE", "debug"),
+			Host: getEnv("SERVER_HOST", "0.0.0.0"),
 		},
 		OnlyOffice: OnlyOfficeConfig{
 			BaseURL:     getEnv("ONLYOFFICE_URL", "http://localhost:8000"),
-			JWTSecret:   getEnv("ONLYOFFICE_JWT_SECRET", "your-jwt-secret"),
+			JWTSecret:   getEnv("ONLYOFFICE_JWT_SECRET", "gitlabex-jwt-secret-2024"),
 			CallbackURL: getEnv("ONLYOFFICE_CALLBACK_URL", "http://localhost:8080/api/documents/callback"),
 		},
 		GitLab: GitLabConfig{
 			URL:          getEnv("GITLAB_EXTERNAL_URL", "http://localhost:8081"),
 			InternalURL:  getEnv("GITLAB_INTERNAL_URL", "http://localhost:8081"),
-			ClientID:     getEnv("GITLAB_CLIENT_ID", ""),
-			ClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
+			ClientID:     getEnv("GITLAB_CLIENT_ID", "0313135a0bd417dc53a3181bff303788d5120063a1ac23b447ee783ea8f25193"),
+			ClientSecret: getEnv("GITLAB_CLIENT_SECRET", "gloas-f45c9b9e43762b7adeceb66887588219321800ca7a4284f289cc0f6c769cdc07"),
 			RedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:8080/api/auth/gitlab/callback"),
 			Token:        getEnv("GITLAB_TOKEN", ""),
-			Scopes:       getEnv("GITLAB_SCOPES", "api read_user email"),
+			Scopes:       getEnv("GITLAB_SCOPES", "api read_user email read_repository write_repository"),
 		},
 		JWT: JWTConfig{
-			Secret: getEnv("JWT_SECRET", "your-jwt-secret-key"),
+			Secret: getEnv("JWT_SECRET", "gitlabex-app-jwt-secret-2024"),
 		},
 		Frontend: FrontendConfig{
 			URL: getEnv("FRONTEND_URL", "http://localhost:3000"),
