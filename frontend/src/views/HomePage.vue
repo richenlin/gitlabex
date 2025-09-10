@@ -283,10 +283,26 @@ const fetchScenes = async (page = 1) => {
       pageSize,
       search: searchQuery.value || undefined
     })
-    scenes.value = response.data.items
-    total.value = response.data.total
-  } catch (error) {
-    ElMessage.error('获取课题列表失败')
+    
+    // 处理不同的响应数据结构
+    if (response) {
+      scenes.value = response.projects || response.items || response || []
+      total.value = response.total || response.length || 0
+    } else if (Array.isArray(response)) {
+      scenes.value = response
+      total.value = response.length
+    } else {
+      scenes.value = []
+      total.value = 0
+    }
+  } catch (error: any) {
+    console.error('获取课题列表失败:', error)
+    // 只在非404错误时显示错误提示
+    if (error.response?.status !== 404) {
+      ElMessage.error('获取课题列表失败')
+    }
+    scenes.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -299,9 +315,21 @@ const fetchMyScenes = async () => {
     const response = await researchService.getProjects({
       ownerId: userStore.user?.id
     })
-    myScenes.value = response.data.items
-  } catch (error) {
-    ElMessage.error('获取我的课题失败')
+    
+    // 处理不同的响应数据结构
+    if (response.data) {
+      myScenes.value = response.data.projects || response.data.items || response.data || []
+    } else if (Array.isArray(response)) {
+      myScenes.value = response
+    } else {
+      myScenes.value = []
+    }
+  } catch (error: any) {
+    console.error('获取我的课题失败:', error)
+    if (error.response?.status !== 404) {
+      ElMessage.error('获取我的课题失败')
+    }
+    myScenes.value = []
   }
 }
 
@@ -312,9 +340,18 @@ const fetchHotTopics = async () => {
       page: 1,
       pageSize: 5
     })
-    hotTopics.value = response.data.items
-  } catch (error) {
-    ElMessage.error('获取热门话题失败')
+      console.log(response)
+    
+    // 处理不同的响应数据结构
+    if (response) {
+      hotTopics.value =  response.projects || []
+    } 
+  } catch (error: any) {
+    console.error('获取热门话题失败:', error)
+    if (error.response?.status !== 404) {
+      ElMessage.error('获取热门话题失败')
+    }
+    hotTopics.value = []
   } finally {
     topicsLoading.value = false
   }

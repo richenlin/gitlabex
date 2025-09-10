@@ -275,7 +275,7 @@ func (h *GitLabWebhookHandler) RegisterWebhook(c *gin.Context) {
 
 // ListWebhooks 列出项目的webhooks
 func (h *GitLabWebhookHandler) ListWebhooks(c *gin.Context) {
-	projectIDStr := c.Param("project_id")
+	projectIDStr := c.Param("id")
 	projectID, err := strconv.ParseInt(projectIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
@@ -289,7 +289,7 @@ func (h *GitLabWebhookHandler) ListWebhooks(c *gin.Context) {
 
 // DeleteWebhook 删除webhook
 func (h *GitLabWebhookHandler) DeleteWebhook(c *gin.Context) {
-	projectIDStr := c.Param("project_id")
+	projectIDStr := c.Param("id")
 	webhookIDStr := c.Param("webhook_id")
 
 	projectID, err := strconv.ParseInt(projectIDStr, 10, 64)

@@ -29,11 +29,9 @@ func NewResearchHandler(researchService *services.ResearchService, userService *
 
 // GetResearchProjects 获取研究课题列表
 func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
+	// 检查是否为游客模式
+	isGuest, _ := c.Get("is_guest")
+	userID, _ := c.Get("user_id")
 
 	// 获取分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -50,23 +48,35 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 
 	offset := (page - 1) * limit
 
-	// 获取当前用户信息
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
-
 	var projects []models.ResearchProject
 	var total int64
+	var err error
 
-	// 根据用户角色和查询参数获取项目
-	if currentUser.EduRole >= models.EduRoleTeacher {
-		// 教师和管理员可以看到所有项目
-		projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate)
+	// 如果是游客模式，只返回公开项目
+	if isGuest == true || userID == "" {
+		projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false)
 	} else {
-		// 学生只能看到公开项目和自己参与的项目
-		projects, total, err = h.researchService.GetUserAccessibleProjects(userID.(uuid.UUID), limit, offset)
+		// 获取当前用户信息
+		userUUID, parseErr := uuid.Parse(userID.(string))
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
+			return
+		}
+
+		currentUser, err := h.userService.GetUserByID(userUUID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
+			return
+		}
+
+		// 根据用户角色和查询参数获取项目
+		if currentUser.EduRole >= models.EduRoleTeacher {
+			// 教师和管理员可以看到所有项目
+			projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate)
+		} else {
+			// 学生只能看到公开项目和自己参与的项目
+			projects, total, err = h.researchService.GetUserAccessibleProjects(userUUID, limit, offset)
+		}
 	}
 
 	if err != nil {

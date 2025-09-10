@@ -30,11 +30,9 @@ func NewTopicHandler(topicService *services.TopicService, userService *services.
 
 // GetTopics 获取话题列表
 func (h *TopicHandler) GetTopics(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
+	// 检查是否为游客模式
+	isGuest, _ := c.Get("is_guest")
+	userID, _ := c.Get("user_id")
 
 	// 获取分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -69,17 +67,32 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 			return
 		}
 
-		_, err = h.userService.GetUserByID(userID.(uuid.UUID))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-			return
-		}
-
-		if !project.IsPublic {
-			isMember, err := h.researchService.IsProjectMember(projectID, userID.(uuid.UUID))
-			if err != nil || !isMember {
+		// 如果是游客模式，只能访问公开项目的话题
+		if isGuest == true || userID == "" {
+			if !project.IsPublic {
 				c.JSON(http.StatusForbidden, gin.H{"error": "无权限访问该课题的话题"})
 				return
+			}
+		} else {
+			// 已登录用户，检查项目权限
+			userUUID, parseErr := uuid.Parse(userID.(string))
+			if parseErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
+				return
+			}
+
+			_, err = h.userService.GetUserByID(userUUID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
+				return
+			}
+
+			if !project.IsPublic {
+				isMember, err := h.researchService.IsProjectMember(projectID, userUUID)
+				if err != nil || !isMember {
+					c.JSON(http.StatusForbidden, gin.H{"error": "无权限访问该课题的话题"})
+					return
+				}
 			}
 		}
 

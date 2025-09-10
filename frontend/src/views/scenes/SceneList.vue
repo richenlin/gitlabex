@@ -190,11 +190,26 @@ const fetchProjects = async () => {
       search: searchQuery.value || undefined,
       visibility: visibilityFilter.value || undefined
     })
-    projects.value = response.data?.items || []
-    total.value = response.data?.total || 0
-  } catch (error) {
+    
+    // 处理不同的响应数据结构
+    if (response.data) {
+      projects.value = response.data.projects || response.data.items || response.data || []
+      total.value = response.data.total || response.data.length || 0
+    } else if (Array.isArray(response)) {
+      projects.value = response
+      total.value = response.length
+    } else {
+      projects.value = []
+      total.value = 0
+    }
+  } catch (error: any) {
     console.error('获取课题列表失败:', error)
-    ElMessage.error('获取课题列表失败')
+    // 只在非404错误时显示错误提示
+    if (error.response?.status !== 404) {
+      ElMessage.error('获取课题列表失败')
+    }
+    projects.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }

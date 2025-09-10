@@ -51,8 +51,15 @@ api.interceptors.response.use(
       ElMessage.error('登录已过期，请重新登录')
     } else if (error.response?.status === 403) {
       ElMessage.error('权限不足')
-    } else {
+    } else if (error.response?.status === 404) {
+      // 404错误通常表示资源不存在，不需要显示错误提示
+      console.warn('Resource not found:', error.config?.url)
+    } else if (error.response && error.response.status >= 500) {
+      // 只有服务器错误才显示错误提示
       ElMessage.error(message)
+    } else {
+      // 其他客户端错误，记录日志但不显示提示
+      console.warn('API request failed:', error.response?.status, message)
     }
     
     return Promise.reject(error)

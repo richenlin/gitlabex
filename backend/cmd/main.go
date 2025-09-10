@@ -61,7 +61,7 @@ func main() {
 
 	// 配置CORS
 	corsConfig := cors.New(cors.Options{
-		AllowedOrigins:   []string{cfg.FrontendURL},
+		AllowedOrigins:   []string{cfg.FrontendURL, "http://localhost:3000", "http://127.0.0.1:3000", "http://0.0.0.0:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"*"},
 		AllowCredentials: true,
@@ -293,9 +293,9 @@ func main() {
 		webhook.POST("/gitlab/merge-request", gitlabWebhookHandler.HandleMergeRequest)
 		webhook.POST("/gitlab/issue", gitlabWebhookHandler.HandleIssue)
 		webhook.POST("/gitlab/pipeline", gitlabWebhookHandler.HandlePipeline)
-		gitlab.POST("/projects/:project_id/register-webhook", gitlabWebhookHandler.RegisterWebhook)
-		gitlab.GET("/projects/:project_id/webhooks", gitlabWebhookHandler.ListWebhooks)
-		gitlab.DELETE("/projects/:project_id/webhooks/:webhook_id", gitlabWebhookHandler.DeleteWebhook)
+		gitlab.POST("/projects/:id/register-webhook", gitlabWebhookHandler.RegisterWebhook)
+		gitlab.GET("/projects/:id/webhooks", gitlabWebhookHandler.ListWebhooks)
+		gitlab.DELETE("/projects/:id/webhooks/:webhook_id", gitlabWebhookHandler.DeleteWebhook)
 	}
 
 	// 第三方系统同步API路由 (需要API密钥认证)
