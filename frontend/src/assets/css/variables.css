@@ -1,0 +1,51 @@
+:root {
+  /* 主题色 */
+  --primary-color: #4d79ff;
+  --secondary-color: #6b8cff;
+  --accent-color: #00e1ff;
+  
+  /* 文本色 */
+  --text-color: #e0e0ff;
+  --light-text: #b0b0ff;
+  --lighter-text: #8080cc;
+  
+  /* 背景色 */
+  --background-color: #0a0a2a;
+  --card-background: #1a1a4a;
+  --border-color: #303060;
+  
+  /* 状态色 */
+  --success-color: #00c853;
+  --warning-color: #ffab00;
+  --danger-color: #ff3d00;
+  --info-color: #00b8d4;
+  
+  /* 渐变背景 */
+  --space-gradient: radial-gradient(circle at 50% 50%, #1a1a4a 0%, #0a0a2a 100%);
+  
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  
+  /* 圆角 */
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  
+  /* 阴影 */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.2);
+  
+  /* 字体 */
+  --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 24px;
+  --font-size-xxl: 32px;
+}

@@ -1,0 +1,1 @@
+import{d as t,f as n,h as o,g as s}from"./index-D6m0uNFb.js";const p=t({__name:"Settings",setup(a){return(r,e)=>(s(),n("div",null,[...e[0]||(e[0]=[o("h1",null,"用户设置 (待实现)",-1)])]))}});export{p as default};

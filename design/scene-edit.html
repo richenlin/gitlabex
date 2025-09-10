@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>创建/编辑课题 - 协同创新社区</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/scene-edit.css">
+</head>
+
+<body>
+  <header>
+    <div class="logo">
+      <h1>协同创新社区</h1>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">首页</a></li>
+        <li><a href="scene.html" class="active">课题</a></li>
+        <li><a href="topic-list.html">话题</a></li>
+        <li><a href="documents.html">文档</a></li>
+      </ul>
+    </nav>
+    <div class="user-info">
+      <button class="announcement-icon">📢</button>
+      <span>当前用户</span>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/32" alt="用户头像">
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="breadcrumb">
+      <a href="scene.html">课题列表</a> &gt; <span>创建/编辑课题</span>
+    </div>
+
+    <main class="scene-edit-container">
+      <h2 class="page-title">创建新课题</h2>
+
+      <form id="scene-form" class="scene-form">
+        <div class="form-group">
+          <label for="scene-title">课题标题</label>
+          <input type="text" id="scene-title" name="title" placeholder="输入课题标题" required>
+        </div>
+
+        <div class="form-group">
+          <label for="scene-description">课题描述</label>
+          <textarea id="scene-description" name="description" rows="5" placeholder="输入课题描述" required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>课题类型</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="scene-type" value="public" checked>
+              <span class="radio-text">公开课题</span>
+              <span class="radio-description">所有用户可见</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="scene-type" value="private">
+              <span class="radio-text">专有课题</span>
+              <span class="radio-description">仅课题成员可见</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group" id="members-section">
+          <label>课题成员</label>
+          <div class="members-container">
+            <div class="member-search">
+              <input type="text" placeholder="搜索用户...">
+              <button type="button" class="secondary-button">添加</button>
+            </div>
+            <div class="selected-members">
+              <div class="selected-member">
+                <div class="member-info">
+                  <img src="https://via.placeholder.com/32" alt="用户头像">
+                  <span>张三 (老师)</span>
+                </div>
+                <button type="button" class="remove-member" disabled>×</button>
+              </div>
+              <div class="selected-member">
+                <div class="member-info">
+                  <img src="https://via.placeholder.com/32" alt="用户头像">
+                  <span>李四 (助教)</span>
+                </div>
+                <button type="button" class="remove-member">×</button>
+              </div>
+              <div class="selected-member">
+                <div class="member-info">
+                  <img src="https://via.placeholder.com/32" alt="用户头像">
+                  <span>王五 (学生)</span>
+                </div>
+                <button type="button" class="remove-member">×</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="scene-tags">标签</label>
+          <input type="text" id="scene-tags" name="tags" placeholder="输入标签，用逗号分隔">
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="secondary-button" onclick="window.location.href='scene.html'">取消</button>
+          <button type="submit" class="primary-button">保存课题</button>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <footer>
+    <p>© 2023 协同创新社区. 保留所有权利.</p>
+  </footer>
+
+  <script src="js/scene-edit.js"></script>
+</body>
+
+</html>

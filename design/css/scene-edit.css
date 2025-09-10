@@ -1,0 +1,174 @@
+/* 课题编辑页面样式 */
+
+.scene-edit-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.page-title {
+  margin-bottom: 30px;
+  color: var(--primary-color);
+}
+
+/* 表单样式 */
+.scene-form {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  padding: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.form-group {
+  margin-bottom: 25px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.form-group input[type="text"],
+.form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-background);
+  color: var(--text-color);
+  font-size: 16px;
+}
+
+.form-group input[type="text"]:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(77, 121, 255, 0.2);
+}
+
+/* 单选按钮组样式 */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  padding: 12px 15px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.radio-label:hover {
+  background-color: var(--secondary-background);
+}
+
+.radio-label input[type="radio"] {
+  margin-right: 10px;
+}
+
+.radio-text {
+  font-weight: 500;
+  margin-right: 10px;
+}
+
+.radio-description {
+  font-size: 14px;
+  color: var(--lighter-text);
+}
+
+/* 选中状态 */
+.radio-label input[type="radio"]:checked + .radio-text {
+  color: var(--accent-color);
+}
+
+.radio-label:has(input[type="radio"]:checked) {
+  border-color: var(--accent-color);
+  background-color: rgba(77, 121, 255, 0.05);
+}
+
+/* 成员管理样式 */
+.members-container {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 15px;
+  background-color: var(--secondary-background);
+}
+
+.member-search {
+  display: flex;
+  margin-bottom: 15px;
+}
+
+.member-search input {
+  flex-grow: 1;
+  margin-right: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-background);
+  color: var(--text-color);
+}
+
+.selected-members {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.selected-member {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background-color: var(--card-background);
+  border-radius: 4px;
+}
+
+.member-info {
+  display: flex;
+  align-items: center;
+}
+
+.member-info img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.remove-member {
+  background: none;
+  border: none;
+  color: var(--lighter-text);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 5px;
+}
+
+.remove-member:hover {
+  color: var(--accent-color);
+}
+
+.remove-member:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* 表单操作按钮 */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  margin-top: 30px;
+}
+
+.form-actions button {
+  padding: 10px 20px;
+}

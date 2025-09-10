@@ -1,0 +1,1 @@
+import{d as n,f as o,h as t,g as r}from"./index-D6m0uNFb.js";const p=n({__name:"Profile",setup(a){return(s,e)=>(r(),o("div",null,[...e[0]||(e[0]=[t("h1",null,"用户资料 (待实现)",-1)])]))}});export{p as default};

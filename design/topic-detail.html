@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>话题详情 - 协同创新社区</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/topic-detail.css">
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <h1>协同创新社区</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">首页</a></li>
+                <li><a href="scene.html" class="active">课题</a></li>
+                <li><a href="topic-list.html">话题</a></li>
+                <li><a href="documents.html">文档</a></li>
+            </ul>
+        </nav>
+        <div class="user-info">
+            <button class="announcement-icon">📢</button>
+            <span>当前用户</span>
+            <div class="avatar">
+                <img src="https://via.placeholder.com/32" alt="用户头像">
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="scene.html">课题列表</a> &gt; <a href="scene-detail.html">课题详情</a> &gt; <span>话题详情</span>
+        </div>
+
+        <main class="topic-detail-container">
+            <div class="topic-header">
+                <h2 class="topic-title">关于轨道参数计算中的大气阻力模型讨论</h2>
+                <div class="topic-meta">
+                    <div class="topic-author-info">
+                        <img src="https://via.placeholder.com/32" alt="用户头像">
+                        <div class="author-details">
+                            <span class="author-name">王五 (学生)</span>
+                            <span class="post-time">发布于 2023-12-05 14:30</span>
+                        </div>
+                    </div>
+                    <div class="topic-stats">
+                        <span class="topic-views">289 次浏览</span>
+                        <span class="topic-replies">42 条回复</span>
+                    </div>
+                    <div class="topic-tags">
+                        <span class="topic-tag question-tag">问题</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="topic-content">
+                <div class="post-content">
+                    <p>在计算LEO卫星轨道时，我发现不同的大气阻力模型会导致轨道预测结果有较大差异。请问老师和同学们，在实际工程中应该如何选择合适的模型？</p>
+                    
+                    <p>我目前尝试了以下几种模型：</p>
+                    <ol>
+                        <li><strong>NRLMSISE-00模型</strong>：这是一个较为复杂的模型，考虑了太阳活动、地磁活动等因素，但计算量较大。</li>
+                        <li><strong>Jacchia-Roberts模型</strong>：相对简单，但在某些高度范围内误差较大。</li>
+                        <li><strong>简化指数模型</strong>：计算效率高，但精度较低。</li>
+                    </ol>
+                    
+                    <p>我的测试结果显示，对于同一轨道参数，使用不同模型预测一周后的位置可能有几公里的差异。这在某些任务中可能是不可接受的。</p>
+                    
+                    <div class="post-image">
+                        <img src="https://via.placeholder.com/600x300?text=轨道预测结果对比图" alt="轨道预测结果对比图">
+                        <div class="image-caption">不同大气模型的轨道预测结果对比</div>
+                    </div>
+                    
+                    <p>我的问题是：</p>
+                    <ol>
+                        <li>在实际工程应用中，通常使用哪种大气阻力模型？</li>
+                        <li>如何平衡计算效率和预测精度？</li>
+                        <li>是否有更好的方法来处理大气密度的不确定性？</li>
+                    </ol>
+                    
+                    <p>感谢大家的讨论和建议！</p>
+                </div>
+                
+                <div class="post-attachments">
+                    <h4>附件</h4>
+                    <div class="attachment-list">
+                        <div class="attachment-item">
+                            <span class="attachment-icon">📊</span>
+                            <span class="attachment-name">轨道预测对比数据.xlsx</span>
+                            <span class="attachment-size">245KB</span>
+                            <button class="secondary-button small-button">下载</button>
+                        </div>
+                        <div class="attachment-item">
+                            <span class="attachment-icon">📄</span>
+                            <span class="attachment-name">大气模型分析.pdf</span>
+                            <span class="attachment-size">1.2MB</span>
+                            <button class="secondary-button small-button">下载</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="post-actions">
+                    <div class="action-buttons">
+                        <button class="action-btn like-btn">
+                            <span class="action-icon">👍</span>
+                            <span class="action-count">15</span>
+                        </button>
+                        <button class="action-btn bookmark-btn">
+                            <span class="action-icon">🔖</span>
+                            <span class="action-text">收藏</span>
+                        </button>
+                        <button class="action-btn share-btn">
+                            <span class="action-icon">🔗</span>
+                            <span class="action-text">分享</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="replies-section">
+                <h3 class="replies-title">回复 (42)</h3>
+                
+                <div class="reply-item">
+                    <div class="reply-author">
+                        <img src="https://via.placeholder.com/32" alt="用户头像">
+                        <div class="author-details">
+                            <span class="author-name">张三 (老师)</span>
+                            <span class="reply-time">2023-12-05 16:45</span>
+                        </div>
+                    </div>
+                    <div class="reply-content">
+                        <p>这是一个很好的问题。在实际工程应用中，模型的选择通常取决于任务的具体要求：</p>
+                        <ol>
+                            <li>对于需要高精度的任务（如碰撞规避），通常使用NRLMSISE-00或JB2008模型，尽管它们计算量较大。</li>
+                            <li>对于初步分析或实时应用，简化模型如Jacchia-Roberts是可接受的。</li>
+                        </ol>
+                        <p>关于平衡计算效率和预测精度，一种常见的做法是使用简化模型进行初步计算，然后在关键点使用高精度模型进行校正。</p>
+                        <p>处理大气密度不确定性的方法包括：</p>
+                        <ul>
+                            <li>使用集合预测方法，考虑多种可能的大气状态</li>
+                            <li>结合实际观测数据进行模型校正</li>
+                            <li>使用自适应滤波技术（如卡尔曼滤波）</li>
+                        </ul>
+                        <p>你的分析很全面，建议你可以尝试JB2008模型，它在计算效率和精度之间取得了很好的平衡。</p>
+                    </div>
+                    <div class="reply-actions">
+                        <button class="action-btn like-btn">
+                            <span class="action-icon">👍</span>
+                            <span class="action-count">8</span>
+                        </button>
+                        <button class="action-btn reply-btn">回复</button>
+                    </div>
+                </div>
+                
+                <div class="reply-item">
+                    <div class="reply-author">
+                        <img src="https://via.placeholder.com/32" alt="用户头像">
+                        <div class="author-details">
+                            <span class="author-name">李四 (助教)</span>
+                            <span class="reply-time">2023-12-06 09:20</span>
+                        </div>
+                    </div>
+                    <div class="reply-content">
+                        <p>补充一点，我在实际项目中发现，太阳活动对大气密度的影响非常显著，特别是在太阳活动周期的极大值和极小值期间。</p>
+                        <p>如果你的任务周期较长（超过几个月），建议使用能够考虑太阳活动预测的模型，如DTM-2013或JB2008。</p>
+                        <p>这里有一篇很好的论文可以参考：<a href="#">"Comparative Analysis of Atmospheric Density Models for LEO Satellites"</a></p>
+                    </div>
+                    <div class="reply-actions">
+                        <button class="action-btn like-btn">
+                            <span class="action-icon">👍</span>
+                            <span class="action-count">5</span>
+                        </button>
+                        <button class="action-btn reply-btn">回复</button>
+                    </div>
+                </div>
+                
+                <div class="reply-item">
+                    <div class="reply-author">
+                        <img src="https://via.placeholder.com/32" alt="用户头像">
+                        <div class="author-details">
+                            <span class="author-name">王五 (学生)</span>
+                            <span class="reply-time">2023-12-06 10:15</span>
+                            <span class="author-tag">楼主</span>
+                        </div>
+                    </div>
+                    <div class="reply-content">
+                        <p>感谢张老师和李助教的详细解答！我会尝试JB2008模型，并结合卡尔曼滤波来处理不确定性。</p>
+                        <p>@李四 谢谢推荐的论文，我会去阅读。您能否分享一下在实际项目中，太阳活动预测数据通常从哪些来源获取？</p>
+                    </div>
+                    <div class="reply-actions">
+                        <button class="action-btn like-btn">
+                            <span class="action-icon">👍</span>
+                            <span class="action-count">3</span>
+                        </button>
+                        <button class="action-btn reply-btn">回复</button>
+                    </div>
+                </div>
+                
+                <!-- 更多回复... -->
+                <div class="reply-item">
+                    <div class="reply-author">
+                        <img src="https://via.placeholder.com/32" alt="用户头像">
+                        <div class="author-details">
+                            <span class="author-name">赵六 (学生)</span>
+                            <span class="reply-time">2023-12-07 14:30</span>
+                        </div>
+                    </div>
+                    <div class="reply-content">
+                        <p>我在作业中也遇到了类似的问题。我发现使用NRLMSISE-00模型时，如果预先计算一些常用高度和太阳活动条件下的查找表，可以大大提高计算效率。</p>
+                        <p>这是我实现的一个简化版本，供参考：</p>
+                        <pre><code>import numpy as np
+from scipy.interpolate import RegularGridInterpolator
+
+# 预计算不同高度和太阳活动下的大气密度
+def create_density_lookup(alt_range, f107_range):
+    density_table = np.zeros((len(alt_range), len(f107_range)))
+    for i, alt in enumerate(alt_range):
+        for j, f107 in enumerate(f107_range):
+            density_table[i, j] = nrlmsise00_density(alt, f107)
+    
+    # 创建插值函数
+    interp_func = RegularGridInterpolator(
+        (alt_range, f107_range), density_table)
+    return interp_func
+
+# 使用查找表快速计算大气密度
+def fast_density(altitude, f107, interp_func):
+    return interp_func([altitude, f107])[0]</code></pre>
+                    </div>
+                    <div class="reply-actions">
+                        <button class="action-btn like-btn">
+                            <span class="action-icon">👍</span>
+                            <span class="action-count">7</span>
+                        </button>
+                        <button class="action-btn reply-btn">回复</button>
+                    </div>
+                </div>
+                
+                <div class="reply-item">
+                    <div class="reply-author">
+                        <img src="https://via.placeholder.com/32" alt="用户头像">
+                        <div class="author-details">
+                            <span class="author-name">张三 (老师)</span>
+                            <span class="reply-time">2023-12-08 09:10</span>
+                        </div>
+                    </div>
+                    <div class="reply-content">
+                        <p>@王五 关于太阳活动预测数据，可以从以下来源获取：</p>
+                        <ol>
+                            <li>NOAA太阳环境预测中心 (SWPC): <a href="#">https://www.swpc.noaa.gov/</a></li>
+                            <li>NASA太阳动力学天文台 (SDO): <a href="#">https://sdo.gsfc.nasa.gov/</a></li>
+                            <li>CelesTrak提供的太阳和地磁指数: <a href="#">https://celestrak.org/SpaceData/</a></li>
+                        </ol>
+                        <p>@赵六 你的查找表方法很实用，特别是对于实时应用。建议在插值时考虑使用对数插值，因为大气密度随高度的变化接近指数关系。</p>
+                    </div>
+                    <div class="reply-actions">
+                        <button class="action-btn like-btn">
+                            <span class="action-icon">👍</span>
+                            <span class="action-count">6</span>
+                        </button>
+                        <button class="action-btn reply-btn">回复</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="reply-form">
+                <h3>发表回复</h3>
+                <div class="form-group">
+                    <textarea placeholder="输入你的回复内容..." rows="5"></textarea>
+                </div>
+                <div class="form-actions">
+                    <div class="form-tools">
+                        <button class="tool-btn" title="添加图片">📷</button>
+                        <button class="tool-btn" title="添加代码">📝</button>
+                        <button class="tool-btn" title="添加附件">📎</button>
+                        <button class="tool-btn" title="添加公式">∑</button>
+                    </div>
+                    <button class="primary-button">发表回复</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <footer>
+        <p>© 2023 协同创新社区. 保留所有权利.</p>
+    </footer>
+
+    <script src="js/topic-detail.js"></script>
+</body>
+
+</html>

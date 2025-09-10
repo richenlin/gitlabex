@@ -1,0 +1,1 @@
+import{d as t,f as a,h as n,g as l}from"./index-D6m0uNFb.js";const p=t({__name:"SceneDetail",setup(o){return(r,e)=>(l(),a("div",null,[...e[0]||(e[0]=[n("h1",null,"研究课题详情 (待实现)",-1),n("p",null,"此页面将显示研究课题的详细信息",-1)])]))}});export{p as default};

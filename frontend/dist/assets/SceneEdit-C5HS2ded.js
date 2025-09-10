@@ -1,0 +1,1 @@
+import{d as t,f as o,h as n,g as a}from"./index-D6m0uNFb.js";const p=t({__name:"SceneEdit",setup(l){return(r,e)=>(a(),o("div",null,[...e[0]||(e[0]=[n("h1",null,"编辑研究课题 (待实现)",-1),n("p",null,"此页面将用于编辑研究课题信息",-1)])]))}});export{p as default};

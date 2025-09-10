@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>作业批改 - 协同创新社区</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/homework-grade.css">
+</head>
+
+<body>
+  <header>
+    <div class="logo">
+      <h1>协同创新社区</h1>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">首页</a></li>
+        <li><a href="scene.html" class="active">课题</a></li>
+        <li><a href="topic-list.html">话题</a></li>
+        <li><a href="documents.html">文档</a></li>
+      </ul>
+    </nav>
+    <div class="user-info">
+      <button class="announcement-icon">📢</button>
+      <span>当前用户</span>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/32" alt="用户头像">
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="breadcrumb">
+      <a href="scene.html">课题列表</a> &gt; <a href="scene-detail.html">课题详情</a> &gt; <span>作业批改</span>
+    </div>
+
+    <main class="homework-grade-container">
+      <div class="homework-header">
+        <div class="homework-info">
+          <h2>作业1：轨道计算基础</h2>
+          <div class="homework-meta">
+            <span>截止日期: 2023-12-15</span>
+            <span>已提交人数: 12/30</span>
+          </div>
+        </div>
+        <div class="student-info">
+          <div class="student-avatar">
+            <img src="https://via.placeholder.com/48" alt="学生头像">
+          </div>
+          <div class="student-details">
+            <h3>王五</h3>
+            <span>提交时间: 2023-12-10 14:30</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="homework-content">
+        <div class="content-section">
+          <h3>作业内容</h3>
+          <div class="content-text">
+            <p>本次作业我完成了轨道参数计算的全部要求，包括：</p>
+            <ol>
+              <li>计算了LEO卫星的轨道参数</li>
+              <li>分析了轨道稳定性</li>
+              <li>评估了轨道衰减率</li>
+              <li>提出了轨道优化建议</li>
+            </ol>
+            <p>以下是我的计算结果和分析报告：</p>
+            <div class="code-block">
+              # 轨道参数计算
+              a = 7000 km  # 半长轴
+              e = 0.001    # 偏心率
+              i = 51.6°    # 倾角
+              Ω = 120°     # 升交点赤经
+              ω = 90°      # 近地点幅角
+              M = 0°       # 平近点角
+            </div>
+            <p>根据上述参数，我计算出轨道周期为 98.8 分钟，每日绕地球旋转约 14.6 圈。</p>
+            <p>轨道稳定性分析表明，在当前参数下，该轨道受大气阻力影响较小，预计衰减率为每年约 10 米。</p>
+            <p>附件中包含了详细的计算过程和数据分析图表。</p>
+          </div>
+        </div>
+
+        <div class="attachments-section">
+          <h3>附件</h3>
+          <div class="attachment-list">
+            <div class="attachment-item">
+              <span class="attachment-icon">📊</span>
+              <span class="attachment-name">轨道参数计算.xlsx</span>
+              <button class="secondary-button small-button">下载</button>
+            </div>
+            <div class="attachment-item">
+              <span class="attachment-icon">📄</span>
+              <span class="attachment-name">轨道稳定性分析报告.pdf</span>
+              <button class="secondary-button small-button">下载</button>
+            </div>
+            <div class="attachment-item">
+              <span class="attachment-icon">📈</span>
+              <span class="attachment-name">轨道衰减模拟.png</span>
+              <button class="secondary-button small-button">下载</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grading-section">
+          <h3>评分</h3>
+          <form id="grading-form">
+            <div class="form-group">
+              <label for="score">分数 (0-100)</label>
+              <input type="number" id="score" name="score" min="0" max="100" value="90" required>
+            </div>
+            <div class="form-group">
+              <label for="comments">评语</label>
+              <textarea id="comments" name="comments" rows="5" placeholder="输入评语...">轨道参数计算准确，分析全面。建议在轨道稳定性分析中考虑太阳活动对大气密度的影响，这会影响轨道衰减率的预测。</textarea>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="secondary-button" onclick="window.location.href='scene-detail.html'">返回</button>
+              <button type="submit" class="primary-button">提交评分</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <footer>
+    <p>© 2023 协同创新社区. 保留所有权利.</p>
+  </footer>
+
+  <script src="js/homework-grade.js"></script>
+</body>
+
+</html>

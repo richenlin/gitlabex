@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课题详情 - 协同创新社区</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/scene-detail.css">
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <h1>协同创新社区</h1>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">首页</a></li>
+                <li><a href="scene.html" class="active">课题</a></li>
+                <li><a href="topic-list.html">话题</a></li>
+                <li><a href="documents.html">文档</a></li>
+            </ul>
+        </nav>
+        <div class="user-info">
+            <button class="announcement-icon">📢</button>
+            <span>当前用户</span>
+            <div class="avatar">
+                <img src="https://via.placeholder.com/32" alt="用户头像">
+            </div>
+        </div>
+    </header>
+<div class="container">
+    <div class="breadcrumb">
+        <a href="#">课题</a> &gt; <span id="topic-title">课题详情</span>
+    </div>
+
+    <main class="scene-detail-container">
+        <div class="scene-header">
+            <h2 class="scene-title">课题名称</h2>
+            <div class="scene-meta">
+                <span>创建时间: 2023-06-01</span>
+                <span>创建者: 张三</span>
+                <span class="tag public-tag">公开课题</span>
+            </div>
+            <div class="scene-actions">
+                <button class="secondary-button">编辑课题</button>
+                <button class="secondary-button" id="manage-members-btn">管理成员</button>
+            </div>
+        </div>
+
+        <div class="tab-container">
+            <div class="tab-header">
+                <div class="tab active" data-tab="files">文件</div>
+                <div class="tab" data-tab="topics">话题</div>
+                <div class="tab" data-tab="homework">作业</div>
+            </div>
+        </div>
+
+        <div class="scene-content">
+            <div class="tab-content active" id="files-tab">
+                <div class="file-list">
+                    <div class="file-item">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name">main.py</span>
+                    </div>
+                    <div class="file-item">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name">utils.py</span>
+                    </div>
+                    <div class="file-item">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name">README.md</span>
+                    </div>
+                </div>
+
+                <div class="content-section">
+                    <h3>README.md</h3>
+                    <div class="content-text">
+                        <p>这里是README文件的内容，展示项目的基本信息和用法说明。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="topics-tab">
+                <div class="topics-header">
+                    <h3>课题话题讨论</h3>
+                    <div class="topics-actions">
+                        <div class="topics-filter">
+                            <select id="topic-filter">
+                                <option value="all">全部话题</option>
+                                <option value="hot">热门话题</option>
+                                <option value="recent">最新话题</option>
+                                <option value="unanswered">未回复话题</option>
+                            </select>
+                        </div>
+                        <button class="primary-button" id="create-topic-btn">发起话题</button>
+                    </div>
+                </div>
+                
+                <div class="topics-list">
+                    <!-- 置顶话题 -->
+                    <div class="topic-item pinned">
+                        <div class="topic-status">
+                            <div class="topic-pin">📌</div>
+                            <div class="topic-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value">24</span>
+                                    <span class="stat-label">回复</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">156</span>
+                                    <span class="stat-label">浏览</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="topic-content">
+                            <h3 class="topic-title"><a href="topic-detail.html">课题公告：轨道计算作业提交指南</a></h3>
+                            <div class="topic-meta">
+                                <span class="topic-author">
+                                    <img src="https://via.placeholder.com/24" alt="用户头像">
+                                    张三 (老师)
+                                </span>
+                                <span class="topic-time">2023-12-01</span>
+                                <span class="topic-tag announcement-tag">公告</span>
+                            </div>
+                            <div class="topic-excerpt">
+                                <p>请各位同学按照以下格式提交轨道计算作业：1. 计算过程与结果（PDF格式）；2. 数据分析图表（Excel格式）；3. 源代码（如有）...</p>
+                            </div>
+                        </div>
+                        <div class="topic-last-reply">
+                            <div class="last-reply-info">
+                                <span>最后回复：李四</span>
+                                <span>2023-12-02</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 热门话题 -->
+                    <div class="topic-item hot">
+                        <div class="topic-status">
+                            <div class="topic-hot">🔥</div>
+                            <div class="topic-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value">42</span>
+                                    <span class="stat-label">回复</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">289</span>
+                                    <span class="stat-label">浏览</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="topic-content">
+                            <h3 class="topic-title"><a href="topic-detail.html">关于轨道参数计算中的大气阻力模型讨论</a></h3>
+                            <div class="topic-meta">
+                                <span class="topic-author">
+                                    <img src="https://via.placeholder.com/24" alt="用户头像">
+                                    王五 (学生)
+                                </span>
+                                <span class="topic-time">2023-12-05</span>
+                                <span class="topic-tag question-tag">问题</span>
+                            </div>
+                            <div class="topic-excerpt">
+                                <p>在计算LEO卫星轨道时，我发现不同的大气阻力模型会导致轨道预测结果有较大差异。请问老师和同学们，在实际工程中应该如何选择合适的模型？</p>
+                            </div>
+                        </div>
+                        <div class="topic-last-reply">
+                            <div class="last-reply-info">
+                                <span>最后回复：张三</span>
+                                <span>2023-12-08</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 普通话题 -->
+                    <div class="topic-item">
+                        <div class="topic-status">
+                            <div class="topic-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value">18</span>
+                                    <span class="stat-label">回复</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">124</span>
+                                    <span class="stat-label">浏览</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="topic-content">
+                            <h3 class="topic-title"><a href="topic-detail.html">轨道优化设计作业分享与讨论</a></h3>
+                            <div class="topic-meta">
+                                <span class="topic-author">
+                                    <img src="https://via.placeholder.com/24" alt="用户头像">
+                                    赵六 (学生)
+                                </span>
+                                <span class="topic-time">2023-12-10</span>
+                                <span class="topic-tag discussion-tag">讨论</span>
+                            </div>
+                            <div class="topic-excerpt">
+                                <p>我在作业中尝试了一种新的轨道优化方法，结合了遗传算法和梯度下降，效果不错。想和大家分享一下我的思路和实现过程...</p>
+                            </div>
+                        </div>
+                        <div class="topic-last-reply">
+                            <div class="last-reply-info">
+                                <span>最后回复：钱七</span>
+                                <span>2023-12-11</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 未回复话题 -->
+                    <div class="topic-item unanswered">
+                        <div class="topic-status">
+                            <div class="topic-unanswered">❓</div>
+                            <div class="topic-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value">0</span>
+                                    <span class="stat-label">回复</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">45</span>
+                                    <span class="stat-label">浏览</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="topic-content">
+                            <h3 class="topic-title"><a href="topic-detail.html">碰撞风险评估中的概率计算问题</a></h3>
+                            <div class="topic-meta">
+                                <span class="topic-author">
+                                    <img src="https://via.placeholder.com/24" alt="用户头像">
+                                    孙八 (学生)
+                                </span>
+                                <span class="topic-time">2023-12-12</span>
+                                <span class="topic-tag help-tag">求助</span>
+                            </div>
+                            <div class="topic-excerpt">
+                                <p>在计算两颗卫星的碰撞概率时，我遇到了一个问题：当相对速度很高时，传统的概率模型似乎不太适用。有没有更好的方法？</p>
+                            </div>
+                        </div>
+                        <div class="topic-last-reply">
+                            <div class="last-reply-info">
+                                <span>暂无回复</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 资源分享话题 -->
+                    <div class="topic-item">
+                        <div class="topic-status">
+                            <div class="topic-stats">
+                                <div class="stat-item">
+                                    <span class="stat-value">12</span>
+                                    <span class="stat-label">回复</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-value">98</span>
+                                    <span class="stat-label">浏览</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="topic-content">
+                            <h3 class="topic-title"><a href="topic-detail.html">分享几篇关于轨道力学的最新论文</a></h3>
+                            <div class="topic-meta">
+                                <span class="topic-author">
+                                    <img src="https://via.placeholder.com/24" alt="用户头像">
+                                    李四 (助教)
+                                </span>
+                                <span class="topic-time">2023-12-07</span>
+                                <span class="topic-tag resource-tag">资源</span>
+                            </div>
+                            <div class="topic-excerpt">
+                                <p>最近看到几篇关于轨道力学的好论文，对我们课题很有参考价值，特别是关于多体引力场建模的那篇，推荐大家阅读...</p>
+                            </div>
+                        </div>
+                        <div class="topic-last-reply">
+                            <div class="last-reply-info">
+                                <span>最后回复：张三</span>
+                                <span>2023-12-09</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="topics-pagination">
+                    <button class="pagination-btn" disabled>&lt;</button>
+                    <button class="pagination-btn active">1</button>
+                    <button class="pagination-btn">2</button>
+                    <button class="pagination-btn">3</button>
+                    <button class="pagination-btn">&gt;</button>
+                </div>
+            </div>
+
+            <div class="tab-content" id="homework-tab">
+                <div class="content-section">
+                    <div class="homework-header">
+                        <h3>课题作业</h3>
+                        <button class="primary-button">创建作业</button>
+                    </div>
+                    <div class="homework-list">
+                        <div class="homework-item">
+                            <h4>作业1：轨道计算基础</h4>
+                            <div class="homework-meta">
+                                <span>截止日期: 2023-12-15</span>
+                                <span>状态: 未提交</span>
+                                <span>已提交人数: 12/30</span>
+                            </div>
+                            <div class="homework-description">
+                                <p>完成轨道参数计算并提交分析报告。</p>
+                            </div>
+                            <div class="homework-actions">
+                                <button class="secondary-button">查看详情</button>
+                                <button class="primary-button">提交作业</button>
+                                <button class="secondary-button teacher-action">批改作业</button>
+                            </div>
+                        </div>
+                        <div class="homework-item">
+                            <h4>作业2：碰撞风险评估</h4>
+                            <div class="homework-meta">
+                                <span>截止日期: 2023-12-20</span>
+                                <span>状态: 已提交</span>
+                                <span>已提交人数: 25/30</span>
+                            </div>
+                            <div class="homework-description">
+                                <p>使用提供的数据集完成碰撞风险评估模型。</p>
+                            </div>
+                            <div class="homework-actions">
+                                <button class="secondary-button">查看详情</button>
+                                <button class="secondary-button">查看评分</button>
+                                <button class="secondary-button teacher-action">批改作业</button>
+                            </div>
+                        </div>
+                        <div class="homework-item">
+                            <h4>作业3：轨道优化设计</h4>
+                            <div class="homework-meta">
+                                <span>截止日期: 2023-12-25</span>
+                                <span>状态: 已批改</span>
+                                <span>已提交人数: 30/30</span>
+                            </div>
+                            <div class="homework-description">
+                                <p>设计一个优化的卫星轨道方案，并分析其优缺点。</p>
+                            </div>
+                            <div class="homework-actions">
+                                <button class="secondary-button">查看详情</button>
+                                <button class="secondary-button">查看评分</button>
+                                <button class="secondary-button teacher-action">查看批改结果</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+    <!-- 成员管理模态窗口 -->
+    <div id="members-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>课题成员管理</h2>
+            <div class="member-management">
+                <div class="member-search">
+                    <input type="text" placeholder="搜索用户...">
+                    <button class="primary-button">添加成员</button>
+                </div>
+                <div class="member-list">
+                    <div class="member-item">
+                        <div class="member-info">
+                            <div class="member-avatar">
+                                <img src="https://via.placeholder.com/32" alt="用户头像">
+                            </div>
+                            <div class="member-details">
+                                <h4>张三</h4>
+                                <span class="member-role teacher-role">老师</span>
+                            </div>
+                        </div>
+                        <div class="member-actions">
+                            <button class="secondary-button" disabled>移除</button>
+                        </div>
+                    </div>
+                    <div class="member-item">
+                        <div class="member-info">
+                            <div class="member-avatar">
+                                <img src="https://via.placeholder.com/32" alt="用户头像">
+                            </div>
+                            <div class="member-details">
+                                <h4>李四</h4>
+                                <span class="member-role assistant-role">助教</span>
+                            </div>
+                        </div>
+                        <div class="member-actions">
+                            <button class="secondary-button">移除</button>
+                        </div>
+                    </div>
+                    <div class="member-item">
+                        <div class="member-info">
+                            <div class="member-avatar">
+                                <img src="https://via.placeholder.com/32" alt="用户头像">
+                            </div>
+                            <div class="member-details">
+                                <h4>王五</h4>
+                                <span class="member-role student-role">学生</span>
+                            </div>
+                        </div>
+                        <div class="member-actions">
+                            <button class="secondary-button">移除</button>
+                        </div>
+                    </div>
+                    <div class="member-item">
+                        <div class="member-info">
+                            <div class="member-avatar">
+                                <img src="https://via.placeholder.com/32" alt="用户头像">
+                            </div>
+                            <div class="member-details">
+                                <h4>赵六</h4>
+                                <span class="member-role student-role">学生</span>
+                            </div>
+                        </div>
+                        <div class="member-actions">
+                            <button class="secondary-button">移除</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 作业批改模态窗口 -->
+    <div id="grade-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>批改作业</h2>
+            <div class="grade-management">
+                <div class="grade-header">
+                    <h3>作业1：轨道计算基础</h3>
+                    <div class="grade-meta">
+                        <span>截止日期: 2023-12-15</span>
+                        <span>已提交人数: 12/30</span>
+                    </div>
+                </div>
+                <div class="grade-list">
+                    <div class="grade-item">
+                        <div class="grade-info">
+                            <h4>王五</h4>
+                            <span>提交时间: 2023-12-10 14:30</span>
+                        </div>
+                        <div class="grade-actions">
+                            <button class="secondary-button">查看作业</button>
+                            <button class="primary-button">批改</button>
+                        </div>
+                    </div>
+                    <div class="grade-item">
+                        <div class="grade-info">
+                            <h4>赵六</h4>
+                            <span>提交时间: 2023-12-11 09:15</span>
+                        </div>
+                        <div class="grade-actions">
+                            <button class="secondary-button">查看作业</button>
+                            <button class="primary-button">批改</button>
+                        </div>
+                    </div>
+                    <div class="grade-item graded">
+                        <div class="grade-info">
+                            <h4>钱七</h4>
+                            <span>提交时间: 2023-12-09 16:45</span>
+                            <span class="grade-score">评分: 92分</span>
+                        </div>
+                        <div class="grade-actions">
+                            <button class="secondary-button">查看作业</button>
+                            <button class="secondary-button">修改评分</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/tab-switch.js"></script>
+    <script src="js/scene-detail.js"></script>
+</body>
+
+</html>
