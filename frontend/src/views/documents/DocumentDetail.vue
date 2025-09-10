@@ -1,157 +1,306 @@
 <template>
   <div class="document-detail" v-loading="loading">
     <div v-if="document" class="document-container">
+      <!-- 面包屑导航 -->
+      <el-breadcrumb class="breadcrumb" separator=">">
+        <el-breadcrumb-item :to="{ path: '/documents' }">文档</el-breadcrumb-item>
+        <el-breadcrumb-item>{{ document.title }}</el-breadcrumb-item>
+      </el-breadcrumb>
+
       <!-- 文档头部信息 -->
-      <div class="document-header">
-        <div class="header-left">
-          <h1 class="document-title">{{ document.title }}</h1>
-          <div class="document-badges">
-            <el-tag :type="getStatusType(document.status)" size="large">
-              {{ getStatusText(document.status) }}
+      <div class="document-header card">
+        <div class="header-content">
+          <div class="title-section">
+            <h1 class="document-title">{{ document.title }}</h1>
+            <div class="document-meta">
+              <span>上传时间: {{ formatDate(document.created_at) }}</span>
+              <span>上传者: {{ document.upload_user?.name }}</span>
+              <span>文件大小: {{ formatFileSize(document.file_size) }}</span>
+              <span>下载次数: {{ document.download_count || 0 }}</span>
+              <el-tag :type="getStatusTagType(document.status)" size="small">
+                {{ getDocumentStatusText(document.status) }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="header-actions">
+            <el-button @click="downloadDocument" type="primary">
+              <el-icon><Download /></el-icon>
+              下载文档
+            </el-button>
+            <el-button @click="editDocument" v-if="canEdit">
+              <el-icon><Edit /></el-icon>
+              编辑信息
+            </el-button>
+            <el-button @click="requestEdit" v-if="canRequestEdit">
+              <el-icon><EditPen /></el-icon>
+              申请修改
+            </el-button>
+          </div>
+        </div>
+        
+        <div class="document-description" v-if="document.description">
+          <h3>文档描述</h3>
+          <p>{{ document.description }}</p>
+        </div>
+
+        <div class="document-info">
+          <div class="info-item">
+            <span class="label">文件类型:</span>
+            <span class="value">{{ getFileTypeText(document.file_type) }}</span>
+          </div>
+          <div class="info-item">
+            <span class="label">所属分类:</span>
+            <span class="value">{{ document.category || '未分类' }}</span>
+          </div>
+          <div class="info-item" v-if="document.project">
+            <span class="label">所属课题:</span>
+            <router-link :to="`/scenes/${document.project.id}`" class="project-link">
+              {{ document.project.name }}
+            </router-link>
+          </div>
+          <div class="info-item" v-if="document.auto_indexed">
+            <span class="label">索引方式:</span>
+            <span class="value">自动索引</span>
+          </div>
+        </div>
+
+        <div class="document-tags" v-if="document.tags?.length">
+          <h4>标签</h4>
+          <div class="tags-list">
+            <el-tag 
+              v-for="tag in document.tags" 
+              :key="tag" 
+              size="small"
+              class="document-tag"
+            >
+              {{ tag }}
             </el-tag>
           </div>
         </div>
-        <div class="header-actions">
-          <el-button v-if="canEdit" @click="editDocument">
-            <el-icon><Edit /></el-icon>
-            编辑
-          </el-button>
-          <el-button v-if="canRequestEdit" type="primary" @click="requestEdit">
-            <el-icon><EditPen /></el-icon>
-            申请修改
-          </el-button>
-          <el-button @click="downloadDocument">
-            <el-icon><Download /></el-icon>
-            下载
-          </el-button>
+      </div>
+
+      <!-- 文档预览 -->
+      <div class="document-preview card" v-if="canPreview">
+        <div class="preview-header">
+          <h3>文档预览</h3>
+          <div class="preview-actions">
+            <el-button size="small" @click="toggleFullscreen">
+              <el-icon><FullScreen /></el-icon>
+              全屏预览
+            </el-button>
+          </div>
+        </div>
+        
+        <div class="preview-content" :class="{ fullscreen: isFullscreen }">
+          <!-- PDF预览 -->
+          <div v-if="document.file_type === 'pdf'" class="pdf-preview">
+            <iframe 
+              :src="getPreviewUrl()" 
+              width="100%" 
+              height="600px"
+              frameborder="0"
+            ></iframe>
+          </div>
+          
+          <!-- 图片预览 -->
+          <div v-else-if="isImageFile(document.file_type)" class="image-preview">
+            <img :src="getPreviewUrl()" alt="文档预览" />
+          </div>
+          
+          <!-- 文本文件预览 -->
+          <div v-else-if="isTextFile(document.file_type)" class="text-preview">
+            <pre class="text-content">{{ textContent }}</pre>
+          </div>
+          
+          <!-- 不支持预览的文件 -->
+          <div v-else class="no-preview">
+            <el-icon class="no-preview-icon"><Document /></el-icon>
+            <p>此文件类型不支持在线预览</p>
+            <el-button type="primary" @click="downloadDocument">
+              下载查看
+            </el-button>
+          </div>
         </div>
       </div>
 
-      <!-- 文档基本信息 -->
-      <el-row :gutter="20" class="document-info">
-        <el-col :span="16">
-          <el-card title="文档信息">
-            <div class="document-description">
-              <h3>文档描述</h3>
-              <div class="content">{{ document.description || '暂无描述' }}</div>
-            </div>
-          </el-card>
-        </el-col>
+      <!-- 编辑历史 -->
+      <div class="edit-history card" v-if="canViewHistory">
+        <div class="history-header">
+          <h3>编辑历史</h3>
+        </div>
         
-        <el-col :span="8">
-          <el-card title="文档属性">
-            <div class="info-item">
-              <span class="label">上传者：</span>
-              <span class="value">{{ document.uploader?.name }}</span>
+        <div class="history-list" v-loading="historyLoading">
+          <div 
+            v-for="history in editHistory" 
+            :key="history.id"
+            class="history-item"
+          >
+            <div class="history-info">
+              <div class="history-user">
+                <img :src="history.requester?.avatar_url || '/default-avatar.png'" alt="用户头像">
+                <span>{{ history.requester?.name }}</span>
+              </div>
+              <div class="history-time">{{ formatDate(history.created_at) }}</div>
             </div>
-            <div class="info-item">
-              <span class="label">关联课题：</span>
-              <el-link 
-                :href="`/scenes/${document.project?.id}`" 
-                type="primary"
-                :underline="false"
-              >
-                {{ document.project?.name }}
-              </el-link>
-            </div>
-            <div class="info-item">
-              <span class="label">文档分类：</span>
-              <span class="value">{{ document.category }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">文件类型：</span>
-              <span class="value">{{ getFileTypeText(document.file_type) }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">文件大小：</span>
-              <span class="value">{{ formatFileSize(document.file_size) }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">上传时间：</span>
-              <span class="value">{{ formatDate(document.created_at) }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">下载次数：</span>
-              <span class="value">{{ document.download_count }}次</span>
-            </div>
-            <div class="info-item" v-if="document.tags?.length">
-              <span class="label">标签：</span>
-              <div class="tags">
-                <el-tag 
-                  v-for="tag in document.tags" 
-                  :key="tag" 
-                  size="small"
-                  class="tag"
-                >
-                  {{ tag }}
+            <div class="history-content">
+              <div class="history-action">
+                <el-tag :type="getEditStatusTagType(history.status)">
+                  {{ getEditStatusText(history.status) }}
                 </el-tag>
               </div>
+              <div class="history-reason" v-if="history.reason">
+                <strong>修改原因:</strong> {{ history.reason }}
+              </div>
+              <div class="history-changes" v-if="history.title || history.description">
+                <div v-if="history.title">
+                  <strong>标题:</strong> {{ history.title }}
+                </div>
+                <div v-if="history.description">
+                  <strong>描述:</strong> {{ history.description }}
+                </div>
+              </div>
+              <div class="history-review" v-if="history.review_comments">
+                <strong>审核意见:</strong> {{ history.review_comments }}
+              </div>
             </div>
-          </el-card>
-        </el-col>
-      </el-row>
+          </div>
+        </div>
+      </div>
+
+      <!-- 相关文档推荐 -->
+      <div class="related-documents card" v-if="relatedDocuments.length">
+        <h3>相关文档</h3>
+        <div class="related-list">
+          <div 
+            v-for="doc in relatedDocuments" 
+            :key="doc.id"
+            class="related-item"
+            @click="viewDocument(doc.id)"
+          >
+            <div class="related-icon">
+              <el-icon><Document /></el-icon>
+            </div>
+            <div class="related-info">
+              <h4>{{ doc.title }}</h4>
+              <p>{{ doc.description?.substring(0, 100) }}...</p>
+              <div class="related-meta">
+                <span>{{ formatFileSize(doc.file_size) }}</span>
+                <span>{{ doc.download_count || 0 }} 次下载</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- 编辑申请对话框 -->
-    <el-dialog v-model="editRequestVisible" title="申请编辑文档" width="600px">
-      <el-form
-        ref="editRequestFormRef"
-        :model="editRequestForm"
-        :rules="editRequestRules"
-        label-width="100px"
-      >
-        <el-form-item label="文档标题">
+    <!-- 编辑文档信息对话框 -->
+    <el-dialog v-model="editDialogVisible" title="编辑文档信息" width="600px">
+      <el-form :model="editForm" :rules="editRules" ref="editFormRef" label-width="80px">
+        <el-form-item label="文档标题" prop="title">
+          <el-input v-model="editForm.title" placeholder="请输入文档标题" />
+        </el-form-item>
+        <el-form-item label="文档描述" prop="description">
           <el-input 
-            v-model="editRequestForm.title" 
-            placeholder="建议的新标题（可选）"
-          />
-        </el-form-item>
-        
-        <el-form-item label="文档描述">
-          <el-input
-            v-model="editRequestForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="建议的新描述（可选）"
-          />
-        </el-form-item>
-        
-        <el-form-item label="申请原因" prop="reason">
-          <el-input
-            v-model="editRequestForm.reason"
-            type="textarea"
+            v-model="editForm.description" 
+            type="textarea" 
             :rows="4"
-            placeholder="请说明申请修改的原因..."
-            maxlength="500"
-            show-word-limit
+            placeholder="请输入文档描述"
+          />
+        </el-form-item>
+        <el-form-item label="文档分类" prop="category">
+          <el-select v-model="editForm.category" placeholder="请选择分类" style="width: 100%">
+            <el-option 
+              v-for="category in categories" 
+              :key="category" 
+              :label="category" 
+              :value="category"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input
+            v-model="tagInput"
+            placeholder="输入标签后回车添加"
+            @keyup.enter="addTag"
+          />
+          <div class="tags-container" v-if="editForm.tags.length">
+            <el-tag
+              v-for="tag in editForm.tags"
+              :key="tag"
+              closable
+              @close="removeTag(tag)"
+              style="margin: 5px 5px 0 0"
+            >
+              {{ tag }}
+            </el-tag>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit" :loading="saving">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 申请修改对话框 -->
+    <el-dialog v-model="requestEditDialogVisible" title="申请修改文档信息" width="600px">
+      <el-form :model="requestForm" label-width="80px">
+        <el-form-item label="修改标题">
+          <el-input v-model="requestForm.title" placeholder="新的文档标题" />
+        </el-form-item>
+        <el-form-item label="修改描述">
+          <el-input 
+            v-model="requestForm.description" 
+            type="textarea" 
+            :rows="4"
+            placeholder="新的文档描述"
+          />
+        </el-form-item>
+        <el-form-item label="修改分类">
+          <el-select v-model="requestForm.category" placeholder="请选择分类" style="width: 100%">
+            <el-option 
+              v-for="category in categories" 
+              :key="category" 
+              :label="category" 
+              :value="category"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="修改原因" required>
+          <el-input 
+            v-model="requestForm.reason" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请说明修改原因"
           />
         </el-form-item>
       </el-form>
-      
       <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="editRequestVisible = false">取消</el-button>
-          <el-button 
-            type="primary" 
-            @click="submitEditRequest"
-            :loading="submittingRequest"
-          >
-            提交申请
-          </el-button>
-        </span>
+        <el-button @click="requestEditDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitEditRequest" :loading="requesting">
+          提交申请
+        </el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { documentService } from '@/services/api'
 import type { Document } from '@/types'
-import { ElMessage, ElMessageBox, type FormInstance } from 'element-plus'
-import { Edit, EditPen, Download } from '@element-plus/icons-vue'
+import { ElMessage, type FormInstance } from 'element-plus'
+import { 
+  Download, 
+  Edit, 
+  EditPen, 
+  FullScreen, 
+  Document as DocumentIcon 
+} from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -159,156 +308,328 @@ const userStore = useUserStore()
 
 // 响应式数据
 const document = ref<Document | null>(null)
-const loading = ref(false)
-const submittingRequest = ref(false)
-const editRequestVisible = ref(false)
+const editHistory = ref<any[]>([])
+const relatedDocuments = ref<Document[]>([])
+const categories = ref<string[]>([])
+const textContent = ref('')
 
-const editRequestFormRef = ref<FormInstance>()
-const editRequestForm = ref({
+const loading = ref(false)
+const historyLoading = ref(false)
+const saving = ref(false)
+const requesting = ref(false)
+const isFullscreen = ref(false)
+
+// 对话框状态
+const editDialogVisible = ref(false)
+const requestEditDialogVisible = ref(false)
+const editFormRef = ref<FormInstance>()
+const tagInput = ref('')
+
+// 表单数据
+const editForm = ref({
   title: '',
   description: '',
+  category: '',
+  tags: [] as string[]
+})
+
+const requestForm = ref({
+  title: '',
+  description: '',
+  category: '',
   reason: ''
 })
 
-const editRequestRules = {
-  reason: [{ required: true, message: '请说明申请原因', trigger: 'blur' }]
+const editRules = {
+  title: [{ required: true, message: '请输入文档标题', trigger: 'blur' }]
 }
 
 // 计算属性
 const documentId = computed(() => route.params.id as string)
 
-const isTeacher = computed(() => 
-  userStore.hasRole('teacher') || userStore.hasRole('admin')
-)
-
-const isStudent = computed(() => userStore.hasRole('student'))
-
 const canEdit = computed(() => {
-  if (!document.value) return false
-  return isTeacher.value && (
-    userStore.hasRole('admin') || 
-    document.value.uploader_id === userStore.user?.id
-  )
+  return userStore.hasRole('admin') || 
+         userStore.hasRole('teacher') || 
+         document.value?.uploader_id === userStore.user?.id
 })
 
 const canRequestEdit = computed(() => {
+  return userStore.isLoggedIn && !canEdit.value
+})
+
+const canPreview = computed(() => {
   if (!document.value) return false
-  return isStudent.value && document.value.status === 'approved'
+  const previewableTypes = ['pdf', 'image', 'text']
+  return previewableTypes.includes(document.value.file_type) || 
+         isImageFile(document.value.file_type) || 
+         isTextFile(document.value.file_type)
+})
+
+const canViewHistory = computed(() => {
+  return userStore.hasRole('admin') || userStore.hasRole('teacher')
 })
 
 // 方法
 const fetchDocument = async () => {
   loading.value = true
   try {
-    const response = await documentService.getDocumentById(documentId.value)
-    document.value = response.data
+    const response = await documentService.getDocument(documentId.value)
+    document.value = response.data || response
+    
+    // 如果是文本文件，加载内容
+    if (document.value && isTextFile(document.value.file_type)) {
+      await loadTextContent()
+    }
+    
+    // 加载相关数据
+    fetchRelatedDocuments()
+    if (canViewHistory.value) {
+      fetchEditHistory()
+    }
   } catch (error) {
+    console.error('获取文档详情失败:', error)
     ElMessage.error('获取文档详情失败')
-    router.go(-1)
   } finally {
     loading.value = false
   }
 }
 
-const editDocument = () => {
-  ElMessage.info('直接编辑功能待实现')
-}
-
-const requestEdit = () => {
-  editRequestForm.value = {
-    title: document.value?.title || '',
-    description: document.value?.description || '',
-    reason: ''
-  }
-  editRequestVisible.value = true
-}
-
-const submitEditRequest = async () => {
-  if (!editRequestFormRef.value) return
-  
+const fetchEditHistory = async () => {
+  historyLoading.value = true
   try {
-    await editRequestFormRef.value.validate()
-    submittingRequest.value = true
-    
-    const proposedChanges: any = {}
-    if (editRequestForm.value.title !== document.value?.title) {
-      proposedChanges.title = editRequestForm.value.title
-    }
-    if (editRequestForm.value.description !== document.value?.description) {
-      proposedChanges.description = editRequestForm.value.description
-    }
-    
-    await documentService.submitEditRequest(documentId.value, {
-      proposed_changes: proposedChanges,
-      reason: editRequestForm.value.reason
-    })
-    
-    ElMessage.success('编辑申请提交成功')
-    editRequestVisible.value = false
-    
+    const response = await documentService.getMyEditRequests(documentId.value)
+    editHistory.value = response.data || response || []
   } catch (error) {
-    ElMessage.error('编辑申请提交失败')
+    console.error('获取编辑历史失败:', error)
   } finally {
-    submittingRequest.value = false
+    historyLoading.value = false
+  }
+}
+
+const fetchRelatedDocuments = async () => {
+  try {
+    const response = await documentService.getDocuments({
+      category: document.value?.category,
+      pageSize: 5
+    })
+    const docs = response.data?.items || response.data || response || []
+    relatedDocuments.value = docs.filter((doc: Document) => doc.id !== documentId.value)
+  } catch (error) {
+    console.error('获取相关文档失败:', error)
+  }
+}
+
+const fetchCategories = async () => {
+  try {
+    const response = await documentService.getCategories()
+    categories.value = response.data || response || []
+  } catch (error) {
+    console.error('获取分类列表失败:', error)
+  }
+}
+
+const loadTextContent = async () => {
+  try {
+    // 这里应该调用获取文件内容的API
+    // 暂时使用模拟数据
+    textContent.value = '文档内容加载中...'
+  } catch (error) {
+    console.error('加载文本内容失败:', error)
   }
 }
 
 const downloadDocument = () => {
+  // 实现文档下载逻辑
+  if (document.value) {
+    const link = window.document.createElement('a')
+    link.href = `/api/documents/${document.value.id}/download`
+    link.download = document.value.title
+    link.click()
+  }
+}
+
+const editDocument = () => {
   if (!document.value) return
   
-  const downloadUrl = `${import.meta.env.VITE_API_BASE_URL}/api/v1/documents/${documentId.value}/download`
-  const link = document.createElement('a')
-  link.href = downloadUrl
-  link.download = document.value.title
-  link.click()
+  editForm.value = {
+    title: document.value.title,
+    description: document.value.description || '',
+    category: document.value.category || '',
+    tags: [...(document.value.tags || [])]
+  }
+  editDialogVisible.value = true
+  fetchCategories()
+}
+
+const requestEdit = () => {
+  if (!document.value) return
   
-  if (document.value.download_count !== undefined) {
-    document.value.download_count += 1
+  requestForm.value = {
+    title: document.value.title,
+    description: document.value.description || '',
+    category: document.value.category || '',
+    reason: ''
+  }
+  requestEditDialogVisible.value = true
+  fetchCategories()
+}
+
+const saveEdit = async () => {
+  if (!editFormRef.value || !document.value) return
+  
+  try {
+    await editFormRef.value.validate()
+    saving.value = true
+    
+    await documentService.updateDocument(document.value.id, {
+      title: editForm.value.title,
+      description: editForm.value.description,
+      category: editForm.value.category,
+      tags: editForm.value.tags
+    })
+    
+    ElMessage.success('文档信息更新成功')
+    editDialogVisible.value = false
+    fetchDocument()
+  } catch (error) {
+    console.error('更新文档信息失败:', error)
+    ElMessage.error('更新文档信息失败')
+  } finally {
+    saving.value = false
   }
 }
 
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
-    pending: 'warning',
-    approved: 'success',
-    rejected: 'danger'
+const submitEditRequest = async () => {
+  if (!requestForm.value.reason.trim()) {
+    ElMessage.warning('请填写修改原因')
+    return
   }
-  return types[status] || 'info'
+  
+  requesting.value = true
+  try {
+    await documentService.submitEditRequest(documentId.value, {
+      proposed_changes: {
+        title: requestForm.value.title,
+        description: requestForm.value.description,
+        category: requestForm.value.category
+      },
+      reason: requestForm.value.reason
+    })
+    
+    ElMessage.success('修改申请提交成功，等待审核')
+    requestEditDialogVisible.value = false
+  } catch (error) {
+    console.error('提交修改申请失败:', error)
+    ElMessage.error('提交修改申请失败')
+  } finally {
+    requesting.value = false
+  }
 }
 
-const getStatusText = (status: string) => {
-  const texts: Record<string, string> = {
-    pending: '待审核',
-    approved: '已通过',
-    rejected: '已拒绝'
+const addTag = () => {
+  if (tagInput.value.trim() && !editForm.value.tags.includes(tagInput.value.trim())) {
+    editForm.value.tags.push(tagInput.value.trim())
+    tagInput.value = ''
   }
-  return texts[status] || status
 }
 
-const getFileTypeText = (fileType: string) => {
-  const types: Record<string, string> = {
-    pdf: 'PDF',
-    word: 'Word',
-    excel: 'Excel',
-    ppt: 'PowerPoint',
-    image: '图片',
-    video: '视频',
-    code: '代码',
-    other: '其他'
+const removeTag = (tag: string) => {
+  const index = editForm.value.tags.indexOf(tag)
+  if (index > -1) {
+    editForm.value.tags.splice(index, 1)
   }
-  return types[fileType] || '未知'
+}
+
+const toggleFullscreen = () => {
+  isFullscreen.value = !isFullscreen.value
+}
+
+const viewDocument = (id: string) => {
+  router.push(`/documents/${id}`)
+}
+
+const getPreviewUrl = () => {
+  if (!document.value) return ''
+  return `/api/documents/${document.value.id}/preview`
+}
+
+const isImageFile = (fileType: string) => {
+  return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'].includes(fileType.toLowerCase())
+}
+
+const isTextFile = (fileType: string) => {
+  return ['txt', 'md', 'json', 'xml', 'csv'].includes(fileType.toLowerCase())
+}
+
+const formatDate = (date: string) => {
+  return new Date(date).toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 const formatFileSize = (size: number) => {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
-  return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const formatDate = (date: string | Date) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleString('zh-CN')
+const getFileTypeText = (fileType: string) => {
+  const typeMap: Record<string, string> = {
+    pdf: 'PDF文档',
+    doc: 'Word文档',
+    docx: 'Word文档',
+    xls: 'Excel表格',
+    xlsx: 'Excel表格',
+    ppt: 'PowerPoint演示文稿',
+    pptx: 'PowerPoint演示文稿',
+    txt: '文本文件',
+    md: 'Markdown文档',
+    jpg: 'JPEG图片',
+    jpeg: 'JPEG图片',
+    png: 'PNG图片',
+    gif: 'GIF图片'
+  }
+  return typeMap[fileType.toLowerCase()] || fileType.toUpperCase()
+}
+
+const getDocumentStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    pending: '待审核',
+    approved: '已通过',
+    rejected: '已拒绝'
+  }
+  return statusMap[status] || status
+}
+
+const getStatusTagType = (status: string) => {
+  const typeMap: Record<string, string> = {
+    pending: 'warning',
+    approved: 'success',
+    rejected: 'danger'
+  }
+  return typeMap[status] || 'info'
+}
+
+const getEditStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    pending: '待审核',
+    approved: '已通过',
+    rejected: '已拒绝'
+  }
+  return statusMap[status] || status
+}
+
+const getEditStatusTagType = (status: string) => {
+  const typeMap: Record<string, string> = {
+    pending: 'warning',
+    approved: 'success',
+    rejected: 'danger'
+  }
+  return typeMap[status] || 'info'
 }
 
 // 生命周期
@@ -319,92 +640,336 @@ onMounted(() => {
 
 <style scoped>
 .document-detail {
+  max-width: 1200px;
+  margin: 0 auto;
   padding: 20px;
 }
 
-.document-container {
-  max-width: 1200px;
-  margin: 0 auto;
+.breadcrumb {
+  margin-bottom: 20px;
 }
 
 .document-header {
+  margin-bottom: 20px;
+}
+
+.header-content {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e8e8e8;
+  margin-bottom: 20px;
 }
 
-.document-title {
-  margin: 0 0 12px 0;
-  font-size: 28px;
-  font-weight: 600;
-  color: #303133;
+.title-section h1 {
+  margin: 0 0 8px 0;
+  color: var(--primary-color);
 }
 
-.document-badges {
+.document-meta {
   display: flex;
-  gap: 8px;
+  gap: 16px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--light-text);
+  flex-wrap: wrap;
 }
 
 .header-actions {
   display: flex;
-  gap: 12px;
+  gap: 8px;
 }
 
-.document-info {
-  margin-bottom: 24px;
+.document-description {
+  margin-bottom: 20px;
 }
 
 .document-description h3 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+  margin: 0 0 8px 0;
+  color: var(--text-color);
 }
 
-.content {
+.document-description p {
+  margin: 0;
+  color: var(--light-text);
   line-height: 1.6;
-  color: #606266;
+}
+
+.document-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 .info-item {
   display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-  font-size: 14px;
+  gap: 8px;
 }
 
 .info-item .label {
   font-weight: 500;
-  color: #909399;
+  color: var(--text-color);
   min-width: 80px;
 }
 
 .info-item .value {
-  color: #303133;
+  color: var(--light-text);
 }
 
-.tags {
+.project-link {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.project-link:hover {
+  text-decoration: underline;
+}
+
+.document-tags h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-color);
+}
+
+.tags-list {
   display: flex;
-  gap: 4px;
   flex-wrap: wrap;
+  gap: 8px;
 }
 
-.tag {
+.document-tag {
   margin: 0;
 }
 
+/* 文档预览样式 */
+.document-preview {
+  margin-bottom: 20px;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.preview-header h3 {
+  margin: 0;
+  color: var(--text-color);
+}
+
+.preview-content {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.preview-content.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  background-color: white;
+}
+
+.pdf-preview iframe {
+  width: 100%;
+  height: 600px;
+}
+
+.image-preview {
+  text-align: center;
+  padding: 20px;
+}
+
+.image-preview img {
+  max-width: 100%;
+  max-height: 600px;
+  border-radius: 4px;
+}
+
+.text-preview {
+  padding: 20px;
+  max-height: 600px;
+  overflow: auto;
+}
+
+.text-content {
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.no-preview {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--light-text);
+}
+
+.no-preview-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+/* 编辑历史样式 */
+.edit-history {
+  margin-bottom: 20px;
+}
+
+.history-header h3 {
+  margin: 0 0 16px 0;
+  color: var(--text-color);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.history-item {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.history-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.history-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-user img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+
+.history-time {
+  font-size: 12px;
+  color: var(--light-text);
+}
+
+.history-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-reason,
+.history-changes,
+.history-review {
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+/* 相关文档样式 */
+.related-documents h3 {
+  margin: 0 0 16px 0;
+  color: var(--text-color);
+}
+
+.related-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.related-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.related-item:hover {
+  background-color: var(--background-light);
+}
+
+.related-icon {
+  font-size: 24px;
+  color: var(--primary-color);
+}
+
+.related-info {
+  flex: 1;
+}
+
+.related-info h4 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.related-info p {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: var(--light-text);
+  line-height: 1.4;
+}
+
+.related-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--lighter-text);
+}
+
+/* 表单样式 */
+.tags-container {
+  margin-top: 10px;
+}
+
+/* 响应式设计 */
 @media (max-width: 768px) {
-  .document-header {
+  .document-detail {
+    padding: 10px;
+  }
+  
+  .header-content {
     flex-direction: column;
     gap: 16px;
   }
   
-  .header-actions {
-    width: 100%;
-    justify-content: flex-start;
+  .document-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .document-info {
+    grid-template-columns: 1fr;
+  }
+  
+  .preview-header {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .history-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .related-item {
+    flex-direction: column;
+    text-align: center;
   }
 }
 </style>

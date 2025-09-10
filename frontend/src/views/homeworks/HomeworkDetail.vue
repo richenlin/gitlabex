@@ -1,186 +1,328 @@
 <template>
   <div class="homework-detail" v-loading="loading">
     <div v-if="homework" class="homework-container">
+      <!-- 面包屑导航 -->
+      <el-breadcrumb class="breadcrumb" separator=">">
+        <el-breadcrumb-item :to="{ path: '/scenes' }">课题</el-breadcrumb-item>
+        <el-breadcrumb-item :to="{ path: `/scenes/${homework.project_id}` }">
+          {{ homework.project?.name }}
+        </el-breadcrumb-item>
+        <el-breadcrumb-item>{{ homework.title }}</el-breadcrumb-item>
+      </el-breadcrumb>
+
       <!-- 作业头部信息 -->
-      <div class="homework-header">
-        <div class="header-left">
-          <h1 class="homework-title">{{ homework.title }}</h1>
-          <div class="homework-badges">
-            <el-tag :type="getStatusType(homework.status)" size="large">
-              {{ getStatusText(homework.status) }}
-            </el-tag>
-            <el-tag v-if="isOverdue" type="danger" size="large">
-              已逾期
-            </el-tag>
-            <el-tag v-if="isDueSoon" type="warning" size="large">
-              即将截止
-            </el-tag>
+      <div class="homework-header card">
+        <div class="header-content">
+          <div class="title-section">
+            <h1 class="homework-title">{{ homework.title }}</h1>
+            <div class="homework-meta">
+              <span>创建时间: {{ formatDate(homework.created_at) }}</span>
+              <span>创建者: {{ homework.author?.name }}</span>
+              <span>截止日期: {{ formatDate(homework.deadline) }}</span>
+              <el-tag :type="getStatusTagType(homework.status)" size="small">
+                {{ getHomeworkStatusText(homework.status) }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="header-actions" v-if="canManage">
+            <el-button @click="editHomework">编辑作业</el-button>
+            <el-button @click="showGradeDialog" v-if="canGrade">批改作业</el-button>
           </div>
         </div>
-        <div class="header-actions">
-          <el-button v-if="canEdit" @click="editHomework">
-            <el-icon><Edit /></el-icon>
-            编辑
-          </el-button>
-          <el-button v-if="canSubmit" type="primary" @click="submitHomework">
-            <el-icon><Upload /></el-icon>
-            提交作业
-          </el-button>
-          <el-button v-if="canGrade" type="success" @click="gradeHomework">
-            <el-icon><Check /></el-icon>
-            批改作业
-          </el-button>
+        <div class="homework-description">
+          <h3>作业要求</h3>
+          <p>{{ homework.description }}</p>
+        </div>
+        <div class="homework-stats">
+          <div class="stat-item">
+            <span class="stat-label">满分</span>
+            <span class="stat-value">{{ homework.max_grade }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">已提交</span>
+            <span class="stat-value">{{ submittedCount }}/{{ totalStudents }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">平均分</span>
+            <span class="stat-value">{{ averageGrade.toFixed(1) }}</span>
+          </div>
         </div>
       </div>
 
-      <!-- 作业基本信息 -->
-      <el-row :gutter="20" class="homework-info">
-        <el-col :span="16">
-          <el-card title="作业详情">
-            <template #header>
-              <span>作业详情</span>
-            </template>
-            
-            <div class="homework-description">
-              <h3>作业描述</h3>
-              <div class="content" v-html="formatDescription(homework.description)"></div>
-            </div>
-            
-            <div class="homework-requirements" v-if="homework.requirements?.length">
-              <h3>作业要求</h3>
-              <ul>
-                <li v-for="req in homework.requirements" :key="req">{{ req }}</li>
-              </ul>
-            </div>
-            
-            <div class="homework-instructions" v-if="homework.instructions">
-              <h3>提交说明</h3>
-              <div class="content" v-html="formatDescription(homework.instructions)"></div>
-            </div>
-          </el-card>
-        </el-col>
-        
-        <el-col :span="8">
-          <el-card title="作业信息">
-            <template #header>
-              <span>作业信息</span>
-            </template>
-            
-            <div class="info-item">
-              <span class="label">发布者：</span>
-              <span class="value">{{ homework.creator?.name }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">关联课题：</span>
-              <el-link 
-                :href="`/scenes/${homework.project?.id}`" 
-                type="primary"
-                :underline="false"
-              >
-                {{ homework.project?.name }}
-              </el-link>
-            </div>
-            <div class="info-item">
-              <span class="label">发布时间：</span>
-              <span class="value">{{ formatDate(homework.created_at) }}</span>
-            </div>
-            <div class="info-item">
-              <span class="label">截止时间：</span>
-              <span class="value" :class="{ 'overdue': isOverdue }">
-                {{ formatDate(homework.due_date) }}
-              </span>
-            </div>
-            <div class="info-item">
-              <span class="label">满分：</span>
-              <span class="value">{{ homework.max_grade }}分</span>
-            </div>
-            <div class="info-item" v-if="isTeacher">
-              <span class="label">提交数：</span>
-              <span class="value">{{ submissions.length }}人</span>
-            </div>
-            <div class="info-item" v-if="homework.tags?.length">
-              <span class="label">标签：</span>
-              <div class="tags">
-                <el-tag 
-                  v-for="tag in homework.tags" 
-                  :key="tag" 
-                  size="small"
-                  class="tag"
-                >
-                  {{ tag }}
-                </el-tag>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <!-- 标签页容器 -->
+      <div class="tab-container card">
+        <el-tabs v-model="activeTab" @tab-change="handleTabChange">
+          <!-- 我的提交标签页 (学生视图) -->
+          <el-tab-pane v-if="isStudent" label="我的提交" name="my-submission">
+            <div class="my-submission-content">
+              <div v-if="mySubmission" class="submission-info">
+                <div class="submission-header">
+                  <h3>提交状态</h3>
+                  <el-tag :type="getSubmissionStatusTagType(mySubmission.status)">
+                    {{ getSubmissionStatusText(mySubmission.status) }}
+                  </el-tag>
+                </div>
+                
+                <div class="submission-details">
+                  <div class="detail-item">
+                    <span class="label">提交时间:</span>
+                    <span class="value">{{ formatDate(mySubmission.submitted_at) }}</span>
+                  </div>
+                  <div class="detail-item" v-if="mySubmission.grade !== null">
+                    <span class="label">得分:</span>
+                    <span class="value grade">{{ mySubmission.grade }}/{{ homework.max_grade }}</span>
+                  </div>
+                  <div class="detail-item" v-if="mySubmission.feedback">
+                    <span class="label">反馈:</span>
+                    <div class="feedback-content">{{ mySubmission.feedback }}</div>
+                  </div>
+                </div>
 
-      <!-- 学生视图：我的提交 -->
-      <div v-if="isStudent" class="my-submission">
-        <el-card title="我的提交">
-          <template #header>
-            <span>我的提交</span>
-          </template>
-          
-          <div v-if="mySubmission">
-            <div class="submission-info">
-              <div class="submission-status">
-                <el-tag :type="getSubmissionStatusType(mySubmission.status)" size="large">
-                  {{ getSubmissionStatusText(mySubmission.status) }}
-                </el-tag>
+                <div class="submission-content">
+                  <h4>提交内容</h4>
+                  <div class="content-text">{{ mySubmission.content }}</div>
+                </div>
+
+                <div class="submission-files" v-if="mySubmission.files?.length">
+                  <h4>提交文件</h4>
+                  <div class="file-list">
+                    <div 
+                      v-for="file in mySubmission.files" 
+                      :key="file.id"
+                      class="file-item"
+                    >
+                      <el-icon><Document /></el-icon>
+                      <span class="file-name">{{ file.title }}</span>
+                      <el-button size="small" @click="downloadFile(file)">下载</el-button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="submission-actions">
+                  <el-button 
+                    v-if="canResubmit" 
+                    type="primary" 
+                    @click="showSubmitDialog"
+                  >
+                    重新提交
+                  </el-button>
+                </div>
               </div>
-              <div class="submission-meta">
-                <span>提交时间：{{ formatDate(mySubmission.submitted_at) }}</span>
-                <span v-if="mySubmission.grade">成绩：{{ mySubmission.grade }}分</span>
+
+              <div v-else class="no-submission">
+                <el-empty description="尚未提交作业">
+                  <el-button 
+                    type="primary" 
+                    @click="showSubmitDialog"
+                    v-if="canSubmit"
+                  >
+                    提交作业
+                  </el-button>
+                </el-empty>
               </div>
             </div>
-            
-            <div class="submission-content" v-if="mySubmission.content">
-              <h4>提交内容</h4>
-              <div class="content">{{ mySubmission.content }}</div>
+          </el-tab-pane>
+
+          <!-- 所有提交标签页 (教师视图) -->
+          <el-tab-pane v-if="canGrade" label="所有提交" name="all-submissions">
+            <div class="submissions-content">
+              <div class="submissions-header">
+                <h3>学生提交列表</h3>
+                <div class="submissions-actions">
+                  <el-select v-model="submissionFilter" placeholder="筛选状态" @change="fetchSubmissions">
+                    <el-option label="全部" value="" />
+                    <el-option label="已提交" value="submitted" />
+                    <el-option label="已批改" value="graded" />
+                    <el-option label="未提交" value="pending" />
+                  </el-select>
+                  <el-button @click="exportGrades" v-if="submissions.length">
+                    导出成绩
+                  </el-button>
+                </div>
+              </div>
+
+              <div class="submissions-list" v-loading="submissionsLoading">
+                <el-table :data="submissions" style="width: 100%">
+                  <el-table-column prop="student.name" label="学生姓名" width="120" />
+                  <el-table-column prop="student.username" label="用户名" width="120" />
+                  <el-table-column label="提交状态" width="100">
+                    <template #default="scope">
+                      <el-tag :type="getSubmissionStatusTagType(scope.row.status)">
+                        {{ getSubmissionStatusText(scope.row.status) }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="submitted_at" label="提交时间" width="150">
+                    <template #default="scope">
+                      {{ scope.row.submitted_at ? formatDate(scope.row.submitted_at) : '-' }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="得分" width="100">
+                    <template #default="scope">
+                      <span v-if="scope.row.grade !== null" class="grade">
+                        {{ scope.row.grade }}/{{ homework.max_grade }}
+                      </span>
+                      <span v-else>-</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="200">
+                    <template #default="scope">
+                      <el-button 
+                        size="small" 
+                        @click="viewSubmission(scope.row)"
+                        v-if="scope.row.status !== 'pending'"
+                      >
+                        查看
+                      </el-button>
+                      <el-button 
+                        size="small" 
+                        type="primary" 
+                        @click="gradeSubmission(scope.row)"
+                        v-if="scope.row.status === 'submitted' || scope.row.status === 'graded'"
+                      >
+                        {{ scope.row.status === 'graded' ? '修改评分' : '批改' }}
+                      </el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
             </div>
-            
-            <div class="submission-feedback" v-if="mySubmission.feedback">
-              <h4>教师反馈</h4>
-              <div class="feedback">{{ mySubmission.feedback }}</div>
+          </el-tab-pane>
+
+          <!-- 统计分析标签页 -->
+          <el-tab-pane v-if="canGrade" label="统计分析" name="statistics">
+            <div class="statistics-content">
+              <div class="stats-overview">
+                <div class="stat-card">
+                  <h4>提交率</h4>
+                  <div class="stat-number">{{ submissionRate.toFixed(1) }}%</div>
+                </div>
+                <div class="stat-card">
+                  <h4>平均分</h4>
+                  <div class="stat-number">{{ averageGrade.toFixed(1) }}</div>
+                </div>
+                <div class="stat-card">
+                  <h4>最高分</h4>
+                  <div class="stat-number">{{ maxGrade }}</div>
+                </div>
+                <div class="stat-card">
+                  <h4>最低分</h4>
+                  <div class="stat-number">{{ minGrade }}</div>
+                </div>
+              </div>
+
+              <div class="grade-distribution">
+                <h4>成绩分布</h4>
+                <div class="distribution-chart">
+                  <div 
+                    v-for="range in gradeDistribution" 
+                    :key="range.range"
+                    class="distribution-item"
+                  >
+                    <span class="range-label">{{ range.range }}</span>
+                    <div class="range-bar">
+                      <div 
+                        class="range-fill" 
+                        :style="{ width: `${range.percentage}%` }"
+                      ></div>
+                    </div>
+                    <span class="range-count">{{ range.count }}人</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            
-            <div class="submission-branch" v-if="mySubmission.gitlab_branch">
-              <h4>提交分支</h4>
-              <el-link 
-                :href="getBranchUrl(mySubmission.gitlab_branch)" 
-                type="primary"
-                target="_blank"
-              >
-                {{ mySubmission.gitlab_branch }}
-                <el-icon><Link /></el-icon>
-              </el-link>
-            </div>
-          </div>
-          
-          <div v-else class="no-submission">
-            <el-empty description="尚未提交作业">
-              <el-button v-if="canSubmit" type="primary" @click="submitHomework">
-                立即提交
-              </el-button>
-            </el-empty>
-          </div>
-        </el-card>
+          </el-tab-pane>
+        </el-tabs>
       </div>
     </div>
+
+    <!-- 提交作业对话框 -->
+    <el-dialog v-model="submitDialogVisible" title="提交作业" width="600px">
+      <el-form :model="submitForm" label-width="80px">
+        <el-form-item label="提交内容">
+          <el-input 
+            v-model="submitForm.content" 
+            type="textarea" 
+            :rows="6"
+            placeholder="请输入作业内容或说明"
+          />
+        </el-form-item>
+        <el-form-item label="上传文件">
+          <el-upload
+            ref="uploadRef"
+            :auto-upload="false"
+            :on-change="handleFileChange"
+            :file-list="submitForm.files"
+            multiple
+          >
+            <el-button>选择文件</el-button>
+            <template #tip>
+              <div class="el-upload__tip">
+                支持多文件上传，单个文件不超过10MB
+              </div>
+            </template>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="submitDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitHomework" :loading="submitting">
+          提交
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批改作业对话框 -->
+    <el-dialog v-model="gradeDialogVisible" title="批改作业" width="600px">
+      <div v-if="currentSubmission" class="grade-content">
+        <div class="student-info">
+          <h4>学生: {{ currentSubmission.student?.name }}</h4>
+          <p>提交时间: {{ formatDate(currentSubmission.submitted_at) }}</p>
+        </div>
+        
+        <div class="submission-content">
+          <h4>提交内容</h4>
+          <div class="content-text">{{ currentSubmission.content }}</div>
+        </div>
+
+        <el-form :model="gradeForm" label-width="80px">
+          <el-form-item label="评分">
+            <el-input-number 
+              v-model="gradeForm.grade" 
+              :min="0" 
+              :max="homework?.max_grade || 100"
+              style="width: 200px"
+            />
+            <span class="grade-suffix">/ {{ homework?.max_grade || 100 }}</span>
+          </el-form-item>
+          <el-form-item label="反馈">
+            <el-input 
+              v-model="gradeForm.feedback" 
+              type="textarea" 
+              :rows="4"
+              placeholder="请输入评价和建议"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="gradeDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveGrade" :loading="grading">
+          保存评分
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { homeworkService } from '@/services/api'
-import type { Homework, Submission } from '@/types'
+import type { Homework, HomeworkSubmission } from '@/types'
 import { ElMessage } from 'element-plus'
-import { 
-  Edit, Upload, Check, Link 
-} from '@element-plus/icons-vue'
+import { Document } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -188,61 +330,130 @@ const userStore = useUserStore()
 
 // 响应式数据
 const homework = ref<Homework | null>(null)
-const submissions = ref<Submission[]>([])
-const mySubmission = ref<Submission | null>(null)
+const mySubmission = ref<HomeworkSubmission | null>(null)
+const submissions = ref<HomeworkSubmission[]>([])
+const currentSubmission = ref<HomeworkSubmission | null>(null)
+
 const loading = ref(false)
+const submissionsLoading = ref(false)
+const submitting = ref(false)
+const grading = ref(false)
+
+const activeTab = ref('my-submission')
+const submissionFilter = ref('')
+
+// 对话框状态
+const submitDialogVisible = ref(false)
+const gradeDialogVisible = ref(false)
+
+// 表单数据
+const submitForm = ref({
+  content: '',
+  files: [] as any[]
+})
+
+const gradeForm = ref({
+  grade: 0,
+  feedback: ''
+})
 
 // 计算属性
 const homeworkId = computed(() => route.params.id as string)
 
-const isTeacher = computed(() => 
-  userStore.hasRole('teacher') || userStore.hasRole('admin')
-)
-
 const isStudent = computed(() => userStore.hasRole('student'))
 
-const canEdit = computed(() => {
-  if (!homework.value) return false
-  return isTeacher.value && (
-    userStore.hasRole('admin') || 
-    homework.value.creator_id === userStore.user?.id
-  )
-})
-
-const canSubmit = computed(() => {
-  if (!homework.value) return false
-  return isStudent.value && 
-         homework.value.status === 'published' && 
-         !isOverdue.value &&
-         !mySubmission.value
+const canManage = computed(() => {
+  return userStore.hasRole('admin') || 
+         userStore.hasRole('teacher') || 
+         homework.value?.creator_id === userStore.user?.id
 })
 
 const canGrade = computed(() => {
-  if (!homework.value) return false
-  return canEdit.value && homework.value.status === 'published'
+  return userStore.hasRole('admin') || userStore.hasRole('teacher')
 })
 
-const isOverdue = computed(() => {
-  if (!homework.value?.due_date) return false
-  return new Date() > new Date(homework.value.due_date)
+const canSubmit = computed(() => {
+  return isStudent.value && 
+         homework.value?.status === 'published' && 
+         new Date() < new Date(homework.value.deadline)
 })
 
-const isDueSoon = computed(() => {
-  if (!homework.value?.due_date) return false
-  const deadline = new Date(homework.value.due_date)
-  const now = new Date()
-  const timeDiff = deadline.getTime() - now.getTime()
-  const daysDiff = timeDiff / (1000 * 3600 * 24)
-  return daysDiff > 0 && daysDiff <= 3
+const canResubmit = computed(() => {
+  return canSubmit.value && mySubmission.value?.status !== 'graded'
+})
+
+const submittedCount = computed(() => {
+  return submissions.value.filter(s => s.status !== 'pending').length
+})
+
+const totalStudents = computed(() => {
+  return submissions.value.length
+})
+
+const submissionRate = computed(() => {
+  return totalStudents.value > 0 ? (submittedCount.value / totalStudents.value) * 100 : 0
+})
+
+const averageGrade = computed(() => {
+  const gradedSubmissions = submissions.value.filter(s => s.grade !== null)
+  if (gradedSubmissions.length === 0) return 0
+  const total = gradedSubmissions.reduce((sum, s) => sum + (s.grade || 0), 0)
+  return total / gradedSubmissions.length
+})
+
+const maxGrade = computed(() => {
+  const grades = submissions.value.map(s => s.grade).filter(g => g !== null) as number[]
+  return grades.length > 0 ? Math.max(...grades) : 0
+})
+
+const minGrade = computed(() => {
+  const grades = submissions.value.map(s => s.grade).filter(g => g !== null) as number[]
+  return grades.length > 0 ? Math.min(...grades) : 0
+})
+
+const gradeDistribution = computed(() => {
+  const ranges = [
+    { range: '90-100', min: 90, max: 100 },
+    { range: '80-89', min: 80, max: 89 },
+    { range: '70-79', min: 70, max: 79 },
+    { range: '60-69', min: 60, max: 69 },
+    { range: '0-59', min: 0, max: 59 }
+  ]
+
+  const gradedSubmissions = submissions.value.filter(s => s.grade !== null)
+  const total = gradedSubmissions.length
+
+  return ranges.map(range => {
+    const count = gradedSubmissions.filter(s => 
+      s.grade! >= range.min && s.grade! <= range.max
+    ).length
+    const percentage = total > 0 ? (count / total) * 100 : 0
+    
+    return {
+      range: range.range,
+      count,
+      percentage
+    }
+  })
 })
 
 // 方法
 const fetchHomework = async () => {
   loading.value = true
   try {
-    const response = await homeworkService.getHomeworkById(homeworkId.value)
-    homework.value = response.data
+    const response = await homeworkService.getHomework(homeworkId.value)
+    homework.value = response.data || response
+    
+    // 设置默认标签页
+    if (isStudent.value) {
+      activeTab.value = 'my-submission'
+      fetchMySubmission()
+    } else if (canGrade.value) {
+      activeTab.value = 'all-submissions'
+      fetchSubmissions()
+    }
   } catch (error) {
+    console.error('获取作业详情失败:', error)
     ElMessage.error('获取作业详情失败')
   } finally {
     loading.value = false
@@ -254,248 +465,508 @@ const fetchMySubmission = async () => {
   
   try {
     const response = await homeworkService.getMySubmission(homeworkId.value)
-    mySubmission.value = response.data
+    mySubmission.value = response.data || response
   } catch (error) {
-    mySubmission.value = null
+    console.error('获取我的提交失败:', error)
+  }
+}
+
+const fetchSubmissions = async () => {
+  if (!canGrade.value) return
+  
+  submissionsLoading.value = true
+  try {
+    const response = await homeworkService.getSubmissions(homeworkId.value)
+    submissions.value = response.data || response || []
+  } catch (error) {
+    console.error('获取提交列表失败:', error)
+  } finally {
+    submissionsLoading.value = false
+  }
+}
+
+const handleTabChange = (tabName: string) => {
+  activeTab.value = tabName
+  switch (tabName) {
+    case 'my-submission':
+      fetchMySubmission()
+      break
+    case 'all-submissions':
+      fetchSubmissions()
+      break
+  }
+}
+
+const showSubmitDialog = () => {
+  submitDialogVisible.value = true
+  submitForm.value = {
+    content: mySubmission.value?.content || '',
+    files: []
+  }
+}
+
+const handleFileChange = (file: any, fileList: any[]) => {
+  submitForm.value.files = fileList
+}
+
+const submitHomework = async () => {
+  submitting.value = true
+  try {
+    await homeworkService.submitHomework({
+      homework_id: homeworkId.value,
+      content: submitForm.value.content,
+      files: submitForm.value.files.map(f => f.name)
+    })
+    
+    ElMessage.success('作业提交成功')
+    submitDialogVisible.value = false
+    fetchMySubmission()
+  } catch (error) {
+    console.error('提交作业失败:', error)
+    ElMessage.error('提交作业失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+const viewSubmission = (submission: HomeworkSubmission) => {
+  // 查看提交详情的逻辑
+  console.log('查看提交:', submission)
+}
+
+const gradeSubmission = (submission: HomeworkSubmission) => {
+  currentSubmission.value = submission
+  gradeForm.value = {
+    grade: submission.grade || 0,
+    feedback: submission.feedback || ''
+  }
+  gradeDialogVisible.value = true
+}
+
+const saveGrade = async () => {
+  if (!currentSubmission.value) return
+  
+  grading.value = true
+  try {
+    await homeworkService.gradeSubmission(
+      currentSubmission.value.id,
+      gradeForm.value.grade,
+      gradeForm.value.feedback
+    )
+    
+    ElMessage.success('评分保存成功')
+    gradeDialogVisible.value = false
+    fetchSubmissions()
+  } catch (error) {
+    console.error('保存评分失败:', error)
+    ElMessage.error('保存评分失败')
+  } finally {
+    grading.value = false
   }
 }
 
 const editHomework = () => {
-  router.push(`/homeworks/${homeworkId.value}/edit`)
+  router.push(`/homework/${homeworkId.value}/edit`)
 }
 
-const submitHomework = () => {
-  router.push(`/homeworks/${homeworkId.value}/submit`)
+const exportGrades = () => {
+  // 导出成绩的逻辑
+  ElMessage.info('导出功能开发中')
 }
 
-const gradeHomework = () => {
-  router.push(`/homeworks/${homeworkId.value}/grade`)
+const downloadFile = (file: any) => {
+  // 下载文件的逻辑
+  console.log('下载文件:', file)
 }
 
-const getBranchUrl = (branchName: string) => {
-  if (!homework.value?.project?.gitlab_url) return '#'
-  return `${homework.value.project.gitlab_url}/-/tree/${branchName}`
+const formatDate = (date: string) => {
+  return new Date(date).toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
-const getStatusType = (status: string) => {
-  const types: Record<string, string> = {
-    draft: 'info',
-    published: 'success',
-    closed: 'warning'
-  }
-  return types[status] || 'info'
-}
-
-const getStatusText = (status: string) => {
-  const texts: Record<string, string> = {
+const getHomeworkStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
     draft: '草稿',
     published: '已发布',
-    closed: '已结束'
+    closed: '已关闭'
   }
-  return texts[status] || status
+  return statusMap[status] || status
 }
 
-const getSubmissionStatusType = (status: string) => {
-  const types: Record<string, string> = {
-    pending: 'info',
-    submitted: 'warning',
-    graded: 'success'
+const getStatusTagType = (status: string) => {
+  const typeMap: Record<string, string> = {
+    draft: 'info',
+    published: 'success',
+    closed: 'danger'
   }
-  return types[status] || 'info'
+  return typeMap[status] || 'info'
 }
 
 const getSubmissionStatusText = (status: string) => {
-  const texts: Record<string, string> = {
+  const statusMap: Record<string, string> = {
     pending: '未提交',
     submitted: '已提交',
     graded: '已批改'
   }
-  return texts[status] || status
+  return statusMap[status] || status
 }
 
-const formatDate = (date: string | Date) => {
-  if (!date) return '-'
-  return new Date(date).toLocaleString('zh-CN')
-}
-
-const formatDescription = (text: string) => {
-  if (!text) return ''
-  return text.replace(/\n/g, '<br>')
+const getSubmissionStatusTagType = (status: string) => {
+  const typeMap: Record<string, string> = {
+    pending: 'info',
+    submitted: 'warning',
+    graded: 'success'
+  }
+  return typeMap[status] || 'info'
 }
 
 // 生命周期
-onMounted(async () => {
-  await fetchHomework()
-  if (isStudent.value) {
-    await fetchMySubmission()
-  }
+onMounted(() => {
+  fetchHomework()
 })
 </script>
 
 <style scoped>
 .homework-detail {
+  max-width: 1200px;
+  margin: 0 auto;
   padding: 20px;
 }
 
-.homework-container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.homework-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e8e8e8;
-}
-
-.homework-title {
-  margin: 0 0 12px 0;
-  font-size: 28px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.homework-badges {
-  display: flex;
-  gap: 8px;
-}
-
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.homework-info {
-  margin-bottom: 24px;
-}
-
-.homework-description,
-.homework-requirements,
-.homework-instructions {
+.breadcrumb {
   margin-bottom: 20px;
 }
 
-.homework-description h3,
-.homework-requirements h3,
-.homework-instructions h3 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+.homework-header {
+  margin-bottom: 20px;
 }
 
-.content {
-  line-height: 1.6;
-  color: #606266;
-}
-
-.homework-requirements ul {
-  margin: 0;
-  padding-left: 20px;
-}
-
-.homework-requirements li {
-  margin-bottom: 8px;
-  color: #606266;
-}
-
-.info-item {
+.header-content {
   display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-  font-size: 14px;
-}
-
-.info-item .label {
-  font-weight: 500;
-  color: #909399;
-  min-width: 80px;
-}
-
-.info-item .value {
-  color: #303133;
-}
-
-.info-item .value.overdue {
-  color: #f56c6c;
-  font-weight: 500;
-}
-
-.tags {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.tag {
-  margin: 0;
-}
-
-.my-submission {
-  margin-top: 24px;
-}
-
-.submission-info {
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: 16px;
 }
 
-.submission-status {
-  margin-bottom: 8px;
-}
-
-.submission-meta {
-  font-size: 14px;
-  color: #909399;
-}
-
-.submission-meta span {
-  margin-right: 16px;
-}
-
-.submission-content,
-.submission-feedback,
-.submission-branch {
-  margin-top: 16px;
-}
-
-.submission-content h4,
-.submission-feedback h4,
-.submission-branch h4 {
+.title-section h1 {
   margin: 0 0 8px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
+  color: var(--primary-color);
 }
 
-.submission-content .content,
-.submission-feedback .feedback {
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
+.homework-meta {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--light-text);
+}
+
+.homework-description {
+  margin-bottom: 20px;
+}
+
+.homework-description h3 {
+  margin: 0 0 8px 0;
+  color: var(--text-color);
+}
+
+.homework-description p {
+  margin: 0;
+  color: var(--light-text);
   line-height: 1.6;
+}
+
+.homework-stats {
+  display: flex;
+  gap: 40px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.stat-item {
+  text-align: center;
+}
+
+.stat-label {
+  display: block;
+  font-size: 12px;
+  color: var(--light-text);
+  margin-bottom: 4px;
+}
+
+.stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.tab-container {
+  min-height: 500px;
+}
+
+/* 我的提交样式 */
+.submission-info {
+  max-width: 800px;
+}
+
+.submission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.submission-details {
+  margin-bottom: 20px;
+}
+
+.detail-item {
+  display: flex;
+  margin-bottom: 12px;
+}
+
+.detail-item .label {
+  width: 100px;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.detail-item .value {
+  color: var(--light-text);
+}
+
+.detail-item .grade {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.feedback-content {
+  background-color: var(--background-light);
+  padding: 12px;
+  border-radius: 4px;
+  color: var(--text-color);
+  line-height: 1.5;
+}
+
+.submission-content {
+  margin-bottom: 20px;
+}
+
+.submission-content h4 {
+  margin: 0 0 12px 0;
+  color: var(--text-color);
+}
+
+.content-text {
+  background-color: var(--background-light);
+  padding: 16px;
+  border-radius: 8px;
+  color: var(--text-color);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.submission-files {
+  margin-bottom: 20px;
+}
+
+.submission-files h4 {
+  margin: 0 0 12px 0;
+  color: var(--text-color);
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: var(--background-light);
+  border-radius: 4px;
+}
+
+.file-name {
+  flex: 1;
+  color: var(--text-color);
 }
 
 .no-submission {
   text-align: center;
-  padding: 40px 0;
+  padding: 60px 0;
 }
 
+/* 提交列表样式 */
+.submissions-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.submissions-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.grade {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+/* 统计分析样式 */
+.stats-overview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.stat-card {
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.stat-card h4 {
+  margin: 0 0 8px 0;
+  color: var(--text-color);
+  font-size: 14px;
+}
+
+.stat-number {
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.grade-distribution h4 {
+  margin: 0 0 20px 0;
+  color: var(--text-color);
+}
+
+.distribution-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.distribution-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.range-label {
+  width: 60px;
+  font-size: 12px;
+  color: var(--text-color);
+}
+
+.range-bar {
+  flex: 1;
+  height: 20px;
+  background-color: var(--background-light);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.range-fill {
+  height: 100%;
+  background-color: var(--primary-color);
+  transition: width 0.3s;
+}
+
+.range-count {
+  width: 40px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--light-text);
+}
+
+/* 批改对话框样式 */
+.grade-content {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.student-info {
+  margin-bottom: 20px;
+  padding: 12px;
+  background-color: var(--background-light);
+  border-radius: 8px;
+}
+
+.student-info h4 {
+  margin: 0 0 4px 0;
+  color: var(--text-color);
+}
+
+.student-info p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--light-text);
+}
+
+.grade-suffix {
+  margin-left: 8px;
+  color: var(--light-text);
+}
+
+/* 响应式设计 */
 @media (max-width: 768px) {
-  .homework-header {
+  .homework-detail {
+    padding: 10px;
+  }
+  
+  .header-content {
     flex-direction: column;
     gap: 16px;
   }
   
-  .header-actions {
-    width: 100%;
-    justify-content: flex-start;
+  .homework-stats {
+    flex-direction: column;
+    gap: 16px;
+    text-align: left;
   }
   
-  .homework-info .el-col {
-    margin-bottom: 16px;
+  .stats-overview {
+    grid-template-columns: 1fr;
+  }
+  
+  .submissions-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .submissions-actions {
+    justify-content: flex-end;
+  }
+  
+  .distribution-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .range-label,
+  .range-count {
+    width: auto;
+    text-align: left;
   }
 }
 </style>

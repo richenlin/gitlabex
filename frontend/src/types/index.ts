@@ -127,6 +127,8 @@ export interface Document {
   gitlab_id?: string
   auto_indexed: boolean
   last_sync_time?: string
+  download_count?: number
+  tags?: string[]
   created_at: string
   updated_at: string
 }
