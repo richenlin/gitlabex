@@ -18,19 +18,23 @@
       </nav>
       
       <div class="header-actions">
+        <!-- 实时通知面板 -->
+        <NotificationPanel v-if="userStore.isLoggedIn" />
+        
+        <!-- 系统公告按钮 -->
         <el-button 
           text 
           class="announcement-btn"
           @click="showAnnouncements = true"
         >
-          <el-icon><Bell /></el-icon>
+          <el-icon><Announcement /></el-icon>
         </el-button>
         
         <!-- 登录用户显示用户信息 -->
         <el-dropdown v-if="userStore.isLoggedIn" @command="handleUserAction">
           <div class="user-info">
-            <span class="username">{{ userStore.username || '用户名' }}</span>
-            <el-avatar :size="32" :src="userStore.avatar || defaultAvatar" />
+            <span class="username">{{ userStore.user?.name || '用户名' }}</span>
+            <el-avatar :size="32" :src="userStore.user?.avatar_url || defaultAvatar" />
           </div>
           <template #dropdown>
             <el-dropdown-menu>
@@ -44,10 +48,10 @@
         
         <!-- 游客显示登录/注册按钮 -->
         <div v-else class="guest-actions">
-          <el-button size="small" @click="$router.push('/login')">
+          <el-button size="small" @click="$router.push('/auth/login')">
             登录
           </el-button>
-          <el-button size="small" type="primary" @click="$router.push('/register')">
+          <el-button size="small" type="primary" @click="$router.push('/auth/register')">
             注册
           </el-button>
         </div>
@@ -72,13 +76,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
+import { Bell, Announcement } from '@element-plus/icons-vue'
+import NotificationPanel from '@/components/common/NotificationPanel.vue'
+import { useNotifications } from '@/composables/useNotifications'
 
 const userStore = useUserStore()
 const router = useRouter()
+const { connect, disconnect, requestNotificationPermission } = useNotifications()
 
 const navItems = [
   { path: '/', label: '首页' },
@@ -109,21 +117,30 @@ const announcements = [
 const handleUserAction = (command: string) => {
   switch (command) {
     case 'profile':
-      router.push('/profile')
+      router.push('/user/profile')
       break
     case 'settings':
-      router.push('/settings')
+      router.push('/user/settings')
       break
     case 'notifications':
-      router.push('/notifications')
+      router.push('/user/notifications')
       break
     case 'logout':
+      disconnect() // 断开WebSocket连接
       userStore.logout()
       ElMessage.success('已退出登录')
-      router.push('/login')
+      router.push('/auth/login')
       break
   }
 }
+
+// 组件挂载时初始化通知系统
+onMounted(() => {
+  if (userStore.isLoggedIn) {
+    requestNotificationPermission()
+    connect()
+  }
+})
 </script>
 
 <style scoped>

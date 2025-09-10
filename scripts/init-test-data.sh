@@ -1,24 +1,32 @@
 #!/bin/bash
 
 # GitLabEx 测试数据初始化脚本
-# 在应用启动后执行，插入演示数据
+# 使用 docker exec 方式在 PostgreSQL 容器中执行数据导入
 
 set -e
 
-echo "🗄️ GitLabEx 测试数据初始化"
-echo "============================"
+echo "🗄️ GitLabEx 测试数据初始化 (Docker版)"
+echo "======================================"
 
-# 配置数据库连接参数
-DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
+# 配置参数
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-gitlabex-postgres}"
 DB_USER="${DB_USER:-gitlabex}"
-DB_PASSWORD="${DB_PASSWORD:-password123}"
 DB_NAME="${DB_NAME:-gitlabex}"
+
+# 检查 Docker 容器是否存在并运行
+echo "🔍 检查 PostgreSQL 容器状态..."
+if ! docker ps | grep -q "$POSTGRES_CONTAINER"; then
+    echo "❌ PostgreSQL 容器 '$POSTGRES_CONTAINER' 未运行"
+    echo "   请先启动 Docker Compose 服务: docker-compose -f docker-compose.dev.yml up -d postgres"
+    exit 1
+fi
+
+echo "✅ PostgreSQL 容器运行正常"
 
 # 检查数据库连接
 echo "🔍 检查数据库连接..."
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
-    echo "❌ 无法连接到数据库，请检查数据库服务是否启动"
+if ! docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" > /dev/null 2>&1; then
+    echo "❌ 无法连接到数据库，请检查数据库服务是否正常"
     exit 1
 fi
 
@@ -26,7 +34,7 @@ echo "✅ 数据库连接正常"
 
 # 检查表是否存在
 echo "🔍 检查数据表是否存在..."
-table_count=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users', 'research_projects', 'topics', 'documents');" | tr -d ' ')
+table_count=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users', 'research_projects', 'topics', 'documents');" | tr -d ' ')
 
 if [ "$table_count" -lt 4 ]; then
     echo "⚠️  数据表尚未创建，请先启动 GitLabEx 后端服务以创建数据表"
@@ -38,7 +46,7 @@ echo "✅ 数据表已存在"
 
 # 检查是否已有测试数据
 echo "🔍 检查是否已有测试数据..."
-existing_users=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM users WHERE username = 'admin';" | tr -d ' ')
+existing_users=$(docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT COUNT(*) FROM users WHERE username = 'admin';" | tr -d ' ')
 
 if [ "$existing_users" -gt 0 ]; then
     echo "⚠️  检测到已存在测试数据"
@@ -50,7 +58,7 @@ if [ "$existing_users" -gt 0 ]; then
     fi
     
     echo "🗑️  清除现有测试数据..."
-    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" << EOF
+    docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" << EOF
 -- 按依赖关系顺序删除数据
 DELETE FROM notifications;
 DELETE FROM submissions;
@@ -69,10 +77,19 @@ fi
 echo "📊 开始插入测试数据..."
 cd "$(dirname "$0")/.."
 
-if PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f config/test-data.sql; then
+# 将测试数据文件复制到容器中并执行
+echo "📋 复制测试数据文件到容器..."
+docker cp config/test-data.sql "$POSTGRES_CONTAINER":/tmp/test-data.sql
+
+echo "💾 在容器中执行测试数据导入..."
+if docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -f /tmp/test-data.sql; then
     echo "✅ 测试数据初始化完成！"
+    # 清理临时文件
+    docker exec "$POSTGRES_CONTAINER" rm -f /tmp/test-data.sql
 else
     echo "❌ 测试数据初始化失败"
+    # 清理临时文件
+    docker exec "$POSTGRES_CONTAINER" rm -f /tmp/test-data.sql
     exit 1
 fi
 
@@ -87,7 +104,7 @@ echo "   助教: ta_chen (chen.ta@university.edu)"
 echo "   学生: student_001 (student001@university.edu)"
 echo ""
 echo "📊 数据统计："
-PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "
+docker exec "$POSTGRES_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "
 SELECT 
     '研究课题' as 类型, COUNT(*) as 数量 FROM research_projects
 UNION ALL

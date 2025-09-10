@@ -1,10 +1,17 @@
 package handlers
 
 import (
+	"fmt"
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -135,6 +142,211 @@ func (h *DocumentHandler) CreateDocument(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, document)
+}
+
+// UploadDocument 上传文档文件
+func (h *DocumentHandler) UploadDocument(c *gin.Context) {
+	// 获取项目ID
+	projectIDStr := c.PostForm("project_id")
+	if projectIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "项目ID不能为空"})
+		return
+	}
+
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		return
+	}
+
+	// 获取用户ID
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	// 获取上传的文件
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "获取上传文件失败: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	// 验证文件类型和大小
+	if err := h.validateFile(header); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 保存文件
+	filePath, err := h.saveUploadedFile(file, header, projectID.String())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败: " + err.Error()})
+		return
+	}
+
+	// 获取表单参数
+	title := c.PostForm("title")
+	if title == "" {
+		title = header.Filename
+	}
+	description := c.PostForm("description")
+	category := c.PostForm("category")
+
+	// 确定文件类型
+	fileType := h.getFileType(header.Filename)
+	mimeType := header.Header.Get("Content-Type")
+
+	// 创建文档记录
+	document := &models.Document{
+		ProjectID:   projectID,
+		Title:       title,
+		Description: description,
+		FilePath:    filePath,
+		FileSize:    header.Size,
+		FileType:    fileType,
+		MIMEType:    mimeType,
+		Category:    category,
+		UploaderID:  userID.(uuid.UUID),
+		Status:      models.DocumentStatusApproved, // 默认审核通过，可根据需要修改
+	}
+
+	if err := h.documentService.CreateDocument(document); err != nil {
+		// 如果创建数据库记录失败，删除已上传的文件
+		os.Remove(filePath)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建文档记录失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message":  "文档上传成功",
+		"document": document,
+	})
+}
+
+// validateFile 验证上传的文件
+func (h *DocumentHandler) validateFile(header *multipart.FileHeader) error {
+	// 检查文件大小 (限制为50MB)
+	const maxFileSize = 50 * 1024 * 1024 // 50MB
+	if header.Size > maxFileSize {
+		return fmt.Errorf("文件大小不能超过50MB")
+	}
+
+	// 检查文件扩展名
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	allowedExts := map[string]bool{
+		".pdf":  true,
+		".doc":  true,
+		".docx": true,
+		".xls":  true,
+		".xlsx": true,
+		".ppt":  true,
+		".pptx": true,
+		".txt":  true,
+		".md":   true,
+		".jpg":  true,
+		".jpeg": true,
+		".png":  true,
+		".gif":  true,
+		".zip":  true,
+		".rar":  true,
+		".7z":   true,
+	}
+
+	if !allowedExts[ext] {
+		return fmt.Errorf("不支持的文件类型: %s", ext)
+	}
+
+	return nil
+}
+
+// saveUploadedFile 保存上传的文件
+func (h *DocumentHandler) saveUploadedFile(file multipart.File, header *multipart.FileHeader, projectID string) (string, error) {
+	// 创建上传目录
+	uploadDir := filepath.Join("uploads", "documents", projectID)
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		return "", fmt.Errorf("创建上传目录失败: %v", err)
+	}
+
+	// 生成唯一的文件名
+	ext := filepath.Ext(header.Filename)
+	filename := fmt.Sprintf("%d_%s%s", time.Now().Unix(), uuid.New().String()[:8], ext)
+	filePath := filepath.Join(uploadDir, filename)
+
+	// 创建目标文件
+	dst, err := os.Create(filePath)
+	if err != nil {
+		return "", fmt.Errorf("创建目标文件失败: %v", err)
+	}
+	defer dst.Close()
+
+	// 复制文件内容
+	if _, err := io.Copy(dst, file); err != nil {
+		return "", fmt.Errorf("复制文件内容失败: %v", err)
+	}
+
+	return filePath, nil
+}
+
+// getFileType 根据文件名确定文件类型
+func (h *DocumentHandler) getFileType(filename string) models.DocumentType {
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	switch ext {
+	case ".pdf":
+		return models.DocumentTypePDF
+	case ".doc", ".docx":
+		return models.DocumentTypeWord
+	case ".xls", ".xlsx":
+		return models.DocumentTypeExcel
+	case ".ppt", ".pptx":
+		return models.DocumentTypePPT
+	case ".jpg", ".jpeg", ".png", ".gif":
+		return models.DocumentTypeImage
+	case ".mp4", ".avi", ".mov":
+		return models.DocumentTypeVideo
+	case ".go", ".js", ".py", ".java", ".cpp", ".c", ".h":
+		return models.DocumentTypeCode
+	default:
+		return models.DocumentTypeOther
+	}
+}
+
+// DownloadDocument 下载文档
+func (h *DocumentHandler) DownloadDocument(c *gin.Context) {
+	documentIDStr := c.Param("id")
+	documentID, err := uuid.Parse(documentIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的文档ID"})
+		return
+	}
+
+	// 获取文档信息
+	document, err := h.documentService.GetDocumentByID(documentID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文档不存在"})
+		return
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(document.FilePath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文件不存在"})
+		return
+	}
+
+	// 更新下载次数
+	h.documentService.IncrementDownloadCount(documentID)
+
+	// 设置响应头
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", document.Title))
+	c.Header("Content-Type", "application/octet-stream")
+
+	// 发送文件
+	c.File(document.FilePath)
 }
 
 // UpdateDocument 更新文档信息

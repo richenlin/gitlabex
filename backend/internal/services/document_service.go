@@ -617,3 +617,11 @@ func (s *DocumentService) GetDocumentEditHistory(documentID uuid.UUID) ([]models
 
 	return history, err
 }
+
+// IncrementDownloadCount 增加文档下载次数
+func (s *DocumentService) IncrementDownloadCount(documentID uuid.UUID) error {
+	return s.DB.Model(&models.Document{}).
+		Where("id = ?", documentID).
+		UpdateColumn("download_count", gorm.Expr("download_count + ?", 1)).
+		Error
+}

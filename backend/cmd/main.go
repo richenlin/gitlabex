@@ -44,6 +44,7 @@ func main() {
 	documentService := services.NewDocumentService(db, gitlabService)
 	homeworkService := services.NewHomeworkService(db, gitlabService)
 	notificationService := services.NewNotificationService(db)
+	websocketService := services.NewWebSocketService()
 
 	// 权限服务必须在其他handler之前初始化
 	permissionService := services.NewPermissionService(db)
@@ -51,10 +52,11 @@ func main() {
 
 	// 初始化处理器
 	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
-	gitlabWebhookHandler := handlers.NewGitLabWebhookHandler(gitlabService, userService)
+	gitlabWebhookHandler := handlers.NewGitLabWebhookHandler(gitlabService, userService, researchService, homeworkService, notificationService, websocketService)
 	researchHandler := handlers.NewResearchHandler(researchService, userService, gitlabService)
 	topicHandler := handlers.NewTopicHandler(topicService, userService, gitlabService, researchService)
 	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWTSecret)
+	websocketHandler := handlers.NewWebSocketHandler(websocketService)
 
 	// 创建Gin路由器
 	r := gin.Default()
@@ -87,7 +89,7 @@ func main() {
 
 	// 认证相关路由
 	auth := api.Group("/auth")
-	authHandler := handlers.NewAuthHandler(userService, cfg)
+	authHandler := handlers.NewAuthHandler(userService, gitlabService, cfg)
 	{
 		auth.GET("/gitlab", authHandler.GitLabAuth)
 		auth.GET("/gitlab/callback", authHandler.GitLabCallback)
@@ -185,6 +187,10 @@ func main() {
 			documentsAuth.DELETE("/:id", permissionMiddleware.RequireDocumentPermission(services.ProjectPermissionDelete), documentHandler.DeleteDocument)
 			documentsAuth.GET("/stats", documentHandler.GetDocumentStats)
 			documentsAuth.POST("", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionUpload), documentHandler.CreateDocument)
+
+			// 文件上传和下载路由
+			documentsAuth.POST("/upload", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionUpload), documentHandler.UploadDocument)
+			documentsAuth.GET("/:id/download", documentHandler.DownloadDocument)
 
 			// 自动文档索引路由 - 需要认证
 			documentsAuth.POST("/sync/:project_id", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionManage), documentHandler.SyncDocuments)
@@ -296,6 +302,13 @@ func main() {
 		gitlab.POST("/projects/:id/register-webhook", gitlabWebhookHandler.RegisterWebhook)
 		gitlab.GET("/projects/:id/webhooks", gitlabWebhookHandler.ListWebhooks)
 		gitlab.DELETE("/projects/:id/webhooks/:webhook_id", gitlabWebhookHandler.DeleteWebhook)
+	}
+
+	// WebSocket 实时通知路由
+	ws := api.Group("/ws")
+	ws.Use(middleware.RequireAuth(cfg))
+	{
+		ws.GET("/connect", websocketHandler.HandleWebSocket)
 	}
 
 	// 第三方系统同步API路由 (需要API密钥认证)

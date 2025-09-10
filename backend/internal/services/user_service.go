@@ -2,12 +2,15 @@ package services
 
 import (
 	"gitlabex/internal/models"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// 使用gitlab_service.go中定义的GitLabUser类型
 
 // UserService 用户服务实现
 type UserService struct {
@@ -169,4 +172,149 @@ func (s *UserService) GetUserByUsername(username string) (*models.User, error) {
 // UpdateUser 根据ID更新用户信息
 func (s *UserService) UpdateUser(userID uuid.UUID, updates map[string]interface{}) error {
 	return s.DB.Model(&models.User{}).Where("id = ?", userID).Updates(updates).Error
+}
+
+// CreateOrUpdateUserFromGitLab 从GitLab用户信息创建或更新用户
+func (s *UserService) CreateOrUpdateUserFromGitLab(gitlabUser *GitLabUser, accessToken, refreshToken string) (*models.User, error) {
+	// 先尝试根据GitLab ID查找现有用户
+	var user models.User
+	err := s.DB.Where("gitlab_id = ?", gitlabUser.ID).First(&user).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// 用户不存在，创建新用户
+		user = models.User{
+			GitLabID:     gitlabUser.ID,
+			Username:     gitlabUser.Username,
+			Email:        gitlabUser.Email,
+			Name:         gitlabUser.Name,
+			AvatarURL:    gitlabUser.Avatar,
+			Role:         models.RoleStudent,    // 默认角色为学生
+			EduRole:      models.EduRoleStudent, // 默认教育角色为学生
+			IsActive:     true,
+			AccessToken:  accessToken,
+			RefreshToken: refreshToken,
+		}
+
+		// 根据GitLab用户信息推断角色
+		user.Role, user.EduRole = s.inferUserRoles(gitlabUser)
+
+		if err := s.DB.Create(&user).Error; err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		// 数据库查询错误
+		return nil, err
+	} else {
+		// 用户存在，更新信息
+		updates := map[string]interface{}{
+			"username":      gitlabUser.Username,
+			"email":         gitlabUser.Email,
+			"name":          gitlabUser.Name,
+			"avatar_url":    gitlabUser.Avatar,
+			"access_token":  accessToken,
+			"refresh_token": refreshToken,
+			"is_active":     true,
+		}
+
+		// 更新角色（如果需要）
+		newRole, newEduRole := s.inferUserRoles(gitlabUser)
+		if newRole != user.Role {
+			updates["role"] = newRole
+		}
+		if newEduRole != user.EduRole {
+			updates["edu_role"] = newEduRole
+		}
+
+		if err := s.DB.Model(&user).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+
+		// 重新加载更新后的用户信息
+		if err := s.DB.Where("id = ?", user.ID).First(&user).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	return &user, nil
+}
+
+// GetUserByGitLabID 根据GitLab ID获取用户
+func (s *UserService) GetUserByGitLabID(gitlabID int64) (*models.User, error) {
+	var user models.User
+	if err := s.DB.Where("gitlab_id = ?", gitlabID).First(&user).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// inferUserRoles 根据GitLab用户信息推断用户角色
+func (s *UserService) inferUserRoles(gitlabUser *GitLabUser) (models.UserRole, models.EducationRole) {
+	// 这里可以根据GitLab用户的信息（如用户名、邮箱域名等）来推断角色
+	// 简化实现：默认所有用户都是学生，可以后续通过管理界面调整
+
+	// 可以根据邮箱域名或用户名模式来推断角色
+	// 例如：teacher_*, admin_* 等用户名前缀
+	username := gitlabUser.Username
+	email := gitlabUser.Email
+
+	// 检查是否是管理员
+	if isAdminUser(username, email) {
+		return models.RoleAdmin, models.EduRoleAdmin
+	}
+
+	// 检查是否是教师
+	if isTeacherUser(username, email) {
+		return models.RoleTeacher, models.EduRoleTeacher
+	}
+
+	// 检查是否是助教
+	if isAssistantUser(username, email) {
+		return models.RoleAssistant, models.EduRoleAssistant
+	}
+
+	// 默认为学生
+	return models.RoleStudent, models.EduRoleStudent
+}
+
+// isAdminUser 检查是否是管理员用户
+func isAdminUser(username, email string) bool {
+	// 可以根据用户名模式或邮箱域名判断
+	adminPatterns := []string{"admin", "administrator", "root"}
+	for _, pattern := range adminPatterns {
+		if strings.Contains(strings.ToLower(username), pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// isTeacherUser 检查是否是教师用户
+func isTeacherUser(username, email string) bool {
+	teacherPatterns := []string{"teacher", "prof", "instructor"}
+	for _, pattern := range teacherPatterns {
+		if strings.Contains(strings.ToLower(username), pattern) {
+			return true
+		}
+	}
+
+	// 可以根据邮箱域名判断，例如 @university.edu
+	teacherDomains := []string{"@university.edu", "@school.edu"}
+	for _, domain := range teacherDomains {
+		if strings.Contains(strings.ToLower(email), domain) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isAssistantUser 检查是否是助教用户
+func isAssistantUser(username, email string) bool {
+	assistantPatterns := []string{"assistant", "ta", "tutor"}
+	for _, pattern := range assistantPatterns {
+		if strings.Contains(strings.ToLower(username), pattern) {
+			return true
+		}
+	}
+	return false
 }

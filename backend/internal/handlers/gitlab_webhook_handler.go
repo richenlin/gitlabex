@@ -4,7 +4,6 @@ import (
 	"gitlabex/internal/services"
 	"log"
 	"net/http"
-
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -12,15 +11,30 @@ import (
 
 // GitLabWebhookHandler GitLab webhook处理器
 type GitLabWebhookHandler struct {
-	gitlabService *services.GitLabService
-	userService   *services.UserService
+	gitlabService       *services.GitLabService
+	userService         *services.UserService
+	researchService     *services.ResearchService
+	homeworkService     *services.HomeworkService
+	notificationService *services.NotificationService
+	websocketService    *services.WebSocketService
 }
 
 // NewGitLabWebhookHandler 创建GitLab webhook处理器
-func NewGitLabWebhookHandler(gitlabService *services.GitLabService, userService *services.UserService) *GitLabWebhookHandler {
+func NewGitLabWebhookHandler(
+	gitlabService *services.GitLabService,
+	userService *services.UserService,
+	researchService *services.ResearchService,
+	homeworkService *services.HomeworkService,
+	notificationService *services.NotificationService,
+	websocketService *services.WebSocketService,
+) *GitLabWebhookHandler {
 	return &GitLabWebhookHandler{
-		gitlabService: gitlabService,
-		userService:   userService,
+		gitlabService:       gitlabService,
+		userService:         userService,
+		researchService:     researchService,
+		homeworkService:     homeworkService,
+		notificationService: notificationService,
+		websocketService:    websocketService,
 	}
 }
 

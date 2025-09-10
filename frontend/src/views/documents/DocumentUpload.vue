@@ -31,7 +31,7 @@
             </el-select>
           </el-form-item>
           
-          <el-form-item label="文档标题" prop="title">
+          <el-form-item label="文档标题">
             <el-input 
               v-model="uploadForm.title" 
               placeholder="请输入文档标题（可选，默认使用文件名）"
@@ -51,7 +51,7 @@
             />
           </el-form-item>
           
-          <el-form-item label="文档分类" prop="category">
+          <el-form-item label="文档分类">
             <el-select 
               v-model="uploadForm.category" 
               placeholder="选择分类"
@@ -68,76 +68,34 @@
             </el-select>
           </el-form-item>
           
-          <el-form-item label="标签">
-            <el-input
-              v-model="tagInput"
-              placeholder="输入标签后按回车添加"
-              @keyup.enter="addTag"
+          <el-form-item label="上传文件" prop="project_id">
+            <FileUpload
+              :project-id="uploadForm.project_id"
+              :title="uploadForm.title"
+              :description="uploadForm.description"
+              :category="uploadForm.category"
+              :multiple="true"
+              :limit="10"
+              :max-size="50"
+              @success="handleUploadSuccess"
+              @error="handleUploadError"
             />
-            <div class="tags-container" v-if="uploadForm.tags.length">
-              <el-tag
-                v-for="tag in uploadForm.tags"
-                :key="tag"
-                closable
-                @close="removeTag(tag)"
-                style="margin: 5px 5px 0 0"
-              >
-                {{ tag }}
-              </el-tag>
-            </div>
-          </el-form-item>
-          
-          <el-form-item label="上传文件" prop="files">
-            <el-upload
-              ref="uploadRef"
-              v-model:file-list="fileList"
-              :action="uploadAction"
-              :headers="uploadHeaders"
-              :on-success="handleUploadSuccess"
-              :on-error="handleUploadError"
-              :on-remove="handleFileRemove"
-              :before-upload="beforeUpload"
-              multiple
-              drag
-              :limit="5"
-            >
-              <el-icon class="el-icon--upload"><upload-filled /></el-icon>
-              <div class="el-upload__text">
-                将文件拖到此处，或<em>点击上传</em>
-              </div>
-              <template #tip>
-                <div class="el-upload__tip">
-                  支持 PDF/DOC/DOCX/PPT/PPTX/XLS/XLSX/ZIP/RAR 等格式，单个文件不超过 100MB，最多5个文件
-                </div>
-              </template>
-            </el-upload>
           </el-form-item>
         </el-form>
-
-        <div class="form-actions">
-          <el-button @click="$router.go(-1)">取消</el-button>
-          <el-button 
-            type="primary" 
-            @click="uploadDocument"
-            :loading="uploading"
-            :disabled="uploadForm.files.length === 0"
-          >
-            保存文档
-          </el-button>
-        </div>
       </el-card>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { documentService, researchService } from '@/services/api'
-import type { ResearchProject, UploadFile } from '@/types'
-import { ElMessage, type FormInstance, type UploadInstance } from 'element-plus'
-import { ArrowLeft, UploadFilled } from '@element-plus/icons-vue'
+import { researchService } from '@/services/api'
+import type { ResearchProject } from '@/types'
+import { ElMessage, type FormInstance } from 'element-plus'
+import { ArrowLeft } from '@element-plus/icons-vue'
+import FileUpload from '@/components/common/FileUpload.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -145,131 +103,41 @@ const userStore = useUserStore()
 // 响应式数据
 const projects = ref<ResearchProject[]>([])
 const categories = ref(['技术文档', '研究报告', '数据集', '代码示例', '参考资料', '其他'])
-const uploading = ref(false)
-const tagInput = ref('')
-const fileList = ref<UploadFile[]>([])
-
 const uploadFormRef = ref<FormInstance>()
-const uploadRef = ref<UploadInstance>()
 
 const uploadForm = ref({
   project_id: '',
   title: '',
   description: '',
-  category: '',
-  tags: [] as string[],
-  files: [] as string[]
+  category: ''
 })
 
 const uploadRules = {
-  project_id: [{ required: true, message: '请选择课题', trigger: 'change' }],
-  category: [{ required: true, message: '请选择分类', trigger: 'change' }]
+  project_id: [{ required: true, message: '请选择课题', trigger: 'change' }]
 }
-
-// 计算属性
-const uploadAction = computed(() => {
-  return `${import.meta.env.VITE_API_BASE_URL}/api/v1/files/upload`
-})
-
-const uploadHeaders = computed(() => {
-  return {
-    'Authorization': `Bearer ${userStore.token}`
-  }
-})
 
 // 方法
 const fetchProjects = async () => {
   try {
     const response = await researchService.getProjects()
-    projects.value = response.data?.items || []
+    projects.value = response.projects || response.items || response || []
   } catch (error) {
+    console.error('获取课题列表失败:', error)
     ElMessage.error('获取课题列表失败')
   }
 }
 
-const beforeUpload = (file: File) => {
-  // 检查文件类型
-  const allowedExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.zip', '.rar']
-  const fileName = file.name.toLowerCase()
-  const isValidType = allowedExtensions.some(ext => fileName.endsWith(ext))
-  
-  if (!isValidType) {
-    ElMessage.error('不支持的文件格式')
-    return false
-  }
-  
-  // 检查文件大小
-  if (file.size > 100 * 1024 * 1024) {
-    ElMessage.error('文件大小不能超过 100MB')
-    return false
-  }
-  
-  return true
-}
-
-const handleUploadSuccess = (response: any, file: UploadFile) => {
-  uploadForm.value.files.push(response.data.file_path)
-  
-  // 如果没有设置标题，使用第一个文件名
-  if (!uploadForm.value.title && uploadForm.value.files.length === 1) {
-    uploadForm.value.title = file.name.replace(/\.[^/.]+$/, '')
-  }
-  
-  ElMessage.success(`${file.name} 上传成功`)
-}
-
-const handleUploadError = (error: any, file: UploadFile) => {
-  ElMessage.error(`${file.name} 上传失败`)
-}
-
-const handleFileRemove = (file: UploadFile) => {
-  // 从文件列表中移除
-  const index = uploadForm.value.files.findIndex(f => f.includes(file.name))
-  if (index !== -1) {
-    uploadForm.value.files.splice(index, 1)
-  }
-}
-
-const addTag = () => {
-  const tag = tagInput.value.trim()
-  if (tag && !uploadForm.value.tags.includes(tag)) {
-    uploadForm.value.tags.push(tag)
-    tagInput.value = ''
-  }
-}
-
-const removeTag = (tag: string) => {
-  const index = uploadForm.value.tags.indexOf(tag)
-  if (index !== -1) {
-    uploadForm.value.tags.splice(index, 1)
-  }
-}
-
-const uploadDocument = async () => {
-  if (!uploadFormRef.value) return
-  
-  try {
-    await uploadFormRef.value.validate()
-    uploading.value = true
-    
-    for (const filePath of uploadForm.value.files) {
-      await documentService.createDocument({
-        project_id: uploadForm.value.project_id,
-        title: uploadForm.value.title,
-        description: uploadForm.value.description,
-        category: uploadForm.value.category,
-        tags: uploadForm.value.tags,
-        file_path: filePath
-      })
-    }
-    
-    ElMessage.success('文档保存成功')
+const handleUploadSuccess = (files: any[]) => {
+  ElMessage.success('文档上传成功')
+  // 延迟跳转，让用户看到成功消息
+  setTimeout(() => {
     router.push('/documents')
-  } catch (error) {
-    ElMessage.error('文档保存失败')
-  } finally {
-    uploading.value = false
-  }
+  }, 1500)
+}
+
+const handleUploadError = (error: any) => {
+  console.error('文档上传失败:', error)
+  ElMessage.error('文档上传失败')
 }
 
 // 生命周期

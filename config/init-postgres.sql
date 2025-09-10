@@ -15,8 +15,17 @@ GRANT ALL PRIVILEGES ON DATABASE gitlabex TO gitlabex;
 
 -- 授予schema权限
 GRANT ALL ON SCHEMA public TO gitlabex;
+
+-- 授予现有表和序列的权限
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO gitlabex;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO gitlabex;
+
+-- 授予将来创建的表和序列的默认权限
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO gitlabex;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO gitlabex;
+
+-- 确保gitlabex用户可以在public schema中创建对象
+GRANT CREATE ON SCHEMA public TO gitlabex;
 
 -- 等待应用启动并创建表结构后，插入测试数据
 -- 这个脚本将在应用第一次启动后通过单独的初始化脚本执行
