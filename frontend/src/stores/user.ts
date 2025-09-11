@@ -69,8 +69,8 @@ export const useUserStore = defineStore('user', () => {
     
     isLoading.value = true
     try {
-      const response = await authService.getCurrentUser()
-      user.value = response.data
+      const response: any = await authService.getCurrentUser()
+      user.value = response
       
       localStorage.setItem('user', JSON.stringify(user.value))
       return true
@@ -86,8 +86,8 @@ export const useUserStore = defineStore('user', () => {
   const updateProfile = async (data: Partial<User>) => {
     isLoading.value = true
     try {
-      const response = await authService.updateProfile(data)
-      user.value = { ...user.value!, ...response.data }
+      const response: any = await authService.updateProfile(data)
+      user.value = { ...user.value!, ...response }
       
       localStorage.setItem('user', JSON.stringify(user.value))
       return true

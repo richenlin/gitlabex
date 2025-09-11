@@ -121,7 +121,7 @@ const fetchHomework = async () => {
   loading.value = true
   try {
     const response = await homeworkService.getHomeworkById(homeworkId.value)
-    homework.value = response.data
+    homework.value = response
   } catch (error) {
     ElMessage.error('获取作业详情失败')
     router.go(-1)

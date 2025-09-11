@@ -400,7 +400,7 @@ const preferences = ref({
 const fetchUserInfo = async () => {
   try {
     const response = await authService.getCurrentUser()
-    userInfo.value = response.data || response
+    userInfo.value = response
     
     // 更新表单数据
     if (userInfo.value) {

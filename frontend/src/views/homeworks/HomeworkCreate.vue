@@ -198,7 +198,7 @@ const createRules = {
 const fetchProjects = async () => {
   try {
     const response = await researchService.getProjects()
-    projects.value = response.data?.items || []
+    projects.value = response.projects || []
   } catch (error) {
     ElMessage.error('获取课题列表失败')
   }

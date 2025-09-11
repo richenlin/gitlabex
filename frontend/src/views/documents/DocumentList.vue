@@ -342,15 +342,15 @@ const totalSize = computed(() => {
 const fetchDocuments = async () => {
   loading.value = true
   try {
-    const response = await documentService.getDocuments({
+    const response: any = await documentService.getDocuments({
       page: currentPage.value,
       pageSize: pageSize.value,
       search: searchQuery.value || undefined,
       projectId: projectFilter.value || undefined,
       category: categoryFilter.value || undefined
     })
-    documents.value = response.data?.items || []
-    total.value = response.data?.total || 0
+    documents.value = response.documents || []
+    total.value = response.pagination?.total || 0
   } catch (error) {
     console.error('获取文档列表失败:', error)
     ElMessage.error('获取文档列表失败')
@@ -361,8 +361,8 @@ const fetchDocuments = async () => {
 
 const fetchProjects = async () => {
   try {
-    const response = await researchService.getProjects()
-    projects.value = response.data?.items || []
+    const response: any = await researchService.getProjects()
+    projects.value = response.projects || []
   } catch (error) {
     console.error('获取课题列表失败:', error)
   }
@@ -370,8 +370,8 @@ const fetchProjects = async () => {
 
 const fetchCategories = async () => {
   try {
-    const response = await documentService.getCategories()
-    categories.value = response.data || []
+    const response: any = await documentService.getCategories()
+    categories.value = response || []
   } catch (error) {
     console.error('获取分类列表失败:', error)
   }

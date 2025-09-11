@@ -349,9 +349,9 @@ const fetchHomeworks = async () => {
       params.authorId = userStore.user?.id
     }
 
-    const response = await homeworkService.getHomeworks(params)
-    homeworks.value = response.data?.items || []
-    total.value = response.data?.total || 0
+    const response: any = await homeworkService.getHomeworks(params)
+    homeworks.value = Array.isArray(response) ? response : (response.homeworks || [])
+    total.value = Array.isArray(response) ? response.length : (response.total || 0)
   } catch (error) {
     console.error('获取作业列表失败:', error)
     ElMessage.error('获取作业列表失败')
@@ -362,8 +362,8 @@ const fetchHomeworks = async () => {
 
 const fetchProjects = async () => {
   try {
-    const response = await researchService.getProjects()
-    projects.value = response.data?.items || []
+    const response: any = await researchService.getProjects()
+    projects.value = response.projects || []
   } catch (error) {
     console.error('获取课题列表失败:', error)
   }

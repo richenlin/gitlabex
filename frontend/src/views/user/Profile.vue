@@ -294,7 +294,7 @@ const fetchUserInfo = async () => {
   loading.value = true
   try {
     const response = await authService.getCurrentUser()
-    userInfo.value = response.data || response
+    userInfo.value = response
     
     // 更新编辑表单
     if (userInfo.value) {
@@ -340,7 +340,7 @@ const fetchMyProjects = async () => {
       ownerId: userInfo.value.id,
       pageSize: 10 
     })
-    myProjects.value = response.data?.items || response.data || []
+    myProjects.value = response.projects || []
   } catch (error) {
     console.error('获取我的课题失败:', error)
   } finally {
@@ -357,7 +357,7 @@ const fetchMyTopics = async () => {
       authorId: userInfo.value.id,
       pageSize: 10 
     })
-    myTopics.value = response.data?.items || response.data || []
+    myTopics.value = response.topics || []
   } catch (error) {
     console.error('获取我的话题失败:', error)
   } finally {
@@ -370,7 +370,7 @@ const fetchMyDocuments = async () => {
   try {
     const response = await documentService.getDocuments({ pageSize: 10 })
     // 过滤出当前用户上传的文档
-    const allDocs = response.data?.items || response.data || []
+    const allDocs = response.documents || []
     myDocuments.value = allDocs.filter((doc: Document) => doc.uploader_id === userInfo.value?.id)
   } catch (error) {
     console.error('获取我的文档失败:', error)

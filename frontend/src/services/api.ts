@@ -47,11 +47,20 @@ api.interceptors.response.use(
     
     if (error.response?.status === 401) {
       const userStore = useUserStore()
+      const url = error.config?.url || ''
+      
       // 只有在用户已登录的情况下才自动退出登录
       // 这样可以避免在访问公开端点时误退出登录
       if (userStore.isLoggedIn) {
-        userStore.logout()
-        ElMessage.error('登录已过期，请重新登录')
+        // 如果是GitLab相关的API调用失败，可能是GitLab token问题，不要自动退出登录
+        if (url.includes('/gitlab/')) {
+          console.warn('GitLab API authentication failed, but keeping user logged in:', url)
+          // 不退出登录，只记录警告
+        } else {
+          // 其他API的401错误，说明JWT token真的过期了，需要退出登录
+          userStore.logout()
+          ElMessage.error('登录已过期，请重新登录')
+        }
       }
     } else if (error.response?.status === 403) {
       ElMessage.error('权限不足')
@@ -357,6 +366,9 @@ export const gitlabService = {
     targetBranch: string
   }) =>
     api.post(`/gitlab/projects/${projectId}/merge-requests`, data),
+  
+  getRepositoryTree: (projectId: string, path?: string) =>
+    api.get(`/gitlab/projects/${projectId}/tree`, { params: { path } }),
   
   // Issues 管理 (直接GitLab API调用)
   createIssue: (projectId: string, data: {

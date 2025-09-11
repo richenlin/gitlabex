@@ -439,8 +439,13 @@ const canGradeHomework = computed(() => {
 const fetchProject = async () => {
   loading.value = true
   try {
-    const response = await researchService.getProject(projectId.value)
-    project.value = response.data || response
+    const response: any = await researchService.getProject(projectId.value)
+    project.value = response
+    
+    // 项目加载完成后再加载文件列表
+    if (project.value?.gitlab_project_id) {
+      fetchFiles()
+    }
   } catch (error) {
     console.error('获取课题详情失败:', error)
     ElMessage.error('获取课题详情失败')
@@ -451,8 +456,8 @@ const fetchProject = async () => {
 
 const fetchMembers = async () => {
   try {
-    const response = await researchService.getMembers(projectId.value)
-    members.value = response.data || response || []
+    const response: any = await researchService.getMembers(projectId.value)
+    members.value = response || []
   } catch (error) {
     console.error('获取成员列表失败:', error)
   }
@@ -467,11 +472,14 @@ const fetchFiles = async (path = '') => {
       project.value.gitlab_project_id.toString(),
       path
     )
-    files.value = response.data || response || []
+    files.value = response || []
     currentPath.value = path
-  } catch (error) {
+  } catch (error: any) {
     console.error('获取文件列表失败:', error)
-    ElMessage.error('获取文件列表失败')
+    // 如果是GitLab相关的认证错误，不显示错误提示，避免干扰用户体验
+    if (error.response?.status !== 401) {
+      ElMessage.error('获取文件列表失败')
+    }
   } finally {
     filesLoading.value = false
   }
@@ -480,8 +488,8 @@ const fetchFiles = async (path = '') => {
 const fetchTopics = async () => {
   topicsLoading.value = true
   try {
-    const response = await researchService.getIssues(projectId.value)
-    topics.value = response.data || response || []
+    const response: any = await researchService.getIssues(projectId.value)
+    topics.value = response || []
     topicsTotal.value = topics.value.length
   } catch (error) {
     console.error('获取话题列表失败:', error)
@@ -493,10 +501,10 @@ const fetchTopics = async () => {
 const fetchHomeworks = async () => {
   homeworkLoading.value = true
   try {
-    const response = await homeworkService.getHomeworks({
+    const response: any = await homeworkService.getHomeworks({
       projectId: projectId.value
     })
-    homeworks.value = response.data || response || []
+    homeworks.value = Array.isArray(response) ? response : (response.homeworks || [])
   } catch (error) {
     console.error('获取作业列表失败:', error)
   } finally {
@@ -538,11 +546,11 @@ const loadFileContent = async (file: any) => {
   
   try {
     const filePath = currentPath.value ? `${currentPath.value}/${file.name}` : file.name
-    const response = await gitlabService.getFileContent(
+    const response: any = await gitlabService.getFileContent(
       project.value.gitlab_project_id.toString(),
       filePath
     )
-    fileContent.value = response.content || ''
+    fileContent.value = response?.content || ''
   } catch (error) {
     console.error('获取文件内容失败:', error)
     ElMessage.error('获取文件内容失败')
@@ -699,7 +707,6 @@ const getHomeworkStatusText = (status: string) => {
 // 生命周期
 onMounted(() => {
   fetchProject()
-  fetchFiles()
 })
 
 // 监听路由参数变化

@@ -374,7 +374,7 @@ const fetchRecentActivities = async () => {
   try {
     const response = await activityService.getRecentActivities(8)
     
-    // 处理响应数据结构
+    // 处理响应数据结构（axios拦截器已经返回response.data）
     if (response && response.data) {
       recentActivities.value = response.data
     } else if (Array.isArray(response)) {

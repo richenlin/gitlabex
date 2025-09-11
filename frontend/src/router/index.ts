@@ -45,7 +45,7 @@ const router = createRouter({
       path: '/scenes/:id',
       name: 'scene-detail',
       component: () => import('@/views/scenes/SceneDetail.vue'),
-      meta: { title: '课题详情', requiresAuth: false }
+      meta: { title: '课题详情', requiresAuth: true }
     },
     {
       path: '/scenes/:id/edit',
@@ -63,19 +63,19 @@ const router = createRouter({
       path: '/topics/create',
       name: 'topic-create',
       component: () => import('@/views/topics/TopicCreate.vue'),
-      meta: { title: '创建话题' }
+      meta: { title: '创建话题', requiresAuth: true }
     },
     {
       path: '/topics/:id',
       name: 'topic-detail',
       component: () => import('@/views/topics/TopicDetail.vue'),
-      meta: { title: '话题详情', requiresAuth: false }
+      meta: { title: '话题详情', requiresAuth: true }
     },
     {
       path: '/topics/:id/edit',
       name: 'topic-edit',
       component: () => import('@/views/topics/TopicEdit.vue'),
-      meta: { title: '编辑话题' }
+      meta: { title: '编辑话题', requiresAuth: true }
     },
     {
       path: '/documents',
@@ -87,7 +87,7 @@ const router = createRouter({
       path: '/documents/upload',
       name: 'document-upload',
       component: () => import('@/views/documents/DocumentUpload.vue'),
-      meta: { title: '上传文档' }
+      meta: { title: '上传文档', requiresAuth: true }
     },
     {
       path: '/documents/:id',
@@ -99,7 +99,7 @@ const router = createRouter({
       path: '/homeworks',
       name: 'homeworks',
       component: () => import('@/views/homeworks/HomeworkList.vue'),
-      meta: { title: '作业列表' }
+      meta: { title: '作业列表', requiresAuth: true }
     },
     {
       path: '/homeworks/create',
@@ -111,13 +111,13 @@ const router = createRouter({
       path: '/homeworks/:id',
       name: 'homework-detail',
       component: () => import('@/views/homeworks/HomeworkDetail.vue'),
-      meta: { title: '作业详情' }
+      meta: { title: '作业详情', requiresAuth: true }
     },
     {
       path: '/homeworks/:id/submit',
       name: 'homework-submit',
       component: () => import('@/views/homeworks/HomeworkSubmit.vue'),
-      meta: { title: '提交作业' }
+      meta: { title: '提交作业', requiresAuth: true }
     },
     {
       path: '/homeworks/:id/grade',
@@ -158,15 +158,23 @@ router.beforeEach(async (to, from, next) => {
   
   // 验证token有效性（如果有token但没有用户信息，尝试获取用户信息）
   if (userStore.token && !userStore.user) {
-    const isValid = await userStore.validateToken()
-    if (!isValid) {
-      // token无效，清除状态
+    try {
+      const isValid = await userStore.validateToken()
+      if (!isValid) {
+        // token无效，清除状态
+        userStore.logout()
+      }
+    } catch (error) {
+      console.error('Token validation failed:', error)
       userStore.logout()
     }
   }
 
-  // 检查是否需要登录 - 游客可访问标记为 false 的路由
-  if (to.meta.requiresAuth !== false && !userStore.isLoggedIn) {
+  // 检查是否需要登录 - 默认不需要登录，除非明确设置为true或有角色要求
+  const requiresAuth = to.meta.requiresAuth === true || (to.meta.roles && to.meta.roles.length > 0)
+  
+  if (requiresAuth && !userStore.isLoggedIn) {
+    ElMessage.warning('请先登录')
     next({
       name: 'login',
       query: { redirect: to.fullPath }
@@ -176,6 +184,12 @@ router.beforeEach(async (to, from, next) => {
 
   // 检查角色权限
   if (to.meta.roles && Array.isArray(to.meta.roles) && to.meta.roles.length > 0) {
+    if (!userStore.isLoggedIn) {
+      ElMessage.error('请先登录')
+      next({ name: 'login', query: { redirect: to.fullPath } })
+      return
+    }
+    
     const hasRole = to.meta.roles.some((role: any) => userStore.hasRole(role))
     if (!hasRole) {
       ElMessage.error('权限不足')

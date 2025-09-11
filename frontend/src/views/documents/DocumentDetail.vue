@@ -373,8 +373,8 @@ const canViewHistory = computed(() => {
 const fetchDocument = async () => {
   loading.value = true
   try {
-    const response = await documentService.getDocument(documentId.value)
-    document.value = response.data || response
+    const response: any = await documentService.getDocument(documentId.value)
+    document.value = response
     
     // 如果是文本文件，加载内容
     if (document.value && isTextFile(document.value.file_type)) {
@@ -397,8 +397,8 @@ const fetchDocument = async () => {
 const fetchEditHistory = async () => {
   historyLoading.value = true
   try {
-    const response = await documentService.getMyEditRequests(documentId.value)
-    editHistory.value = response.data || response || []
+    const response: any = await documentService.getMyEditRequests(documentId.value)
+    editHistory.value = response || []
   } catch (error) {
     console.error('获取编辑历史失败:', error)
   } finally {
@@ -412,7 +412,7 @@ const fetchRelatedDocuments = async () => {
       category: document.value?.category,
       pageSize: 5
     })
-    const docs = response.data?.items || response.data || response || []
+    const docs = response.documents || []
     relatedDocuments.value = docs.filter((doc: Document) => doc.id !== documentId.value)
   } catch (error) {
     console.error('获取相关文档失败:', error)
@@ -421,8 +421,8 @@ const fetchRelatedDocuments = async () => {
 
 const fetchCategories = async () => {
   try {
-    const response = await documentService.getCategories()
-    categories.value = response.data || response || []
+    const response: any = await documentService.getCategories()
+    categories.value = response || []
   } catch (error) {
     console.error('获取分类列表失败:', error)
   }

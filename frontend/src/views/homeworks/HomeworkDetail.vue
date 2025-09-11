@@ -442,7 +442,7 @@ const fetchHomework = async () => {
   loading.value = true
   try {
     const response = await homeworkService.getHomework(homeworkId.value)
-    homework.value = response.data || response
+    homework.value = response
     
     // 设置默认标签页
     if (isStudent.value) {
@@ -465,7 +465,7 @@ const fetchMySubmission = async () => {
   
   try {
     const response = await homeworkService.getMySubmission(homeworkId.value)
-    mySubmission.value = response.data || response
+    mySubmission.value = response
   } catch (error) {
     console.error('获取我的提交失败:', error)
   }
@@ -477,7 +477,7 @@ const fetchSubmissions = async () => {
   submissionsLoading.value = true
   try {
     const response = await homeworkService.getSubmissions(homeworkId.value)
-    submissions.value = response.data || response || []
+    submissions.value = Array.isArray(response) ? response : (response.submissions || [])
   } catch (error) {
     console.error('获取提交列表失败:', error)
   } finally {

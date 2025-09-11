@@ -69,17 +69,17 @@
             </div>
             
             <div class="topic-content-preview">
-              {{ topic.content.substring(0, 150) }}...
+              {{ topic.content ? topic.content.substring(0, 150) + '...' : '暂无内容' }}
             </div>
             
-            <div class="topic-labels" v-if="topic.labels.length">
+            <div class="topic-labels" v-if="topic.tags && topic.tags.length">
               <el-tag
-                v-for="label in topic.labels.slice(0, 3)"
-                :key="label"
+                v-for="tag in topic.tags.slice(0, 3)"
+                :key="tag"
                 size="small"
                 class="topic-label"
               >
-                {{ label }}
+                {{ tag }}
               </el-tag>
             </div>
           </div>
@@ -87,21 +87,21 @@
           <div class="topic-sidebar">
             <div class="topic-stats-item">
               <el-icon><Star /></el-icon>
-              <span>{{ topic.likes_count }}</span>
+              <span>{{ topic.like_count || 0 }}</span>
             </div>
             <div class="topic-stats-item">
               <el-icon><ChatDotRound /></el-icon>
-              <span>{{ topic.comments_count }}</span>
+              <span>{{ topic.comments_count || 0 }}</span>
             </div>
           </div>
 
           <div class="topic-meta">
             <div class="author-info">
-              <el-avatar :size="32" :src="topic.author.avatar_url">
-                {{ topic.author.name.charAt(0) }}
+              <el-avatar :size="32" :src="topic.author?.avatar_url">
+                {{ topic.author?.name?.charAt(0) || 'U' }}
               </el-avatar>
               <div class="author-details">
-                <span class="author-name">{{ topic.author.name }}</span>
+                <span class="author-name">{{ topic.author?.name || '未知用户' }}</span>
                 <span class="topic-time">{{ formatDate(topic.created_at) }}</span>
               </div>
             </div>
@@ -245,17 +245,17 @@ const activeTopics = computed(() => {
 const fetchTopics = async () => {
   loading.value = true
   try {
-    const response = await topicService.getTopics({
+    const response: any = await topicService.getTopics({
       page: currentPage.value,
       pageSize: pageSize.value,
       search: searchQuery.value || undefined,
       projectId: projectFilter.value || undefined
     })
     
-    // 处理不同的响应数据结构
-    if (response.data) {
-      topics.value = response.data.topics || response.data.items || response.data || []
-      total.value = response.data.total || response.data.length || 0
+    // 处理响应数据结构（axios拦截器已经返回response.data）
+    if (response && response.topics) {
+      topics.value = response.topics || []
+      total.value = response.pagination?.total || response.topics.length || 0
     } else if (Array.isArray(response)) {
       topics.value = response
       total.value = response.length
@@ -278,8 +278,8 @@ const fetchTopics = async () => {
 
 const fetchProjects = async () => {
   try {
-    const response = await researchService.getProjects()
-    projects.value = response.data?.items || []
+    const response: any = await researchService.getProjects()
+    projects.value = response.projects || []
   } catch (error) {
     console.error('获取课题列表失败:', error)
   }

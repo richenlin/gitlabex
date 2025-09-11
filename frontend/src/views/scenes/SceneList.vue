@@ -184,17 +184,17 @@ const canCreate = computed(() => {
 const fetchProjects = async () => {
   loading.value = true
   try {
-    const response = await researchService.getProjects({
+    const response: any = await researchService.getProjects({
       page: currentPage.value,
       pageSize: pageSize.value,
       search: searchQuery.value || undefined,
       visibility: visibilityFilter.value || undefined
     })
     
-    // 处理不同的响应数据结构
-    if (response.data) {
-      projects.value = response.data.projects || response.data.items || response.data || []
-      total.value = response.data.total || response.data.length || 0
+    // 处理响应数据结构（axios拦截器已经返回response.data）
+    if (response && response.projects) {
+      projects.value = response.projects || []
+      total.value = response.pagination?.total || response.projects.length || 0
     } else if (Array.isArray(response)) {
       projects.value = response
       total.value = response.length
