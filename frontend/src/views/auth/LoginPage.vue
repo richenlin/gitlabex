@@ -3,55 +3,28 @@
     <div class="login-container">
       <div class="login-form-wrapper">
         <div class="login-header">
-          <h1>欢迎回来</h1>
-          <p>登录协同创新社区，开始您的教育协作之旅</p>
+          <h1>欢迎来到协同创新社区</h1>
+          <p>使用GitLab账号登录，开始您的教育协作之旅</p>
         </div>
         
-        <el-form
-          ref="loginFormRef"
-          :model="loginForm"
-          :rules="loginRules"
-          class="login-form"
-          @keyup.enter="handleLogin"
-        >
-          <el-form-item prop="username">
-            <el-input
-              v-model="loginForm.username"
-              placeholder="请输入用户名"
-              prefix-icon="User"
-              size="large"
-            />
-          </el-form-item>
+        <div class="oauth-login">
+          <el-button
+            type="primary"
+            size="large"
+            class="gitlab-login-btn"
+            :loading="loading"
+            @click="handleGitLabLogin"
+          >
+            <el-icon class="gitlab-icon"><Platform /></el-icon>
+            使用 GitLab 登录
+          </el-button>
           
-          <el-form-item prop="password">
-            <el-input
-              v-model="loginForm.password"
-              type="password"
-              placeholder="请输入密码"
-              prefix-icon="Lock"
-              show-password
-              size="large"
-            />
-          </el-form-item>
-          
-          <el-form-item>
-            <el-button
-              type="primary"
-              size="large"
-              style="width: 100%"
-              :loading="loading"
-              @click="handleLogin"
-            >
-              登录
-            </el-button>
-          </el-form-item>
-        </el-form>
-        
-        <div class="login-footer">
-          <p>
-            还没有账号？
-            <router-link to="/register">立即注册</router-link>
-          </p>
+          <div class="login-tips">
+            <p class="tip-text">
+              <el-icon><InfoFilled /></el-icon>
+              使用您的GitLab账号即可直接登录，系统将自动同步您的基本信息
+            </p>
+          </div>
         </div>
       </div>
       
@@ -81,58 +54,49 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
+import { Platform, InfoFilled } from '@element-plus/icons-vue'
+import { authService } from '@/services/api'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 
-const loginFormRef = ref<FormInstance>()
 const loading = ref(false)
 
-const loginForm = reactive({
-  username: '',
-  password: ''
-})
-
-const loginRules: FormRules = {
-  username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '长度在 3 到 20 个字符', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '长度在 6 到 20 个字符', trigger: 'blur' }
-  ]
-}
-
-const handleLogin = async () => {
-  if (!loginFormRef.value) return
-  
+// 处理GitLab OAuth登录
+const handleGitLabLogin = async () => {
   try {
-    await loginFormRef.value.validate()
     loading.value = true
     
-    await userStore.login(loginForm.username, loginForm.password)
+    // 调用后端API获取GitLab授权URL
+    const response = await authService.getGitLabAuthUrl()
+    const authUrl = response.auth_url
     
-    ElMessage.success('登录成功')
-    
-    const redirect = route.query.redirect as string
-    if (redirect) {
-      router.push(redirect)
+    if (authUrl) {
+      // 跳转到GitLab授权页面
+      window.location.href = authUrl
     } else {
-      router.push('/')
+      ElMessage.error('获取授权链接失败')
     }
   } catch (error) {
-    console.error('登录失败:', error)
+    console.error('GitLab登录失败:', error)
+    ElMessage.error('登录失败，请稍后重试')
   } finally {
     loading.value = false
   }
 }
+
+// 组件挂载时检查是否已登录
+onMounted(() => {
+  // 如果用户已登录，重定向到首页
+  if (userStore.isLoggedIn) {
+    router.push('/')
+  }
+})
 </script>
 
 <style scoped>
@@ -177,26 +141,53 @@ const handleLogin = async () => {
   font-size: 16px;
 }
 
-.login-form {
-  margin-bottom: 20px;
-}
-
-.login-footer {
+.oauth-login {
   text-align: center;
 }
 
-.login-footer p {
+.gitlab-login-btn {
+  width: 100%;
+  height: 50px;
+  font-size: 16px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #fc6d26, #fca326);
+  border: none;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.gitlab-login-btn:hover {
+  background: linear-gradient(135deg, #e85d15, #eb9315);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(252, 109, 38, 0.3);
+}
+
+.gitlab-icon {
+  margin-right: 8px;
+  font-size: 18px;
+}
+
+.login-tips {
+  margin-top: 30px;
+  padding: 20px;
+  background-color: rgba(77, 121, 255, 0.05);
+  border-radius: 8px;
+  border-left: 4px solid var(--primary-color);
+}
+
+.tip-text {
   color: var(--light-text);
+  font-size: 14px;
   margin: 0;
+  display: flex;
+  align-items: center;
+  line-height: 1.5;
 }
 
-.login-footer a {
+.tip-text .el-icon {
+  margin-right: 8px;
   color: var(--primary-color);
-  text-decoration: none;
-}
-
-.login-footer a:hover {
-  text-decoration: underline;
+  font-size: 16px;
 }
 
 .login-info {

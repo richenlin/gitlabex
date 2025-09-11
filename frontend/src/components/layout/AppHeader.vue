@@ -80,7 +80,7 @@ import { ref, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
-import { Bell, Announcement } from '@element-plus/icons-vue'
+import { Bell, Message } from '@element-plus/icons-vue'
 import NotificationPanel from '@/components/common/NotificationPanel.vue'
 import { useNotifications } from '@/composables/useNotifications'
 

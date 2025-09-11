@@ -12,12 +12,6 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // 允许外部访问
     port: 3000,
-    proxy: {
-      '/api': {
-        target: 'http://0.0.0.0:8080',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-      },
-    },
+    // 移除代理配置，前端直接调用后端API
   },
 })

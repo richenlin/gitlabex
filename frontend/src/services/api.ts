@@ -68,11 +68,12 @@ api.interceptors.response.use(
 
 // 认证相关 API
 export const authService = {
-  // GitLab OAuth 认证
-  gitlabAuth: () =>
+  // 获取GitLab OAuth授权URL
+  getGitLabAuthUrl: () =>
     api.get('/auth/gitlab'),
   
-  gitlabCallback: (code: string, state: string) =>
+  // GitLab OAuth回调处理
+  gitLabCallback: (code: string, state: string) =>
     api.get('/auth/gitlab/callback', { params: { code, state } }),
   
   logout: () =>

@@ -1,22 +1,25 @@
 package handlers
 
 import (
+	"fmt"
 	"gitlabex/internal/services"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 // GitLabWebhookHandler GitLab webhook处理器
 type GitLabWebhookHandler struct {
-	gitlabService       *services.GitLabService
-	userService         *services.UserService
-	researchService     *services.ResearchService
-	homeworkService     *services.HomeworkService
-	notificationService *services.NotificationService
-	websocketService    *services.WebSocketService
+	gitlabService          *services.GitLabService
+	userService            *services.UserService
+	researchService        *services.ResearchService
+	homeworkService        *services.HomeworkService
+	notificationService    *services.NotificationService
+	websocketService       *services.WebSocketService
+	documentScannerService *services.DocumentScannerService
 }
 
 // NewGitLabWebhookHandler 创建GitLab webhook处理器
@@ -27,14 +30,16 @@ func NewGitLabWebhookHandler(
 	homeworkService *services.HomeworkService,
 	notificationService *services.NotificationService,
 	websocketService *services.WebSocketService,
+	documentScannerService *services.DocumentScannerService,
 ) *GitLabWebhookHandler {
 	return &GitLabWebhookHandler{
-		gitlabService:       gitlabService,
-		userService:         userService,
-		researchService:     researchService,
-		homeworkService:     homeworkService,
-		notificationService: notificationService,
-		websocketService:    websocketService,
+		gitlabService:          gitlabService,
+		userService:            userService,
+		researchService:        researchService,
+		homeworkService:        homeworkService,
+		notificationService:    notificationService,
+		websocketService:       websocketService,
+		documentScannerService: documentScannerService,
 	}
 }
 
@@ -54,11 +59,24 @@ func (h *GitLabWebhookHandler) HandlePush(c *gin.Context) {
 	log.Printf("Received push event for project: %s, branch: %s", payload.Project.Name, payload.Ref)
 
 	// 记录提交信息
+	hasDocumentChanges := false
 	for _, commit := range payload.Commits {
 		log.Printf("Commit: %s by %s - %s", commit.ShortID, commit.Author.Name, commit.Title)
+
+		// 简单检查：如果提交消息中包含文档相关关键词，就触发扫描
+		if h.checkCommitMessageForDocuments(commit.Message) {
+			hasDocumentChanges = true
+		}
 	}
 
-	// 这里可以添加更多业务逻辑，如：
+	// 如果检测到可能的文档变更，触发文档扫描
+	if hasDocumentChanges {
+		log.Printf("检测到可能的文档变更，触发文档扫描")
+		// 异步执行文档扫描，避免阻塞webhook响应
+		go h.triggerDocumentScan(payload.Project.ID, payload.Project.Name)
+	}
+
+	// 其他业务逻辑：
 	// - 更新作业状态
 	// - 发送通知
 	// - 触发自动评分
@@ -322,4 +340,80 @@ func (h *GitLabWebhookHandler) DeleteWebhook(c *gin.Context) {
 	log.Printf("Deleting webhook %d from project %d", webhookID, projectID)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Webhook deleted successfully"})
+}
+
+// checkCommitMessageForDocuments 检查提交消息中是否包含文档相关关键词
+func (h *GitLabWebhookHandler) checkCommitMessageForDocuments(message string) bool {
+	documentKeywords := []string{
+		"doc", "document", "pdf", "文档", "资料",
+		"ppt", "excel", "word", "presentation", "报告",
+		"add doc", "update doc", "delete doc", "新增文档", "更新文档", "删除文档",
+	}
+
+	messageLower := strings.ToLower(message)
+	for _, keyword := range documentKeywords {
+		if strings.Contains(messageLower, keyword) {
+			log.Printf("提交消息包含文档关键词 '%s': %s", keyword, message)
+			return true
+		}
+	}
+
+	return false
+}
+
+// triggerDocumentScan 触发文档扫描
+func (h *GitLabWebhookHandler) triggerDocumentScan(projectID int64, projectName string) {
+	log.Printf("开始为项目 %s (ID: %d) 执行文档扫描", projectName, projectID)
+
+	// 执行MinIO文档扫描
+	result, err := h.documentScannerService.ScanMinIODocuments()
+	if err != nil {
+		log.Printf("项目 %s 文档扫描失败: %v", projectName, err)
+		return
+	}
+
+	log.Printf("项目 %s 文档扫描完成: 总计 %d, 新增 %d, 更新 %d, 错误 %d",
+		projectName, result.TotalDocuments, result.NewDocuments, result.UpdatedDocs, len(result.Errors))
+
+	// 如果有新增或更新的文档，发送通知
+	if result.NewDocuments > 0 || result.UpdatedDocs > 0 {
+		h.sendDocumentScanNotification(projectID, projectName, result)
+	}
+
+	// 如果有错误，记录日志
+	if len(result.Errors) > 0 {
+		log.Printf("项目 %s 文档扫描出现错误:", projectName)
+		for _, errMsg := range result.Errors {
+			log.Printf("  - %s", errMsg)
+		}
+	}
+}
+
+// sendDocumentScanNotification 发送文档扫描通知
+func (h *GitLabWebhookHandler) sendDocumentScanNotification(projectID int64, projectName string, result *services.SimpleScanResult) {
+	// 构建通知消息
+	message := ""
+	if result.NewDocuments > 0 && result.UpdatedDocs > 0 {
+		message = fmt.Sprintf("项目 %s 检测到文档变更: 新增 %d 个文档，更新 %d 个文档",
+			projectName, result.NewDocuments, result.UpdatedDocs)
+	} else if result.NewDocuments > 0 {
+		message = fmt.Sprintf("项目 %s 检测到 %d 个新文档",
+			projectName, result.NewDocuments)
+	} else if result.UpdatedDocs > 0 {
+		message = fmt.Sprintf("项目 %s 更新了 %d 个文档",
+			projectName, result.UpdatedDocs)
+	}
+
+	if message != "" {
+		log.Printf("发送文档扫描通知: %s", message)
+		// 这里可以集成实际的通知发送逻辑
+		// 例如通过WebSocket发送实时通知，或者存储到通知表
+
+		// 通过WebSocket发送实时通知
+		if h.websocketService != nil {
+			// 简化通知发送，只记录日志
+			log.Printf("WebSocket通知: %s", message)
+			// 注意：这里需要根据实际的WebSocket服务接口调整
+		}
+	}
 }

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"gitlabex/internal/models"
@@ -16,13 +17,15 @@ import (
 type DocumentService struct {
 	*BaseService
 	GitLabService *GitLabService
+	MinIOService  *MinIOService
 }
 
 // NewDocumentService 创建文档服务
-func NewDocumentService(db *gorm.DB, gitlabService *GitLabService) *DocumentService {
+func NewDocumentService(db *gorm.DB, gitlabService *GitLabService, minioService *MinIOService) *DocumentService {
 	return &DocumentService{
 		BaseService:   NewBaseService(db, gitlabService.Config),
 		GitLabService: gitlabService,
+		MinIOService:  minioService,
 	}
 }
 
@@ -624,4 +627,201 @@ func (s *DocumentService) IncrementDownloadCount(documentID uuid.UUID) error {
 		Where("id = ?", documentID).
 		UpdateColumn("download_count", gorm.Expr("download_count + ?", 1)).
 		Error
+}
+
+// GetDocumentByFilePath 根据文件路径获取文档（用于扫描服务）
+func (s *DocumentService) GetDocumentByFilePath(path string) (*models.Document, error) {
+	var document models.Document
+	err := s.DB.Where("file_path = ?", path).First(&document).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("document not found")
+		}
+		return nil, err
+	}
+	return &document, nil
+}
+
+// UpdateDocumentRecord 更新文档记录（用于扫描服务）
+func (s *DocumentService) UpdateDocumentRecord(document *models.Document) error {
+	return s.DB.Save(document).Error
+}
+
+// UploadToMinIO 上传文档到MinIO
+func (s *DocumentService) UploadToMinIO(documentID uuid.UUID, fileData []byte, contentType string) error {
+	// 获取文档信息
+	document, err := s.GetDocumentByID(documentID)
+	if err != nil {
+		return fmt.Errorf("failed to get document: %w", err)
+	}
+
+	// 生成MinIO存储键
+	minioKey := fmt.Sprintf("documents/%s/%s", documentID.String(), document.Title)
+	if document.FilePath != "" {
+		minioKey = fmt.Sprintf("documents/%s/%s", documentID.String(), filepath.Base(document.FilePath))
+	}
+
+	// 准备元数据
+	metadata := map[string]string{
+		"document_id": documentID.String(),
+		"title":       document.Title,
+		"file_type":   string(document.FileType),
+		"uploaded_at": time.Now().Format(time.RFC3339),
+	}
+
+	// 上传到MinIO
+	_, err = s.MinIOService.UploadDocument(minioKey, fileData, contentType, metadata)
+	if err != nil {
+		return fmt.Errorf("failed to upload to MinIO: %w", err)
+	}
+
+	// 更新数据库中的文件路径
+	err = s.DB.Model(document).Update("file_path", minioKey).Error
+	if err != nil {
+		return fmt.Errorf("failed to update document path: %w", err)
+	}
+
+	return nil
+}
+
+// GetDocumentFromMinIO 从MinIO获取文档
+func (s *DocumentService) GetDocumentFromMinIO(documentID uuid.UUID) ([]byte, string, error) {
+	// 获取文档信息
+	document, err := s.GetDocumentByID(documentID)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get document: %w", err)
+	}
+
+	// 从MinIO获取文件
+	docInfo, reader, err := s.MinIOService.GetDocument(document.FilePath)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get document from MinIO: %w", err)
+	}
+	defer reader.Close()
+
+	// 读取文件内容
+	var buffer bytes.Buffer
+	_, err = buffer.ReadFrom(reader)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read document content: %w", err)
+	}
+
+	return buffer.Bytes(), docInfo.ContentType, nil
+}
+
+// GetDocumentURL 获取文档的预签名URL
+func (s *DocumentService) GetDocumentURL(documentID uuid.UUID, expires time.Duration) (string, error) {
+	// 获取文档信息
+	document, err := s.GetDocumentByID(documentID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get document: %w", err)
+	}
+
+	// 获取预签名URL
+	url, err := s.MinIOService.GetDocumentURL(document.FilePath, expires)
+	if err != nil {
+		return "", fmt.Errorf("failed to get document URL: %w", err)
+	}
+
+	return url, nil
+}
+
+// DeleteFromMinIO 从MinIO删除文档
+func (s *DocumentService) DeleteFromMinIO(documentID uuid.UUID) error {
+	// 获取文档信息
+	document, err := s.GetDocumentByID(documentID)
+	if err != nil {
+		return fmt.Errorf("failed to get document: %w", err)
+	}
+
+	// 从MinIO删除文件
+	err = s.MinIOService.DeleteDocument(document.FilePath)
+	if err != nil {
+		return fmt.Errorf("failed to delete document from MinIO: %w", err)
+	}
+
+	return nil
+}
+
+// GetAllDocumentStats 获取所有文档统计信息（增强版，包含MinIO）
+func (s *DocumentService) GetAllDocumentStats() (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// 数据库统计
+	var totalCount int64
+	s.DB.Model(&models.Document{}).Count(&totalCount)
+	stats["total_count"] = totalCount
+
+	// 按文件类型统计
+	var typeCounts []struct {
+		FileType string
+		Count    int64
+	}
+	s.DB.Model(&models.Document{}).
+		Select("file_type, count(*) as count").
+		Group("file_type").
+		Find(&typeCounts)
+
+	fileTypeStats := make(map[string]int64)
+	for _, tc := range typeCounts {
+		fileTypeStats[tc.FileType] = tc.Count
+	}
+	stats["file_types"] = fileTypeStats
+
+	// 按状态统计
+	var statusCounts []struct {
+		Status string
+		Count  int64
+	}
+	s.DB.Model(&models.Document{}).
+		Select("status, count(*) as count").
+		Group("status").
+		Find(&statusCounts)
+
+	statusStats := make(map[string]int64)
+	for _, sc := range statusCounts {
+		statusStats[sc.Status] = sc.Count
+	}
+	stats["statuses"] = statusStats
+
+	// 如果有MinIO服务，获取存储统计
+	if s.MinIOService != nil {
+		minioStats, err := s.MinIOService.GetDocumentStats()
+		if err == nil {
+			stats["storage"] = minioStats
+		}
+	}
+
+	return stats, nil
+}
+
+// SyncDocumentWithMinIO 同步文档到MinIO
+func (s *DocumentService) SyncDocumentWithMinIO(documentID uuid.UUID, fileData []byte) error {
+	document, err := s.GetDocumentByID(documentID)
+	if err != nil {
+		return err
+	}
+
+	// 生成存储键
+	minioKey := fmt.Sprintf("documents/%s/%s", documentID.String(), document.Title)
+
+	// 准备元数据
+	metadata := map[string]string{
+		"document_id": documentID.String(),
+		"title":       document.Title,
+		"file_type":   string(document.FileType),
+		"synced_at":   time.Now().Format(time.RFC3339),
+	}
+
+	// 上传到MinIO
+	_, err = s.MinIOService.UploadDocument(minioKey, fileData, "", metadata)
+	if err != nil {
+		return err
+	}
+
+	// 更新数据库记录
+	return s.DB.Model(document).Updates(map[string]interface{}{
+		"file_path": minioKey,
+		"file_size": int64(len(fileData)),
+	}).Error
 }

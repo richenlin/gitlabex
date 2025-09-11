@@ -36,15 +36,37 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	// 初始化Redis服务
+	redisService, err := services.NewRedisService(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword)
+	if err != nil {
+		log.Fatalf("Failed to initialize Redis service: %v", err)
+	}
+
 	// 初始化服务
 	gitlabService := services.NewGitLabService(cfg)
+
+	// 初始化MinIO服务
+	minioService, err := services.NewMinIOService(
+		cfg.MinIOEndpoint,
+		cfg.MinIOAccessKey,
+		cfg.MinIOSecretKey,
+		cfg.MinIOUseSSL,
+		cfg.MinIORegion,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize MinIO service: %v", err)
+	}
+
 	userService := services.NewUserService(db, gitlabService)
 	researchService := services.NewResearchService(db, gitlabService)
 	topicService := services.NewTopicService(db, gitlabService)
-	documentService := services.NewDocumentService(db, gitlabService)
+	documentService := services.NewDocumentService(db, gitlabService, minioService)
 	homeworkService := services.NewHomeworkService(db, gitlabService)
 	notificationService := services.NewNotificationService(db)
 	websocketService := services.NewWebSocketService()
+
+	// 初始化文档扫描服务
+	documentScannerService := services.NewDocumentScannerService(minioService, documentService)
 
 	// 权限服务必须在其他handler之前初始化
 	permissionService := services.NewPermissionService(db)
@@ -52,11 +74,12 @@ func main() {
 
 	// 初始化处理器
 	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
-	gitlabWebhookHandler := handlers.NewGitLabWebhookHandler(gitlabService, userService, researchService, homeworkService, notificationService, websocketService)
+	gitlabWebhookHandler := handlers.NewGitLabWebhookHandler(gitlabService, userService, researchService, homeworkService, notificationService, websocketService, documentScannerService)
 	researchHandler := handlers.NewResearchHandler(researchService, userService, gitlabService)
 	topicHandler := handlers.NewTopicHandler(topicService, userService, gitlabService, researchService)
 	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWTSecret)
 	websocketHandler := handlers.NewWebSocketHandler(websocketService)
+	// documentSyncHandler 已移除，文档扫描现在通过webhook自动触发
 
 	// 创建Gin路由器
 	r := gin.Default()
@@ -89,7 +112,7 @@ func main() {
 
 	// 认证相关路由
 	auth := api.Group("/auth")
-	authHandler := handlers.NewAuthHandler(userService, gitlabService, cfg)
+	authHandler := handlers.NewAuthHandler(userService, gitlabService, cfg, redisService)
 	{
 		auth.GET("/gitlab", authHandler.GitLabAuth)
 		auth.GET("/gitlab/callback", authHandler.GitLabCallback)
@@ -202,6 +225,64 @@ func main() {
 			documentsAuth.PUT("/edit-requests/:id/review", documentHandler.ReviewEditRequest)
 			documentsAuth.GET("/:id/edit-history", documentHandler.GetDocumentEditHistory)
 		}
+	}
+
+	// 文档管理路由（只保留查看和管理功能，移除手动扫描）
+	documentSync := api.Group("/document-management")
+	documentSync.Use(middleware.RequireAuth(cfg))
+	{
+		// 获取统计信息（管理员查看）
+		documentSync.GET("/stats", func(c *gin.Context) {
+			stats, err := documentScannerService.GetSyncStats()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "获取统计信息失败",
+					"details": err.Error(),
+				})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"message": "文档管理统计信息",
+				"data":    stats,
+			})
+		})
+
+		// MinIO文档管理（只读）
+		documentSync.GET("/minio/documents", func(c *gin.Context) {
+			prefix := c.Query("prefix")
+			recursive := c.Query("recursive") == "true"
+
+			documents, err := minioService.ListDocuments(prefix, recursive)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "列出MinIO文档失败",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"message": "MinIO文档列表",
+				"data":    documents,
+				"count":   len(documents),
+			})
+		})
+
+		documentSync.GET("/minio/stats", func(c *gin.Context) {
+			stats, err := minioService.GetDocumentStats()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "获取MinIO统计失败",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"message": "MinIO存储统计",
+				"data":    stats,
+			})
+		})
 	}
 
 	// 作业相关路由

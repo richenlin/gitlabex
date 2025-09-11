@@ -34,6 +34,7 @@ type Config struct {
 	GitLabClientID     string
 	GitLabClientSecret string
 	GitLabRedirectURI  string
+	GitLabScopes       string
 
 	// JWT配置
 	JWTSecret          string
@@ -41,6 +42,13 @@ type Config struct {
 
 	// 应用配置
 	FrontendURL string
+
+	// MinIO对象存储配置
+	MinIOEndpoint  string
+	MinIOAccessKey string
+	MinIOSecretKey string
+	MinIOUseSSL    bool
+	MinIORegion    string
 
 	// 日志配置
 	LogLevel  string
@@ -78,6 +86,7 @@ func Load() *Config {
 		GitLabClientID:     getEnv("GITLAB_CLIENT_ID", ""),
 		GitLabClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
 		GitLabRedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:3000/auth/gitlab/callback"),
+		GitLabScopes:       getEnv("SCOPES", "api read_api openid"),
 
 		// JWT配置
 		JWTSecret:          getEnv("JWT_SECRET", "your_jwt_secret_key_here_please_change_in_production"),
@@ -85,6 +94,13 @@ func Load() *Config {
 
 		// 应用配置
 		FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),
+
+		// MinIO对象存储配置
+		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey: getEnv("MINIO_ACCESS_KEY", "admin"),
+		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", "password123"),
+		MinIOUseSSL:    getEnvAsBool("MINIO_USE_SSL", false),
+		MinIORegion:    getEnv("MINIO_REGION", "us-east-1"),
 
 		// 日志配置
 		LogLevel:  getEnv("LOG_LEVEL", "debug"),
@@ -145,10 +161,12 @@ func buildDatabaseURL(cfg *Config) string {
 func loadEnvFiles() {
 	// 尝试加载不同位置的环境文件
 	envFiles := []string{
-		"/app/config/backend.env", // Docker容器内路径
-		"./config/backend.env",    // 本地开发路径
-		"./.env",                  // 项目根目录
-		"backend.env",             // 当前目录
+		"/app/config/backend.env",  // Docker容器内路径
+		"./config/backend.env",     // 本地开发路径（从项目根目录）
+		"../config/backend.env",    // 从backend目录启动时的路径
+		"../../config/backend.env", // 更深层目录的路径
+		"./.env",                   // 项目根目录
+		"backend.env",              // 当前目录
 	}
 
 	for _, envFile := range envFiles {
@@ -163,9 +181,11 @@ func loadEnvFiles() {
 func loadOAuthConfig() {
 	// 尝试加载OAuth配置文件
 	oauthFiles := []string{
-		"/app/config/oauth.env", // Docker容器内路径
-		"./config/oauth.env",    // 本地开发路径
-		"oauth.env",             // 当前目录
+		"/app/config/oauth.env",  // Docker容器内路径
+		"./config/oauth.env",     // 本地开发路径（从项目根目录）
+		"../config/oauth.env",    // 从backend目录启动时的路径
+		"../../config/oauth.env", // 更深层目录的路径
+		"oauth.env",              // 当前目录
 	}
 
 	for _, oauthFile := range oauthFiles {

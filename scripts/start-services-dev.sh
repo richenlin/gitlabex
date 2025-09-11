@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # GitLabEx 服务启动脚本
-# 用于启动完整的生产环境
+# 用于启动完整的开发环境
 
 set -e
 
-echo "🚀 启动 GitLabEx 生产环境..."
+echo "🚀 启动 GitLabEx 开发环境..."
 
 # 检查 Docker 是否运行
 if ! docker info > /dev/null 2>&1; then
@@ -33,11 +33,11 @@ echo "✅ 配置文件检查完成"
 
 # 停止可能已经运行的服务
 echo "🛑 停止现有服务..."
-docker-compose -f docker-compose.yml down
+docker-compose -f docker-compose.dev.yml down
 
 # 构建并启动基础服务
 echo "🔧 启动基础服务 (PostgreSQL, Redis, MinIO)..."
-docker-compose -f docker-compose.yml up -d postgres redis minio
+docker-compose -f docker-compose.dev.yml up -d postgres redis minio
 
 # 等待基础服务启动
 echo "⏳ 等待基础服务启动..."
@@ -45,7 +45,7 @@ sleep 15
 
 # 启动 GitLab
 echo "🦊 启动 GitLab 服务..."
-docker-compose -f docker-compose.yml up -d gitlab
+docker-compose -f docker-compose.dev.yml up -d gitlab
 
 # 等待 GitLab 启动
 echo "⏳ 等待 GitLab 启动 (这可能需要几分钟)..."
@@ -63,7 +63,7 @@ done
 
 if [ $elapsed -ge $timeout ]; then
     echo "⚠️  GitLab 启动超时，请检查服务状态"
-    docker-compose -f docker-compose.yml logs --tail=20 gitlab
+    docker-compose -f docker-compose.dev.yml logs --tail=20 gitlab
     exit 1
 fi
 
@@ -149,92 +149,6 @@ else
     echo "✅ OAuth配置检查通过"
 fi
 
-# 检查必需的镜像是否存在
-echo "🔍 检查生产镜像..."
-
-# 检查后端镜像
-if ! docker images | grep -q "gitlabex-backend"; then
-    echo "❌ 后端镜像 'gitlabex-backend' 不存在"
-    echo ""
-    echo "请先构建后端镜像："
-    echo "   cd backend"
-    echo "   docker build -t gitlabex-backend ."
-    echo ""
-    exit 1
-fi
-
-# 检查前端镜像
-if ! docker images | grep -q "gitlabex-frontend"; then
-    echo "❌ 前端镜像 'gitlabex-frontend' 不存在"
-    echo ""
-    echo "请先构建前端镜像："
-    echo "   cd frontend"
-    echo "   docker build -t gitlabex-frontend ."
-    echo ""
-    exit 1
-fi
-
-echo "✅ 生产镜像检查通过"
-
-# 启动后端服务（使用现有镜像）
-echo "🚀 启动后端服务..."
-docker-compose -f docker-compose.yml up -d backend
-
-# 等待后端服务启动
-echo "⏳ 等待后端服务启动..."
-sleep 15
-
-# 检查后端服务健康状态
-echo "🔍 检查后端服务状态..."
-max_attempts=6
-attempt=0
-while [ $attempt -lt $max_attempts ]; do
-    if curl -s http://localhost:8080/health > /dev/null 2>&1; then
-        echo "✅ 后端服务启动成功"
-        break
-    fi
-    attempt=$((attempt + 1))
-    echo "   尝试 ${attempt}/${max_attempts}..."
-    sleep 5
-done
-
-if [ $attempt -ge $max_attempts ]; then
-    echo "❌ 后端服务启动失败，查看日志:"
-    docker-compose -f docker-compose.yml logs --tail=30 backend
-    echo ""
-    echo "💡 可能的解决方案:"
-    echo "   1. 检查OAuth配置是否正确"
-    echo "   2. 重启后端服务: docker-compose -f docker-compose.yml restart backend"
-    echo "   3. 查看完整日志: docker-compose -f docker-compose.yml logs backend"
-fi
-
-# 启动前端服务（使用现有镜像）
-echo "🎨 启动前端服务..."
-docker-compose -f docker-compose.yml up -d frontend
-
-# 等待前端服务启动
-echo "⏳ 等待前端服务启动..."
-sleep 10
-
-# 检查前端服务状态
-echo "🔍 检查前端服务状态..."
-max_attempts=6
-attempt=0
-while [ $attempt -lt $max_attempts ]; do
-    if curl -s http://localhost:3000/ > /dev/null 2>&1; then
-        echo "✅ 前端服务启动成功"
-        break
-    fi
-    attempt=$((attempt + 1))
-    echo "   尝试 ${attempt}/${max_attempts}..."
-    sleep 5
-done
-
-if [ $attempt -ge $max_attempts ]; then
-    echo "❌ 前端服务启动失败，查看日志:"
-    docker-compose -f docker-compose.yml logs --tail=30 frontend
-fi
-
 # 初始化测试数据
 echo "📊 初始化测试数据..."
 if [ -f "./scripts/init-test-data.sh" ]; then
@@ -245,15 +159,13 @@ fi
 
 # 检查服务状态
 echo "📊 检查服务状态..."
-docker-compose -f docker-compose.yml ps
+docker-compose -f docker-compose.dev.yml ps
 
 echo ""
-echo "🎉 GitLabEx 生产环境启动完成!"
+echo "🎉 GitLabEx 开发环境基础服务启动完成!"
 echo ""
 echo "📋 服务访问信息:"
 echo "   🌐 GitLab:     http://localhost:8081"
-echo "   🎨 前端应用:   http://localhost:3000"
-echo "   🔧 后端API:    http://localhost:8080"
 echo "   🗄️  PostgreSQL: localhost:5432"
 echo "   🔴 Redis:      localhost:6379"
 echo "   📦 MinIO API:  http://localhost:9000"
@@ -273,30 +185,38 @@ if grep -q "temp_id\|your_client_id_here" config/oauth.env 2>/dev/null; then
     echo "⚠️  OAuth配置提醒:"
     echo "   📝 请配置GitLab OAuth应用以启用完整登录功能"
     echo "   🛠️  运行配置向导: ./scripts/configure-oauth.sh"
-    echo "   🔧 或手动配置后重启: docker-compose -f docker-compose.yml restart backend"
     echo ""
 fi
 
-echo "📊 生产环境管理命令:"
-echo "   查看服务状态: docker-compose -f docker-compose.yml ps"
-echo "   查看服务日志: docker-compose -f docker-compose.yml logs -f [service_name]"
-echo "   重启后端服务: docker-compose -f docker-compose.yml restart backend"
-echo "   重启前端服务: docker-compose -f docker-compose.yml restart frontend"
-echo "   停止所有服务: docker-compose -f docker-compose.yml down"
+echo "🚀 手动启动开发服务:"
 echo ""
-echo "🔧 配置管理:"
+echo "📦 后端服务启动:"
+echo "   cd backend"
+echo "   go mod tidy"
+echo "   go run cmd/main.go"
+echo "   或者: go build -o bin/gitlabex cmd/main.go && ./bin/gitlabex"
+echo ""
+echo "🎨 前端服务启动:"
+echo "   cd frontend"
+echo "   npm install  # 或 pnpm install / yarn install"
+echo "   npm run dev  # 或 pnpm dev / yarn dev"
+echo ""
+echo "📊 启动后访问地址:"
+echo "   🎨 前端应用:   http://localhost:3000"
+echo "   🔧 后端API:    http://localhost:8080"
+echo ""
+echo "📊 常用命令:"
+echo "   查看容器状态: docker-compose -f docker-compose.dev.yml ps"
+echo "   查看容器日志: docker-compose -f docker-compose.dev.yml logs -f [service_name]"
+echo "   停止基础服务: docker-compose -f docker-compose.dev.yml down"
+echo ""
+echo "🔧 配置和初始化:"
 echo "   配置OAuth: ./scripts/configure-oauth.sh"
-echo "   重新初始化数据: ./scripts/init-test-data.sh"
+echo "   初始化测试数据: ./scripts/init-test-data.sh"
 echo ""
 echo "🐛 故障排除:"
-echo "   后端日志: docker-compose -f docker-compose.yml logs backend"
-echo "   前端日志: docker-compose -f docker-compose.yml logs frontend"
-echo "   GitLab日志: docker-compose -f docker-compose.yml logs gitlab"
-echo "   重建服务: docker-compose -f docker-compose.yml up -d --force-recreate [service_name]"
-echo ""
-echo "🏗️  镜像管理:"
-echo "   重新构建后端镜像: cd backend && docker build -t gitlabex-backend ."
-echo "   重新构建前端镜像: cd frontend && docker build -t gitlabex-frontend ."
-echo "   查看镜像: docker images | grep gitlabex"
+echo "   GitLab日志: docker-compose -f docker-compose.dev.yml logs gitlab"
+echo "   PostgreSQL日志: docker-compose -f docker-compose.dev.yml logs postgres"
+echo "   Redis日志: docker-compose -f docker-compose.dev.yml logs redis"
 echo ""
 echo "📚 更多信息请查看 README.md 和 DEPLOYMENT.md"

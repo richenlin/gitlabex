@@ -51,21 +51,10 @@ func Initialize(cfg *config.Config) (*gorm.DB, error) {
 
 // autoMigrate 自动迁移数据库表
 func autoMigrate(db *gorm.DB) error {
-	// 检查是否已经有表存在
-	var count int64
-	err := db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'").Scan(&count)
-	if err != nil {
-		log.Printf("Warning: Could not check if tables exist: %v", err)
-		// 如果检查失败，继续尝试迁移，让GORM处理
-	} else if count > 0 {
-		log.Println("Tables already exist, skipping AutoMigrate to avoid conflicts")
-		// 表已存在，只进行必要的列更新而不创建表
-		// 这里可以添加特定的迁移逻辑如果需要
-		return nil
-	}
+	log.Println("Starting database migration...")
 
-	log.Println("Creating database tables...")
-	return db.AutoMigrate(
+	// 定义所有需要迁移的模型
+	models := []interface{}{
 		&models.User{},
 		&models.ResearchProject{},
 		&models.ProjectMember{},
@@ -79,5 +68,44 @@ func autoMigrate(db *gorm.DB) error {
 		&models.Announcement{},
 		&models.DocumentReview{},
 		&models.AssignmentTemplate{},
-	)
+	}
+
+	// 检查数据库是否为空（没有任何表）
+	var tableCount int64
+	err := db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'").Scan(&tableCount)
+	if err != nil {
+		log.Printf("Warning: Could not check table count: %v", err)
+	}
+
+	if tableCount == 0 {
+		log.Println("Database is empty, creating all tables...")
+		return db.AutoMigrate(models...)
+	}
+
+	// 数据库不为空，检查每个表是否存在，只迁移缺失的表
+	log.Printf("Found %d existing tables, checking for missing tables...", tableCount)
+
+	// 逐个检查和迁移模型
+	for _, model := range models {
+		if !db.Migrator().HasTable(model) {
+			log.Printf("Creating missing table for model: %T", model)
+			if err := db.AutoMigrate(model); err != nil {
+				return fmt.Errorf("failed to migrate model %T: %w", model, err)
+			}
+		}
+	}
+
+	// 检查现有表的列更新（GORM会安全地添加缺失的列）
+	log.Println("Checking for column updates...")
+	for _, model := range models {
+		if db.Migrator().HasTable(model) {
+			if err := db.AutoMigrate(model); err != nil {
+				// 如果是权限错误，记录警告但不中断
+				log.Printf("Warning: Could not update table for model %T: %v", model, err)
+			}
+		}
+	}
+
+	log.Println("Database migration completed")
+	return nil
 }

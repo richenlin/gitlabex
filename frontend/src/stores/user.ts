@@ -46,6 +46,16 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  const setToken = (newToken: string) => {
+    token.value = newToken
+    localStorage.setItem('token', newToken)
+  }
+
+  const setUser = (newUser: User) => {
+    user.value = newUser
+    localStorage.setItem('user', JSON.stringify(newUser))
+  }
+
   const logout = () => {
     token.value = null
     user.value = null
@@ -125,6 +135,8 @@ export const useUserStore = defineStore('user', () => {
     hasRole,
     hasAnyRole,
     login,
+    setToken,
+    setUser,
     logout,
     fetchCurrentUser,
     updateProfile,

@@ -14,16 +14,20 @@ const router = createRouter({
       meta: { title: '首页', requiresAuth: false }
     },
     {
-      path: '/login',
+      path: '/auth/login',
       name: 'login',
       component: () => import('@/views/auth/LoginPage.vue'),
       meta: { title: '登录', requiresAuth: false }
     },
     {
-      path: '/register',
-      name: 'register',
-      component: () => import('@/views/auth/RegisterPage.vue'),
-      meta: { title: '注册', requiresAuth: false }
+      path: '/auth/gitlab/callback',
+      name: 'auth-callback',
+      component: () => import('@/views/auth/CallbackPage.vue'),
+      meta: { title: '登录处理中', requiresAuth: false }
+    },
+    {
+      path: '/login',
+      redirect: '/auth/login'
     },
     {
       path: '/scenes',

@@ -8,6 +8,7 @@ import (
 	"gitlabex/internal/config"
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,14 +24,16 @@ type AuthHandler struct {
 	userService   *services.UserService
 	gitlabService *services.GitLabService
 	config        *config.Config
+	redisService  *services.RedisService
 }
 
 // NewAuthHandler 创建认证处理器
-func NewAuthHandler(userService *services.UserService, gitlabService *services.GitLabService, cfg *config.Config) *AuthHandler {
+func NewAuthHandler(userService *services.UserService, gitlabService *services.GitLabService, cfg *config.Config, redisService *services.RedisService) *AuthHandler {
 	return &AuthHandler{
 		userService:   userService,
 		gitlabService: gitlabService,
 		config:        cfg,
+		redisService:  redisService,
 	}
 }
 
@@ -60,14 +63,20 @@ func (h *AuthHandler) GitLabAuth(c *gin.Context) {
 		return
 	}
 
-	// 将state存储到session或缓存中 (这里简化处理，实际应用中应该存储到Redis等)
-	c.SetCookie("oauth_state", state, 600, "/", "", false, true) // 10分钟有效期
+	// 将state存储到Redis中，10分钟有效期
+	if err := h.redisService.SetOAuthState(state, 10*time.Minute); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "存储状态参数失败"})
+		return
+	}
 
 	// 构建GitLab OAuth授权URL
-	authURL := fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=read_user+read_repository+write_repository&state=%s",
+	// 将scope中的空格替换为加号，符合URL编码规范
+	scopes := strings.ReplaceAll(h.config.GitLabScopes, " ", "+")
+	authURL := fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
 		h.config.GitLabURL,
 		h.config.GitLabClientID,
 		url.QueryEscape(h.config.GitLabRedirectURI),
+		scopes,
 		state)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -88,14 +97,15 @@ func (h *AuthHandler) GitLabCallback(c *gin.Context) {
 	}
 
 	// 验证state参数
-	cookieState, err := c.Cookie("oauth_state")
-	if err != nil || cookieState != state {
+	valid, err := h.redisService.ValidateOAuthState(state)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "验证状态参数失败"})
+		return
+	}
+	if !valid {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的状态参数"})
 		return
 	}
-
-	// 清除state cookie
-	c.SetCookie("oauth_state", "", -1, "/", "", false, true)
 
 	// 交换授权码获取访问令牌
 	oauthResp, err := h.exchangeCodeForToken(code)
@@ -266,7 +276,9 @@ func (h *AuthHandler) exchangeCodeForToken(code string) (*GitLabOAuthResponse, e
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("OAuth token exchange failed with status: %s", resp.Status)
+		// 读取错误响应体以获取更多信息
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("OAuth token exchange failed with status: %s, response: %s", resp.Status, string(body))
 	}
 
 	var oauthResp GitLabOAuthResponse
