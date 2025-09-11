@@ -290,7 +290,7 @@ func (h *HomeworkHandler) GetMySubmission(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("user_id")
+	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -802,7 +802,7 @@ func (h *HomeworkHandler) CreateStudentBranch(c *gin.Context) {
 		return
 	}
 
-	studentID, exists := c.Get("user_id")
+	studentID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -849,7 +849,7 @@ func (h *HomeworkHandler) SubmitHomeworkToBranch(c *gin.Context) {
 		return
 	}
 
-	studentID, exists := c.Get("user_id")
+	studentID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -888,7 +888,7 @@ func (h *HomeworkHandler) GetStudentBranchInfo(c *gin.Context) {
 		return
 	}
 
-	studentID, exists := c.Get("user_id")
+	studentID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return

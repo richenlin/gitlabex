@@ -575,7 +575,7 @@ func (h *DocumentHandler) SubmitEditRequest(c *gin.Context) {
 	}
 
 	// 获取当前用户ID
-	userID, exists := c.Get("user_id")
+	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return
@@ -659,7 +659,7 @@ func (h *DocumentHandler) ReviewEditRequest(c *gin.Context) {
 	}
 
 	// 获取当前用户ID
-	userID, exists := c.Get("user_id")
+	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
 		return

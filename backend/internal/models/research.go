@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // ResearchProject 研究课题模型
@@ -43,16 +44,16 @@ type ProjectMember struct {
 // Topic 话题模型
 type Topic struct {
 	BaseModel
-	Title         string     `gorm:"not null;size:200" json:"title"`
-	Content       string     `gorm:"type:text" json:"content"`
-	ProjectID     *uuid.UUID `json:"project_id,omitempty"`
-	AuthorID      uuid.UUID  `gorm:"not null" json:"author_id"`
-	GitLabIssueID *int64     `gorm:"uniqueIndex" json:"gitlab_issue_id,omitempty"`
-	Status        string     `gorm:"not null;default:active" json:"status"`   // active, closed, archived
-	Priority      string     `gorm:"not null;default:normal" json:"priority"` // low, normal, high, urgent
-	Tags          []string   `gorm:"type:text[]" json:"tags"`
-	ViewCount     int        `gorm:"default:0" json:"view_count"`
-	LikeCount     int        `gorm:"default:0" json:"like_count"`
+	Title         string         `gorm:"not null;size:200" json:"title"`
+	Content       string         `gorm:"type:text" json:"content"`
+	ProjectID     *uuid.UUID     `json:"project_id,omitempty"`
+	AuthorID      uuid.UUID      `gorm:"not null" json:"author_id"`
+	GitLabIssueID *int64         `gorm:"uniqueIndex" json:"gitlab_issue_id,omitempty"`
+	Status        string         `gorm:"not null;default:active" json:"status"`   // active, closed, archived
+	Priority      string         `gorm:"not null;default:normal" json:"priority"` // low, normal, high, urgent
+	Tags          pq.StringArray `gorm:"type:text[]" json:"tags"`
+	ViewCount     int            `gorm:"default:0" json:"view_count"`
+	LikeCount     int            `gorm:"default:0" json:"like_count"`
 
 	// 关联关系
 	Project    ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`

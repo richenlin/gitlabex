@@ -47,8 +47,12 @@ api.interceptors.response.use(
     
     if (error.response?.status === 401) {
       const userStore = useUserStore()
-      userStore.logout()
-      ElMessage.error('登录已过期，请重新登录')
+      // 只有在用户已登录的情况下才自动退出登录
+      // 这样可以避免在访问公开端点时误退出登录
+      if (userStore.isLoggedIn) {
+        userStore.logout()
+        ElMessage.error('登录已过期，请重新登录')
+      }
     } else if (error.response?.status === 403) {
       ElMessage.error('权限不足')
     } else if (error.response?.status === 404) {
@@ -362,6 +366,18 @@ export const gitlabService = {
     assigneeId?: number
   }) =>
     api.post(`/gitlab/projects/${projectId}/issues`, data)
+}
+
+// 活动相关 API
+export const activityService = {
+  getRecentActivities: (limit?: number) =>
+    api.get('/activities/recent', { params: { limit } }),
+  
+  getUserActivities: (userId: string, limit?: number) =>
+    api.get(`/activities/users/${userId}`, { params: { limit } }),
+  
+  getMyActivities: (limit?: number) =>
+    api.get('/activities/users/me', { params: { limit } })
 }
 
 export default api

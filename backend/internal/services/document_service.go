@@ -57,7 +57,7 @@ func (s *DocumentService) GetDocuments(limit, offset int, filters map[string]int
 	query.Count(&total)
 
 	// 获取分页数据
-	err := query.Preload("Project").Preload("Uploader").Preload("Reviewer").
+	err := query.Preload("Project").Preload("Uploader").
 		Order("created_at DESC").
 		Limit(limit).Offset(offset).
 		Find(&documents).Error
@@ -68,7 +68,7 @@ func (s *DocumentService) GetDocuments(limit, offset int, filters map[string]int
 // GetDocumentByID 根据ID获取文档
 func (s *DocumentService) GetDocumentByID(id uuid.UUID) (*models.Document, error) {
 	var document models.Document
-	err := s.DB.Preload("Project").Preload("Uploader").Preload("Reviewer").
+	err := s.DB.Preload("Project").Preload("Uploader").
 		First(&document, "id = ?", id).Error
 	if err != nil {
 		return nil, err

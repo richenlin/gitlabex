@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // HomeworkStatus 作业状态
@@ -28,43 +29,43 @@ const (
 // Homework 作业模型
 type Homework struct {
 	BaseModel
-	Title       string         `gorm:"not null;size:200" json:"title"`
-	Description string         `gorm:"type:text" json:"description"`
-	ProjectID   uuid.UUID      `gorm:"not null" json:"project_id"`
-	CreatorID   uuid.UUID      `gorm:"not null" json:"creator_id"`
-	Status      HomeworkStatus `gorm:"not null;default:draft" json:"status"`
-	DueDate     *time.Time     `json:"due_date,omitempty"`
-	MaxGrade    int            `gorm:"default:100" json:"max_grade"`
-	MinGrade    int            `gorm:"default:0" json:"min_grade"`
-	Instructions string        `gorm:"type:text" json:"instructions"`
-	TemplateFiles []string    `gorm:"type:text[]" json:"template_files"`
-	Requirements []string     `gorm:"type:text[]" json:"requirements"`
-	Tags        []string       `gorm:"type:text[]" json:"tags"`
-	GitLabBranch string        `gorm:"size:100;default:main" json:"gitlab_branch,omitempty"`
-	GitLabPath   string        `gorm:"size:500" json:"gitlab_path,omitempty"`
-	
+	Title         string         `gorm:"not null;size:200" json:"title"`
+	Description   string         `gorm:"type:text" json:"description"`
+	ProjectID     uuid.UUID      `gorm:"not null" json:"project_id"`
+	CreatorID     uuid.UUID      `gorm:"not null" json:"creator_id"`
+	Status        HomeworkStatus `gorm:"not null;default:draft" json:"status"`
+	DueDate       *time.Time     `json:"due_date,omitempty"`
+	MaxGrade      int            `gorm:"default:100" json:"max_grade"`
+	MinGrade      int            `gorm:"default:0" json:"min_grade"`
+	Instructions  string         `gorm:"type:text" json:"instructions"`
+	TemplateFiles pq.StringArray `gorm:"type:text[]" json:"template_files"`
+	Requirements  pq.StringArray `gorm:"type:text[]" json:"requirements"`
+	Tags          pq.StringArray `gorm:"type:text[]" json:"tags"`
+	GitLabBranch  string         `gorm:"size:100;default:main" json:"gitlab_branch,omitempty"`
+	GitLabPath    string         `gorm:"size:500" json:"gitlab_path,omitempty"`
+
 	// 关联关系
-	Project   ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	Creator   User            `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
-	Submissions []Submission  `gorm:"foreignKey:HomeworkID" json:"submissions,omitempty"`
+	Project     ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	Creator     User            `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
+	Submissions []Submission    `gorm:"foreignKey:HomeworkID" json:"submissions,omitempty"`
 }
 
 // Submission 作业提交模型
 type Submission struct {
 	BaseModel
-	HomeworkID uuid.UUID      `gorm:"not null" json:"homework_id"`
-	StudentID  uuid.UUID      `gorm:"not null" json:"student_id"`
-	Status     SubmissionStatus `gorm:"not null;default:pending" json:"status"`
-	Content    string         `gorm:"type:text" json:"content"`
-	FilePath   string         `gorm:"size:500" json:"file_path"`
-	GitLabCommitSHA string    `gorm:"size:40" json:"gitlab_commit_sha,omitempty"`
-	GitLabBranch string      `gorm:"size:100" json:"gitlab_branch,omitempty"`
-	SubmittedAt *time.Time  `json:"submitted_at,omitempty"`
-	Grade      *int         `json:"grade,omitempty"`
-	Feedback   string       `gorm:"type:text" json:"feedback"`
-	GradedAt   *time.Time   `json:"graded_at,omitempty"`
-	GradedBy   *uuid.UUID   `json:"graded_by,omitempty"`
-	
+	HomeworkID      uuid.UUID        `gorm:"not null" json:"homework_id"`
+	StudentID       uuid.UUID        `gorm:"not null" json:"student_id"`
+	Status          SubmissionStatus `gorm:"not null;default:pending" json:"status"`
+	Content         string           `gorm:"type:text" json:"content"`
+	FilePath        string           `gorm:"size:500" json:"file_path"`
+	GitLabCommitSHA string           `gorm:"size:40" json:"gitlab_commit_sha,omitempty"`
+	GitLabBranch    string           `gorm:"size:100" json:"gitlab_branch,omitempty"`
+	SubmittedAt     *time.Time       `json:"submitted_at,omitempty"`
+	Grade           *int             `json:"grade,omitempty"`
+	Feedback        string           `gorm:"type:text" json:"feedback"`
+	GradedAt        *time.Time       `json:"graded_at,omitempty"`
+	GradedBy        *uuid.UUID       `json:"graded_by,omitempty"`
+
 	// 关联关系
 	Homework Homework `gorm:"foreignKey:HomeworkID" json:"homework,omitempty"`
 	Student  User     `gorm:"foreignKey:StudentID" json:"student,omitempty"`
@@ -88,7 +89,7 @@ type SubmissionHistory struct {
 	NewStatus    string    `gorm:"not null" json:"new_status"`
 	ChangedBy    uuid.UUID `gorm:"not null" json:"changed_by"`
 	Notes        string    `gorm:"type:text" json:"notes"`
-	
+
 	// 关联关系
 	Submission Submission `gorm:"foreignKey:SubmissionID" json:"submission,omitempty"`
 	Changer    User       `gorm:"foreignKey:ChangedBy" json:"changer,omitempty"`

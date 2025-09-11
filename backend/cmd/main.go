@@ -68,6 +68,9 @@ func main() {
 	// 初始化文档扫描服务
 	documentScannerService := services.NewDocumentScannerService(minioService, documentService)
 
+	// 初始化活动服务
+	activityService := services.NewActivityService(db)
+
 	// 权限服务必须在其他handler之前初始化
 	permissionService := services.NewPermissionService(db)
 	permissionMiddleware := middleware.NewPermissionMiddleware(permissionService)
@@ -79,6 +82,7 @@ func main() {
 	topicHandler := handlers.NewTopicHandler(topicService, userService, gitlabService, researchService)
 	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWTSecret)
 	websocketHandler := handlers.NewWebSocketHandler(websocketService)
+	activityHandler := handlers.NewActivityHandler(activityService)
 	// documentSyncHandler 已移除，文档扫描现在通过webhook自动触发
 
 	// 创建Gin路由器
@@ -196,24 +200,24 @@ func main() {
 	documents := api.Group("/documents")
 	documentHandler := handlers.NewDocumentHandler(documentService)
 	{
+		// 公开访问的路由（不需要认证）
+		documents.GET("", documentHandler.GetDocuments)                     // 文档列表
+		documents.GET("/:id", documentHandler.GetDocumentByID)              // 文档详情
+		documents.GET("/categories", documentHandler.GetDocumentCategories) // 文档分类
+		documents.GET("/search", documentHandler.SearchDocuments)           // 文档搜索
 
 		// 需要认证的路由
 		documentsAuth := documents.Group("")
 		documentsAuth.Use(middleware.RequireAuth(cfg))
 		{
-			documentsAuth.GET("", documentHandler.GetDocuments)                     // 文档列表
-			documentsAuth.GET("/:id", documentHandler.GetDocumentByID)              // 文档详情
-			documentsAuth.GET("/categories", documentHandler.GetDocumentCategories) // 文档分类
-			documentsAuth.GET("/search", documentHandler.SearchDocuments)           // 文档搜索
-
+			documentsAuth.GET("/:id/download", documentHandler.DownloadDocument) // 文档下载 - 需要登录
 			documentsAuth.PUT("/:id", permissionMiddleware.RequireDocumentPermission(services.ProjectPermissionEdit), documentHandler.UpdateDocument)
 			documentsAuth.DELETE("/:id", permissionMiddleware.RequireDocumentPermission(services.ProjectPermissionDelete), documentHandler.DeleteDocument)
 			documentsAuth.GET("/stats", documentHandler.GetDocumentStats)
 			documentsAuth.POST("", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionUpload), documentHandler.CreateDocument)
 
-			// 文件上传和下载路由
+			// 文件上传路由
 			documentsAuth.POST("/upload", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionUpload), documentHandler.UploadDocument)
-			documentsAuth.GET("/:id/download", documentHandler.DownloadDocument)
 
 			// 自动文档索引路由 - 需要认证
 			documentsAuth.POST("/sync/:project_id", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionManage), documentHandler.SyncDocuments)
@@ -348,6 +352,20 @@ func main() {
 	{
 		announcements.GET("", notificationHandler.GetAnnouncements)
 		announcements.POST("", notificationHandler.CreateAnnouncement)
+	}
+
+	// 活动相关路由
+	activities := api.Group("/activities")
+	{
+		// 公开访问的路由（游客可访问最近活动）
+		activities.GET("/recent", activityHandler.GetRecentActivities) // 最近活动 - 游客可访问
+
+		// 需要认证的路由
+		activitiesAuth := activities.Group("")
+		activitiesAuth.Use(middleware.RequireAuth(cfg))
+		{
+			activitiesAuth.GET("/users/:userID", activityHandler.GetUserActivities) // 用户活动
+		}
 	}
 
 	// GitLab集成相关路由

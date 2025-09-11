@@ -156,9 +156,13 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   
-  // 初始化用户信息
-  if (!userStore.user && userStore.token) {
-    await userStore.fetchCurrentUser()
+  // 验证token有效性（如果有token但没有用户信息，尝试获取用户信息）
+  if (userStore.token && !userStore.user) {
+    const isValid = await userStore.validateToken()
+    if (!isValid) {
+      // token无效，清除状态
+      userStore.logout()
+    }
   }
 
   // 检查是否需要登录 - 游客可访问标记为 false 的路由

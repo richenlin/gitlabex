@@ -156,27 +156,34 @@
         <!-- 最近活动 -->
         <div class="recent-activities card">
           <h3>最近活动</h3>
-          <div class="activity-list">
-            <div class="activity-item">
-              <el-icon class="activity-icon"><Document /></el-icon>
+          <div v-loading="activitiesLoading" class="activity-list">
+            <div
+              v-for="activity in recentActivities"
+              :key="activity.id"
+              class="activity-item"
+              @click="viewActivity(activity)"
+            >
+              <el-icon class="activity-icon">
+                <Document v-if="activity.type === 'document'" />
+                <ChatLineRound v-else-if="activity.type === 'topic'" />
+                <Collection v-else-if="activity.type === 'homework'" />
+                <Message v-else-if="activity.type === 'comment'" />
+                <Star v-else />
+              </el-icon>
               <div class="activity-content">
-                <p>新文档上传</p>
-                <span>2小时前</span>
+                <p>{{ activity.title }}</p>
+                <div class="activity-description">{{ activity.description }}</div>
+                <div class="activity-meta">
+                  <span class="activity-user">{{ activity.user_name }}</span>
+                  <span v-if="activity.project_name" class="activity-project">
+                    · {{ activity.project_name }}
+                  </span>
+                  <span class="activity-time">· {{ formatRelativeTime(activity.created_at) }}</span>
+                </div>
               </div>
             </div>
-            <div class="activity-item">
-              <el-icon class="activity-icon"><ChatLineRound /></el-icon>
-              <div class="activity-content">
-                <p>新话题讨论</p>
-                <span>5小时前</span>
-              </div>
-            </div>
-            <div class="activity-item">
-              <el-icon class="activity-icon"><Collection /></el-icon>
-              <div class="activity-content">
-                <p>新作业发布</p>
-                <span>1天前</span>
-              </div>
+            <div v-if="recentActivities.length === 0 && !activitiesLoading" class="empty-state">
+              <el-empty description="暂无最近活动" />
             </div>
           </div>
         </div>
@@ -237,8 +244,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { researchService, topicService } from '@/services/api'
-import type { Scene, Topic } from '@/types'
+import { researchService, topicService, activityService } from '@/services/api'
+import type { Scene, Topic, ActivityItem } from '@/types'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
@@ -248,9 +255,11 @@ const userStore = useUserStore()
 const scenes = ref<Scene[]>([])
 const myScenes = ref<Scene[]>([])
 const hotTopics = ref<Topic[]>([])
+const recentActivities = ref<ActivityItem[]>([])
 const searchQuery = ref('')
 const loading = ref(false)
 const topicsLoading = ref(false)
+const activitiesLoading = ref(false)
 const currentPage = ref(1)
 const total = ref(0)
 const pageSize = 12
@@ -278,16 +287,16 @@ const canCreateScene = computed(() => {
 const fetchScenes = async (page = 1) => {
   loading.value = true
   try {
-    const response = await researchService.getProjects({
+    const response: any = await researchService.getProjects({
       page,
       pageSize,
       search: searchQuery.value || undefined
     })
     
-    // 处理不同的响应数据结构
-    if (response) {
-      scenes.value = response.projects || response.items || response || []
-      total.value = response.total || response.length || 0
+    // 处理响应数据结构（axios拦截器已经返回response.data）
+    if (response && response.projects) {
+      scenes.value = response.projects || []
+      total.value = response.pagination?.total || response.projects.length || 0
     } else if (Array.isArray(response)) {
       scenes.value = response
       total.value = response.length
@@ -312,13 +321,13 @@ const fetchMyScenes = async () => {
   if (!userStore.isLoggedIn) return
   
   try {
-    const response = await researchService.getProjects({
+    const response: any = await researchService.getProjects({
       ownerId: userStore.user?.id
     })
     
-    // 处理不同的响应数据结构
-    if (response.data) {
-      myScenes.value = response.data.projects || response.data.items || response.data || []
+    // 处理响应数据结构（axios拦截器已经返回response.data）
+    if (response && response.projects) {
+      myScenes.value = response.projects || []
     } else if (Array.isArray(response)) {
       myScenes.value = response
     } else {
@@ -336,15 +345,18 @@ const fetchMyScenes = async () => {
 const fetchHotTopics = async () => {
   topicsLoading.value = true
   try {
-    const response = await topicService.getTopics({
+    const response: any = await topicService.getTopics({
       page: 1,
       pageSize: 5
     })
-      console.log(response)
     
-    // 处理不同的响应数据结构
-    if (response) {
-      hotTopics.value =  response.projects || []
+    // 处理响应数据结构（axios拦截器已经返回response.data）
+    if (response && response.topics) {
+      hotTopics.value = response.topics || []
+    } else if (Array.isArray(response)) {
+      hotTopics.value = response
+    } else {
+      hotTopics.value = []
     } 
   } catch (error: any) {
     console.error('获取热门话题失败:', error)
@@ -354,6 +366,30 @@ const fetchHotTopics = async () => {
     hotTopics.value = []
   } finally {
     topicsLoading.value = false
+  }
+}
+
+const fetchRecentActivities = async () => {
+  activitiesLoading.value = true
+  try {
+    const response = await activityService.getRecentActivities(8)
+    
+    // 处理响应数据结构
+    if (response && response.data) {
+      recentActivities.value = response.data
+    } else if (Array.isArray(response)) {
+      recentActivities.value = response
+    } else {
+      recentActivities.value = []
+    }
+  } catch (error: any) {
+    console.error('获取最近活动失败:', error)
+    if (error.response?.status !== 404) {
+      ElMessage.error('获取最近活动失败')
+    }
+    recentActivities.value = []
+  } finally {
+    activitiesLoading.value = false
   }
 }
 
@@ -408,11 +444,37 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('zh-CN')
 }
 
+const formatRelativeTime = (date: string) => {
+  const now = new Date()
+  const activityDate = new Date(date)
+  const diffInSeconds = Math.floor((now.getTime() - activityDate.getTime()) / 1000)
+
+  if (diffInSeconds < 60) {
+    return '刚刚'
+  } else if (diffInSeconds < 3600) {
+    const minutes = Math.floor(diffInSeconds / 60)
+    return `${minutes}分钟前`
+  } else if (diffInSeconds < 86400) {
+    const hours = Math.floor(diffInSeconds / 3600)
+    return `${hours}小时前`
+  } else if (diffInSeconds < 604800) {
+    const days = Math.floor(diffInSeconds / 86400)
+    return `${days}天前`
+  } else {
+    return formatDate(date)
+  }
+}
+
+const viewActivity = (activity: ActivityItem) => {
+  router.push(activity.url)
+}
+
 // 生命周期
 onMounted(() => {
   fetchScenes()
   fetchMyScenes()
   fetchHotTopics()
+  fetchRecentActivities()
 })
 </script>
 
@@ -688,6 +750,47 @@ onMounted(() => {
 .activity-content span {
   font-size: 12px;
   color: var(--lighter-text);
+}
+
+.activity-description {
+  font-size: 14px;
+  color: var(--light-text);
+  margin: 4px 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.activity-meta {
+  font-size: 12px;
+  color: var(--lighter-text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.activity-user {
+  font-weight: 500;
+}
+
+.activity-project {
+  color: var(--primary-color);
+}
+
+.activity-time {
+  color: var(--lighter-text);
+}
+
+.activity-item {
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.activity-item:hover {
+  background-color: rgba(77, 121, 255, 0.05);
+  border-radius: 4px;
 }
 
 .empty-state {

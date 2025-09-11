@@ -178,7 +178,7 @@ func (s *UserService) UpdateUser(userID uuid.UUID, updates map[string]interface{
 func (s *UserService) CreateOrUpdateUserFromGitLab(gitlabUser *GitLabUser, accessToken, refreshToken string) (*models.User, error) {
 	// 先尝试根据GitLab ID查找现有用户
 	var user models.User
-	err := s.DB.Where("gitlab_id = ?", gitlabUser.ID).First(&user).Error
+	err := s.DB.Where("git_lab_id = ?", gitlabUser.ID).First(&user).Error
 
 	if err == gorm.ErrRecordNotFound {
 		// 用户不存在，创建新用户
@@ -241,7 +241,7 @@ func (s *UserService) CreateOrUpdateUserFromGitLab(gitlabUser *GitLabUser, acces
 // GetUserByGitLabID 根据GitLab ID获取用户
 func (s *UserService) GetUserByGitLabID(gitlabID int64) (*models.User, error) {
 	var user models.User
-	if err := s.DB.Where("gitlab_id = ?", gitlabID).First(&user).Error; err != nil {
+	if err := s.DB.Where("git_lab_id = ?", gitlabID).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil

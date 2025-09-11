@@ -84,7 +84,7 @@ func RequireAuth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// 将用户信息设置到上下文中
-		c.Set("user_id", claims.UserID)
+		c.Set("userID", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
@@ -101,7 +101,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 		if authHeader == "" {
 			// 没有token，设置为游客模式
 			c.Set("is_guest", true)
-			c.Set("user_id", "")
+			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
 			c.Set("role", 0) // guest role
@@ -114,7 +114,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 		if tokenString == authHeader {
 			// token格式错误，设置为游客模式
 			c.Set("is_guest", true)
-			c.Set("user_id", "")
+			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
 			c.Set("role", 0)
@@ -134,7 +134,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 		if err != nil || !token.Valid {
 			// token无效，设置为游客模式
 			c.Set("is_guest", true)
-			c.Set("user_id", "")
+			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
 			c.Set("role", 0)
@@ -147,7 +147,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			// claims解析失败，设置为游客模式
 			c.Set("is_guest", true)
-			c.Set("user_id", "")
+			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
 			c.Set("role", 0)
@@ -157,7 +157,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 
 		// 设置已登录用户信息
 		c.Set("is_guest", false)
-		c.Set("user_id", claims.UserID)
+		c.Set("userID", claims.UserID)
 		c.Set("username", claims.Username)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)

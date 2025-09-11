@@ -31,7 +31,7 @@ func NewResearchHandler(researchService *services.ResearchService, userService *
 func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 	// 检查是否为游客模式
 	isGuest, _ := c.Get("is_guest")
-	userID, _ := c.Get("user_id")
+	userID, _ := c.Get("userID")
 
 	// 获取分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

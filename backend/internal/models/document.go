@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // DocumentType 文档类型
@@ -42,7 +43,7 @@ type Document struct {
 	UploaderID     uuid.UUID      `gorm:"not null" json:"uploader_id"`
 	ProjectID      uuid.UUID      `gorm:"not null" json:"project_id"`
 	Category       string         `gorm:"size:100" json:"category"`
-	Tags           []string       `gorm:"type:text[]" json:"tags"`
+	Tags           pq.StringArray `gorm:"type:text[]" json:"tags"`
 	DownloadCount  int            `gorm:"default:0" json:"download_count"`
 	GitLabFilePath string         `gorm:"size:500" json:"gitlab_file_path,omitempty"`
 	GitLabBranch   string         `gorm:"size:100;default:main" json:"gitlab_branch,omitempty"`
@@ -79,7 +80,7 @@ type DocumentEditRequest struct {
 	Title          string         `gorm:"size:200" json:"title,omitempty"`
 	Description    string         `gorm:"type:text" json:"description,omitempty"`
 	Category       string         `gorm:"size:100" json:"category,omitempty"`
-	Tags           []string       `gorm:"type:text[]" json:"tags,omitempty"`
+	Tags           pq.StringArray `gorm:"type:text[]" json:"tags,omitempty"`
 	Reason         string         `gorm:"type:text" json:"reason"` // 修改原因
 	Status         DocumentStatus `gorm:"not null;default:pending" json:"status"`
 	ReviewerID     *uuid.UUID     `gorm:"type:uuid" json:"reviewer_id,omitempty"`

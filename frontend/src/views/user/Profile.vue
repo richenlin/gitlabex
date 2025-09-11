@@ -1,2 +1,719 @@
-<template><div><h1>用户资料 (待实现)</h1></div></template>
-<script setup lang="ts">// TODO: 实现</script>
+<template>
+  <div class="profile-container">
+    <!-- 用户信息卡片 -->
+    <el-card class="user-info-card" v-loading="loading">
+      <div class="user-header">
+        <div class="user-avatar">
+          <el-avatar :size="120" :src="userInfo?.avatar_url" :alt="userInfo?.name">
+            <el-icon><User /></el-icon>
+          </el-avatar>
+        </div>
+        <div class="user-details">
+          <h2>{{ userInfo?.name }}</h2>
+          <p class="username">@{{ userInfo?.username }}</p>
+          <p class="email">{{ userInfo?.email }}</p>
+          <div class="user-badges">
+            <el-tag :type="getRoleColor(userInfo?.role)" size="large">
+              {{ getRoleText(userInfo?.role) }}
+            </el-tag>
+            <el-tag type="info" size="small" v-if="userInfo?.edu_role">
+              教育等级: {{ getEduRoleText(userInfo?.edu_role) }}
+            </el-tag>
+          </div>
+          <div class="user-stats">
+            <el-statistic title="上次登录" :value="formatDate(userInfo?.last_login_at)" />
+            <el-statistic title="注册时间" :value="formatDate(userInfo?.created_at)" />
+            <el-statistic title="活跃状态" :value="userInfo?.is_active ? '活跃' : '非活跃'" />
+          </div>
+        </div>
+        <div class="user-actions">
+          <el-button type="primary" @click="showEditProfile = true">
+            <el-icon><Edit /></el-icon>
+            编辑资料
+          </el-button>
+        </div>
+      </div>
+    </el-card>
+
+    <!-- 资源统计 -->
+    <el-row :gutter="20" class="stats-row">
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <el-statistic title="创建的课题" :value="stats.projectsCount" />
+          <div class="stat-icon project-icon">
+            <el-icon><Folder /></el-icon>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <el-statistic title="发布的话题" :value="stats.topicsCount" />
+          <div class="stat-icon topic-icon">
+            <el-icon><ChatDotRound /></el-icon>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <el-statistic title="上传的文档" :value="stats.documentsCount" />
+          <div class="stat-icon document-icon">
+            <el-icon><Document /></el-icon>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="6">
+        <el-card class="stat-card">
+          <el-statistic title="作业提交" :value="stats.submissionsCount" />
+          <div class="stat-icon homework-icon">
+            <el-icon><EditPen /></el-icon>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 最近活动标签页 -->
+    <el-card class="activity-card">
+      <template #header>
+        <div class="card-header">
+          <h3>最近活动</h3>
+          <el-button text @click="refreshActivity">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
+        </div>
+      </template>
+      
+      <el-tabs v-model="activeTab" class="activity-tabs" @tab-change="handleTabChange">
+        <el-tab-pane label="我的课题" name="projects">
+          <div v-loading="projectsLoading">
+            <div v-if="myProjects.length === 0" class="empty-state">
+              <el-empty description="暂无课题" />
+            </div>
+            <div v-else class="resource-list">
+              <div
+                v-for="project in myProjects"
+                :key="project.id"
+                class="resource-item"
+                @click="goToProject(project.id)"
+              >
+                <div class="resource-icon">
+                  <el-icon><Folder /></el-icon>
+                </div>
+                <div class="resource-content">
+                  <h4>{{ project.name }}</h4>
+                  <p>{{ project.description }}</p>
+                  <div class="resource-meta">
+                    <el-tag size="small" :type="project.status === 'active' ? 'success' : 'info'">
+                      {{ getProjectStatusText(project.status) }}
+                    </el-tag>
+                    <span class="meta-item">{{ formatDate(project.updated_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="我的话题" name="topics">
+          <div v-loading="topicsLoading">
+            <div v-if="myTopics.length === 0" class="empty-state">
+              <el-empty description="暂无话题" />
+            </div>
+            <div v-else class="resource-list">
+              <div
+                v-for="topic in myTopics"
+                :key="topic.id"
+                class="resource-item"
+                @click="goToTopic(topic.id)"
+              >
+                <div class="resource-icon">
+                  <el-icon><ChatDotRound /></el-icon>
+                </div>
+                <div class="resource-content">
+                  <h4>{{ topic.title }}</h4>
+                  <p>{{ topic.content.substring(0, 100) }}...</p>
+                  <div class="resource-meta">
+                    <el-tag size="small" :type="topic.status === 'open' ? 'success' : 'info'">
+                      {{ topic.status === 'open' ? '开放' : '已关闭' }}
+                    </el-tag>
+                    <span class="meta-item">{{ topic.likes_count }} 点赞</span>
+                    <span class="meta-item">{{ topic.comments_count }} 评论</span>
+                    <span class="meta-item">{{ formatDate(topic.updated_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="我的文档" name="documents">
+          <div v-loading="documentsLoading">
+            <div v-if="myDocuments.length === 0" class="empty-state">
+              <el-empty description="暂无文档" />
+            </div>
+            <div v-else class="resource-list">
+              <div
+                v-for="document in myDocuments"
+                :key="document.id"
+                class="resource-item"
+                @click="goToDocument(document.id)"
+              >
+                <div class="resource-icon">
+                  <el-icon><Document /></el-icon>
+                </div>
+                <div class="resource-content">
+                  <h4>{{ document.title }}</h4>
+                  <p>{{ document.description }}</p>
+                  <div class="resource-meta">
+                    <el-tag size="small" type="info">{{ document.file_type }}</el-tag>
+                    <span class="meta-item">{{ formatFileSize(document.file_size) }}</span>
+                    <span class="meta-item">{{ document.download_count || 0 }} 下载</span>
+                    <span class="meta-item">{{ formatDate(document.updated_at) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-card>
+
+    <!-- 编辑资料对话框 -->
+    <el-dialog
+      v-model="showEditProfile"
+      title="编辑个人资料"
+      width="500px"
+      :before-close="handleEditClose"
+    >
+      <el-form
+        ref="editFormRef"
+        :model="editForm"
+        :rules="editFormRules"
+        label-width="80px"
+      >
+        <el-form-item label="头像" prop="avatar_url">
+          <div class="avatar-upload">
+            <el-avatar :size="80" :src="editForm.avatar_url">
+              <el-icon><User /></el-icon>
+            </el-avatar>
+            <div class="avatar-actions">
+              <el-input
+                v-model="editForm.avatar_url"
+                placeholder="请输入头像URL"
+                clearable
+              />
+              <el-text type="info" size="small">
+                提示：请输入有效的图片URL
+              </el-text>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="姓名" prop="name">
+          <el-input v-model="editForm.name" placeholder="请输入姓名" />
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="handleEditClose">取消</el-button>
+          <el-button type="primary" :loading="editLoading" @click="handleSaveProfile">
+            保存
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import { 
+  authService, 
+  researchService, 
+  topicService, 
+  documentService
+} from '@/services/api'
+import type { User, ResearchProject, Topic, Document } from '@/types'
+import { ElMessage } from 'element-plus'
+import {
+  User as UserIcon,
+  Edit,
+  Folder,
+  ChatDotRound,
+  Document as DocumentIcon,
+  EditPen,
+  Refresh
+} from '@element-plus/icons-vue'
+
+const router = useRouter()
+const userStore = useUserStore()
+
+// 响应式数据
+const loading = ref(false)
+const userInfo = ref<User | null>(null)
+const showEditProfile = ref(false)
+const editLoading = ref(false)
+const activeTab = ref('projects')
+
+// 统计数据
+const stats = ref({
+  projectsCount: 0,
+  topicsCount: 0,
+  documentsCount: 0,
+  submissionsCount: 0
+})
+
+// 资源数据
+const myProjects = ref<ResearchProject[]>([])
+const myTopics = ref<Topic[]>([])
+const myDocuments = ref<Document[]>([])
+
+// 加载状态
+const projectsLoading = ref(false)
+const topicsLoading = ref(false)
+const documentsLoading = ref(false)
+
+// 编辑表单
+const editFormRef = ref()
+const editForm = ref({
+  name: '',
+  avatar_url: ''
+})
+
+const editFormRules = {
+  name: [
+    { required: true, message: '请输入姓名', trigger: 'blur' },
+    { min: 2, max: 50, message: '姓名长度应在 2 到 50 个字符', trigger: 'blur' }
+  ]
+}
+
+// 方法
+const fetchUserInfo = async () => {
+  loading.value = true
+  try {
+    const response = await authService.getCurrentUser()
+    userInfo.value = response.data || response
+    
+    // 更新编辑表单
+    if (userInfo.value) {
+      editForm.value = {
+        name: userInfo.value.name,
+        avatar_url: userInfo.value.avatar_url || ''
+      }
+    }
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+    ElMessage.error('获取用户信息失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const fetchStats = async () => {
+  try {
+    // 并行获取统计数据
+    const [projectsRes, topicsRes, documentsRes] = await Promise.allSettled([
+      researchService.getProjects({ ownerId: userInfo.value?.id }),
+      topicService.getTopics({ authorId: userInfo.value?.id }),
+      documentService.getDocuments({ })
+    ])
+
+    stats.value.projectsCount = projectsRes.status === 'fulfilled' ? 
+      (projectsRes.value.data?.total || projectsRes.value.data?.length || 0) : 0
+    stats.value.topicsCount = topicsRes.status === 'fulfilled' ? 
+      (topicsRes.value.data?.total || topicsRes.value.data?.length || 0) : 0
+    stats.value.documentsCount = documentsRes.status === 'fulfilled' ? 
+      (documentsRes.value.data?.total || documentsRes.value.data?.length || 0) : 0
+  } catch (error) {
+    console.error('获取统计数据失败:', error)
+  }
+}
+
+const fetchMyProjects = async () => {
+  if (!userInfo.value?.id) return
+  
+  projectsLoading.value = true
+  try {
+    const response = await researchService.getProjects({ 
+      ownerId: userInfo.value.id,
+      pageSize: 10 
+    })
+    myProjects.value = response.data?.items || response.data || []
+  } catch (error) {
+    console.error('获取我的课题失败:', error)
+  } finally {
+    projectsLoading.value = false
+  }
+}
+
+const fetchMyTopics = async () => {
+  if (!userInfo.value?.id) return
+  
+  topicsLoading.value = true
+  try {
+    const response = await topicService.getTopics({ 
+      authorId: userInfo.value.id,
+      pageSize: 10 
+    })
+    myTopics.value = response.data?.items || response.data || []
+  } catch (error) {
+    console.error('获取我的话题失败:', error)
+  } finally {
+    topicsLoading.value = false
+  }
+}
+
+const fetchMyDocuments = async () => {
+  documentsLoading.value = true
+  try {
+    const response = await documentService.getDocuments({ pageSize: 10 })
+    // 过滤出当前用户上传的文档
+    const allDocs = response.data?.items || response.data || []
+    myDocuments.value = allDocs.filter((doc: Document) => doc.uploader_id === userInfo.value?.id)
+  } catch (error) {
+    console.error('获取我的文档失败:', error)
+  } finally {
+    documentsLoading.value = false
+  }
+}
+
+const refreshActivity = async () => {
+  switch (activeTab.value) {
+    case 'projects':
+      await fetchMyProjects()
+      break
+    case 'topics':
+      await fetchMyTopics()
+      break
+    case 'documents':
+      await fetchMyDocuments()
+      break
+  }
+}
+
+const handleSaveProfile = async () => {
+  if (!editFormRef.value) return
+  
+  try {
+    await editFormRef.value.validate()
+    editLoading.value = true
+    
+    await authService.updateProfile(editForm.value)
+    
+    // 更新本地用户信息
+    if (userInfo.value) {
+      userInfo.value.name = editForm.value.name
+      userInfo.value.avatar_url = editForm.value.avatar_url
+    }
+    
+    // 更新store中的用户信息
+    userStore.updateUser(editForm.value)
+    
+    ElMessage.success('个人资料更新成功')
+    showEditProfile.value = false
+  } catch (error) {
+    console.error('更新个人资料失败:', error)
+    ElMessage.error('更新个人资料失败')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+const handleEditClose = () => {
+  showEditProfile.value = false
+  // 重置表单
+  if (userInfo.value) {
+    editForm.value = {
+      name: userInfo.value.name,
+      avatar_url: userInfo.value.avatar_url || ''
+    }
+  }
+}
+
+// 导航方法
+const goToProject = (id: string) => {
+  router.push(`/scenes/${id}`)
+}
+
+const goToTopic = (id: string) => {
+  router.push(`/topics/${id}`)
+}
+
+const goToDocument = (id: string) => {
+  router.push(`/documents/${id}`)
+}
+
+// 标签页切换处理
+const handleTabChange = (tabName: string) => {
+  switch (tabName) {
+    case 'projects':
+      if (myProjects.value.length === 0) fetchMyProjects()
+      break
+    case 'topics':
+      if (myTopics.value.length === 0) fetchMyTopics()
+      break
+    case 'documents':
+      if (myDocuments.value.length === 0) fetchMyDocuments()
+      break
+  }
+}
+
+// 工具方法
+const getRoleColor = (role?: string) => {
+  const colorMap: Record<string, string> = {
+    admin: 'danger',
+    teacher: 'warning',
+    assistant: 'info',
+    student: 'success',
+    guest: ''
+  }
+  return colorMap[role || ''] || ''
+}
+
+const getRoleText = (role?: string) => {
+  const textMap: Record<string, string> = {
+    admin: '管理员',
+    teacher: '教师',
+    assistant: '助教',
+    student: '学生',
+    guest: '访客'
+  }
+  return textMap[role || ''] || role || ''
+}
+
+const getEduRoleText = (eduRole?: number) => {
+  const textMap: Record<number, string> = {
+    50: '管理员',
+    40: '教师',
+    30: '研究员',
+    20: '学生',
+    10: '访客'
+  }
+  return textMap[eduRole || 0] || '未知'
+}
+
+const getProjectStatusText = (status: string) => {
+  const textMap: Record<string, string> = {
+    active: '活跃',
+    archived: '已归档',
+    suspended: '已暂停'
+  }
+  return textMap[status] || status
+}
+
+const formatDate = (date?: string) => {
+  if (!date) return '-'
+  return new Date(date).toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+const formatFileSize = (size: number) => {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// 监听标签页变化
+watch(() => activeTab.value, handleTabChange)
+
+// 生命周期
+onMounted(async () => {
+  await fetchUserInfo()
+  await fetchStats()
+  
+  // 默认加载第一个标签页的数据
+  await fetchMyProjects()
+})
+</script>
+
+<style scoped>
+.profile-container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.user-info-card {
+  margin-bottom: 20px;
+}
+
+.user-header {
+  display: flex;
+  gap: 30px;
+  align-items: flex-start;
+}
+
+.user-avatar {
+  flex-shrink: 0;
+}
+
+.user-details {
+  flex: 1;
+}
+
+.user-details h2 {
+  margin: 0 0 10px 0;
+  color: #303133;
+  font-size: 28px;
+}
+
+.username {
+  color: #909399;
+  margin: 0 0 5px 0;
+  font-size: 16px;
+}
+
+.email {
+  color: #606266;
+  margin: 0 0 15px 0;
+}
+
+.user-badges {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.user-stats {
+  display: flex;
+  gap: 40px;
+}
+
+.user-actions {
+  flex-shrink: 0;
+}
+
+.stats-row {
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-icon {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 40px;
+  opacity: 0.1;
+}
+
+.project-icon { color: #67c23a; }
+.topic-icon { color: #409eff; }
+.document-icon { color: #909399; }
+.homework-icon { color: #e6a23c; }
+
+.activity-card {
+  min-height: 500px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-header h3 {
+  margin: 0;
+  color: #303133;
+}
+
+.activity-tabs {
+  margin-top: 20px;
+}
+
+.resource-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.resource-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 15px;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.resource-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+}
+
+.resource-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #f0f9ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #409eff;
+  flex-shrink: 0;
+}
+
+.resource-content {
+  flex: 1;
+}
+
+.resource-content h4 {
+  margin: 0 0 8px 0;
+  color: #303133;
+  font-size: 16px;
+}
+
+.resource-content p {
+  margin: 0 0 10px 0;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.resource-meta {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px;
+}
+
+.avatar-upload {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.avatar-actions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-footer {
+  text-align: right;
+}
+</style>

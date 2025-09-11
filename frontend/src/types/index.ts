@@ -183,6 +183,19 @@ export interface Notification {
   created_at: string
 }
 
+// 活动相关类型
+export interface ActivityItem {
+  id: string
+  type: 'document' | 'topic' | 'homework' | 'comment'
+  title: string
+  description: string
+  user_name: string
+  user_avatar?: string
+  project_name?: string
+  created_at: string
+  url: string
+}
+
 // API响应类型
 export interface ApiResponse<T> {
   code: number

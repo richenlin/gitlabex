@@ -99,6 +99,13 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  const updateUser = (data: Partial<User>) => {
+    if (user.value) {
+      user.value = { ...user.value, ...data }
+      localStorage.setItem('user', JSON.stringify(user.value))
+    }
+  }
+
   const changePassword = async (oldPassword: string, newPassword: string) => {
     isLoading.value = true
     try {
@@ -119,9 +126,25 @@ export const useUserStore = defineStore('user', () => {
     const savedUser = localStorage.getItem('user')
     
     if (savedToken && savedUser) {
-      token.value = savedToken
-      user.value = JSON.parse(savedUser)
+      try {
+        token.value = savedToken
+        user.value = JSON.parse(savedUser)
+      } catch (error) {
+        console.error('解析用户数据失败:', error)
+        // 清除损坏的数据
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+      }
     }
+  }
+
+  // 验证token有效性
+  const validateToken = async () => {
+    if (token.value && !user.value) {
+      // 如果有token但没有用户信息，尝试获取用户信息
+      return await fetchCurrentUser()
+    }
+    return !!user.value
   }
 
   return {
@@ -140,7 +163,9 @@ export const useUserStore = defineStore('user', () => {
     logout,
     fetchCurrentUser,
     updateProfile,
+    updateUser,
     changePassword,
-    initUserFromStorage
+    initUserFromStorage,
+    validateToken
   }
 })
