@@ -61,22 +61,19 @@
                 <div class="file-list" v-loading="filesLoading">
                   <!-- 文件列表表头 -->
                   <div class="file-header">
-                    <div class="file-name-col">Name</div>
-                    <div class="file-commit-col">Last commit</div>
-                    <div class="file-update-col">Last update</div>
+                    <div class="file-name-col">名称</div>
+                    <div class="file-commit-col">最后提交</div>
+                    <div class="file-update-col">更新时间</div>
+                    <div class="file-size-col">大小</div>
                   </div>
                   <!-- 文件列表内容 -->
-                  <!-- <div 
+                  <div 
                     v-for="file in files" 
                     :key="file.name"
                     class="file-item"
                     @click="handleFileClick(file)"
                     @dblclick="handleFileDoubleClick(file)"
-                  > -->
-                  <div 
-                    v-for="file in files" 
-                    :key="file.name"
-                    class="file-item">
+                  >
                     <div class="file-name-col">
                       <el-icon class="file-icon">
                         <Folder v-if="file.type === 'tree'" />
@@ -84,37 +81,39 @@
                       </el-icon>
                       <span class="file-name">{{ file.name }}</span>
                     </div>
-                    <div class="file-commit-col">
-                      <span class="commit-message">{{ file.last_commit_message || '-' }}</span>
-                    </div>
-                    <div class="file-update-col">
-                      <span class="update-time">{{ formatRelativeTime(file.last_commit_date) }}</span>
-                    </div>
+                  <div class="file-commit-col">
+                    <span class="commit-message">{{ file.last_commit_message || '-' }}</span>
+                  </div>
+                  <div class="file-update-col">
+                    <span class="update-time">{{ formatRelativeTime(file.last_commit_date) }}</span>
+                  </div>
+                  <div class="file-size-col">
+                    <span class="file-size">{{ formatFileSize(file.size || 0) }}</span>
                   </div>
                 </div>
+              </div>
 
-                <!-- 文件内容预览 -->
-                <div class="file-preview" v-if="selectedFile && fileContent">
-                  <div class="preview-header">
-                    <h3>{{ selectedFile.name }}</h3>
-                    <div class="preview-actions">
-                      <el-button size="small" @click="downloadFile" v-if="selectedFile.type === 'blob'">
-                        <el-icon><Download /></el-icon>
-                        下载
-                      </el-button>
-                      <el-button size="small" type="primary" @click="editFile" v-if="canEdit && isEditableFile(selectedFile)">
-                        <el-icon><Edit /></el-icon>
-                        编辑
-                      </el-button>
-                    </div>
+              <!-- 文件内容预览 -->
+              <div class="file-preview" v-if="selectedFile && fileContent">
+                <div class="preview-header">
+                  <h3>{{ selectedFile.name }}</h3>
+                  <div class="preview-actions">
+                    <el-button size="small" @click="downloadFile" v-if="selectedFile.type === 'blob'">
+                      <el-icon><Download /></el-icon>
+                      下载
+                    </el-button>
+                    <el-button size="small" type="primary" @click="editFile" v-if="canEdit && isEditableFile(selectedFile)">
+                      <el-icon><Edit /></el-icon>
+                      编辑
+                    </el-button>
                   </div>
-                  <div class="preview-content">
-                    <pre v-if="isTextFile(selectedFile)" class="code-preview"><code>{{ fileContent }}</code></pre>
-                    <div v-else class="binary-file-info">
-                      <el-icon><Document /></el-icon>
-                      <p>二进制文件，无法预览</p>
-                      <el-button @click="downloadFile">下载文件</el-button>
-                    </div>
+                </div>
+                <div class="preview-content">
+                  <pre v-if="isTextFile(selectedFile)" class="code-preview"><code>{{ fileContent }}</code></pre>
+                  <div v-else class="binary-file-info">
+                    <el-icon><Document /></el-icon>
+                    <p>二进制文件，无法预览</p>
+                    <el-button @click="downloadFile">下载文件</el-button>
                   </div>
                 </div>
               </div>
@@ -153,7 +152,7 @@
                         <span class="stat-label">回复</span>
                       </div>
                       <div class="stat-item">
-                        <span class="stat-value">{{ topic.view_count || 0 }}</span>
+                        <span class="stat-value">{{ (topic as any).view_count || 0 }}</span>
                         <span class="stat-label">浏览</span>
                       </div>
                     </div>
@@ -484,7 +483,7 @@ const fetchFiles = async (path = '') => {
   
   filesLoading.value = true
   try {
-    const response = await gitlabService.getRepositoryTree(
+    const response: any = await gitlabService.getRepositoryTree(
       project.value.gitlab_project_id.toString(),
       path
     )
@@ -622,7 +621,7 @@ const createTopic = async () => {
   try {
     await researchService.createIssue(projectId.value, {
       title: topicForm.value.title,
-      description: topicForm.value.content,
+      content: topicForm.value.content,
       labels: topicForm.value.labels
     })
     ElMessage.success('话题创建成功')
