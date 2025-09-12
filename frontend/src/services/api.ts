@@ -27,9 +27,18 @@ const api: AxiosInstance = axios.create({
 api.interceptors.request.use(
   (config) => {
     const userStore = useUserStore()
+    console.log('API请求拦截器 - URL:', config.url)
+    console.log('API请求拦截器 - Token:', userStore.token)
+    console.log('API请求拦截器 - User:', userStore.user)
+    
     if (userStore.token) {
       config.headers.Authorization = `Bearer ${userStore.token}`
+      console.log('API请求拦截器 - 已添加Authorization头')
+    } else {
+      console.warn('API请求拦截器 - 没有token，无法添加Authorization头')
     }
+    
+    console.log('API请求拦截器 - 最终headers:', config.headers)
     return config
   },
   (error: AxiosError) => {
@@ -185,8 +194,6 @@ export const topicService = {
     api.post(`/topics/${id}/comments`, { content, parentId })
 }
 
-
-
 // 文档相关 API
 export const documentService = {
   getDocuments: (params?: {
@@ -336,6 +343,9 @@ export const notificationService = {
 
 // GitLab 相关 API
 export const gitlabService = {
+  getConfig: () =>
+    api.get('/gitlab/config'),
+  
   getProjects: () =>
     api.get('/gitlab/projects'),
   

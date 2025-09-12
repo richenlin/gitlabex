@@ -50,32 +50,45 @@
                     <el-icon><Refresh /></el-icon>
                     刷新
                   </el-button>
-                  <el-button size="small" type="primary" @click="showUploadDialog" v-if="canEdit">
-                    <el-icon><Upload /></el-icon>
-                    上传文件
+                  <el-button size="small" type="primary" @click="openWebIDE" v-if="canEdit">
+                    <el-icon><Edit /></el-icon>
+                    在Web IDE中编辑
                   </el-button>
                 </div>
               </div>
 
               <div class="file-explorer">
                 <div class="file-list" v-loading="filesLoading">
-                  <div 
+                  <!-- 文件列表表头 -->
+                  <div class="file-header">
+                    <div class="file-name-col">Name</div>
+                    <div class="file-commit-col">Last commit</div>
+                    <div class="file-update-col">Last update</div>
+                  </div>
+                  <!-- 文件列表内容 -->
+                  <!-- <div 
                     v-for="file in files" 
                     :key="file.name"
                     class="file-item"
                     @click="handleFileClick(file)"
                     @dblclick="handleFileDoubleClick(file)"
-                  >
-                    <div class="file-info">
+                  > -->
+                  <div 
+                    v-for="file in files" 
+                    :key="file.name"
+                    class="file-item">
+                    <div class="file-name-col">
                       <el-icon class="file-icon">
                         <Folder v-if="file.type === 'tree'" />
                         <Document v-else />
                       </el-icon>
                       <span class="file-name">{{ file.name }}</span>
                     </div>
-                    <div class="file-meta">
-                      <span class="file-size" v-if="file.type === 'blob'">{{ formatFileSize(file.size) }}</span>
-                      <span class="file-date">{{ formatDate(file.last_commit_date) }}</span>
+                    <div class="file-commit-col">
+                      <span class="commit-message">{{ file.last_commit_message || '-' }}</span>
+                    </div>
+                    <div class="file-update-col">
+                      <span class="update-time">{{ formatRelativeTime(file.last_commit_date) }}</span>
                     </div>
                   </div>
                 </div>
@@ -354,7 +367,10 @@ import {
   Refresh, 
   Upload, 
   Download, 
-  Edit 
+  Edit,
+  ArrowDown,
+  Plus,
+  Delete
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -472,8 +488,10 @@ const fetchFiles = async (path = '') => {
       project.value.gitlab_project_id.toString(),
       path
     )
-    files.value = response || []
+    // 后端返回的数据格式是 {"tree": [...]}，需要提取 tree 字段
+    files.value = response?.tree || response || []
     currentPath.value = path
+    console.log('获取文件列表成功:', files.value)
   } catch (error: any) {
     console.error('获取文件列表失败:', error)
     // 如果是GitLab相关的认证错误，不显示错误提示，避免干扰用户体验
@@ -684,6 +702,21 @@ const formatFileSize = (size: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const formatRelativeTime = (dateString: string) => {
+  if (!dateString) return '-'
+  
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+  
+  if (diffInSeconds < 60) return '刚刚'
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} 分钟前`
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} 小时前`
+  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} 天前`
+  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)} 个月前`
+  return `${Math.floor(diffInSeconds / 31536000)} 年前`
+}
+
 const getRoleText = (role: string) => {
   const roleMap: Record<string, string> = {
     owner: '管理员',
@@ -702,6 +735,102 @@ const getHomeworkStatusText = (status: string) => {
     closed: '已关闭'
   }
   return statusMap[status] || status
+}
+
+// 打开GitLab Web IDE
+const openWebIDE = async () => {
+  if (!project.value?.gitlab_project_id) {
+    ElMessage.error('无法获取GitLab项目信息')
+    return
+  }
+  
+  try {
+    // 获取GitLab配置
+    const config: any = await gitlabService.getConfig()
+    const gitlabUrl = config.gitlab_url
+    
+    // 获取项目详细信息以获取项目路径
+    const gitlabProject: any = await gitlabService.getProject(project.value.gitlab_project_id.toString())
+    const projectPath = gitlabProject.project?.path_with_namespace || `root/${project.value.name}`
+    
+    const branch = 'main' // 默认分支，可以根据需要修改
+    const path = currentPath.value || ''
+    
+    // 构建GitLab Web IDE URL
+    // 格式: http://gitlab-url/-/ide/project/namespace/project-name/edit/branch/-/path
+    const ideUrl = `${gitlabUrl}/-/ide/project/${projectPath}/edit/${branch}/-/${path}`
+    
+    // 在新窗口中打开Web IDE
+    window.open(ideUrl, '_blank')
+  } catch (error) {
+    console.error('获取GitLab配置失败:', error)
+    ElMessage.error('无法打开Web IDE，请检查GitLab配置')
+  }
+}
+
+// 编辑文件（在Web IDE中打开特定文件）
+const editFile = async () => {
+  if (!selectedFile.value || !project.value?.gitlab_project_id) {
+    ElMessage.error('请先选择要编辑的文件')
+    return
+  }
+  
+  try {
+    // 获取GitLab配置
+    const config: any = await gitlabService.getConfig()
+    const gitlabUrl = config.gitlab_url
+    
+    // 获取项目详细信息以获取项目路径
+    const gitlabProject: any = await gitlabService.getProject(project.value.gitlab_project_id.toString())
+    const projectPath = gitlabProject.project?.path_with_namespace || `root/${project.value.name}`
+    
+    const branch = 'main'
+    const filePath = currentPath.value ? `${currentPath.value}/${selectedFile.value.name}` : selectedFile.value.name
+    
+    const ideUrl = `${gitlabUrl}/-/ide/project/${projectPath}/edit/${branch}/-/${filePath}`
+    window.open(ideUrl, '_blank')
+  } catch (error) {
+    console.error('获取GitLab配置失败:', error)
+    ElMessage.error('无法打开文件编辑器')
+  }
+}
+
+// 下载文件
+const downloadFile = async () => {
+  if (!selectedFile.value || !project.value?.gitlab_project_id) {
+    ElMessage.error('请先选择要下载的文件')
+    return
+  }
+  
+  try {
+    // 获取GitLab配置
+    const config: any = await gitlabService.getConfig()
+    const gitlabUrl = config.gitlab_url
+    
+    // 获取项目详细信息以获取项目路径
+    const gitlabProject: any = await gitlabService.getProject(project.value.gitlab_project_id.toString())
+    const projectPath = gitlabProject.project?.path_with_namespace || `root/${project.value.name}`
+    
+    const branch = 'main'
+    const filePath = currentPath.value ? `${currentPath.value}/${selectedFile.value.name}` : selectedFile.value.name
+    
+    const downloadUrl = `${gitlabUrl}/${projectPath}/-/raw/${branch}/${filePath}`
+    window.open(downloadUrl, '_blank')
+  } catch (error) {
+    console.error('获取GitLab配置失败:', error)
+    ElMessage.error('无法下载文件')
+  }
+}
+
+// 搜索用户（占位方法）
+const searchUsers = () => {
+  // 这里可以实现用户搜索功能
+  console.log('搜索用户:', memberSearchQuery.value)
+}
+
+// 显示添加成员对话框（占位方法）
+const showAddMemberDialog = () => {
+  ElMessage.info('添加成员功能待实现')
 }
 
 // 生命周期
@@ -801,9 +930,34 @@ watch(() => route.params.id, () => {
   overflow: hidden;
 }
 
+/* 文件列表表头样式 */
+.file-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: var(--background-light);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.file-header .file-name-col {
+  flex: 2;
+}
+
+.file-header .file-commit-col {
+  flex: 2;
+}
+
+.file-header .file-update-col {
+  flex: 1;
+  text-align: right;
+}
+
+/* 文件列表项样式 */
 .file-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color);
@@ -819,10 +973,24 @@ watch(() => route.params.id, () => {
   border-bottom: none;
 }
 
-.file-info {
+.file-name-col {
+  flex: 2;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.file-commit-col {
+  flex: 2;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.file-update-col {
+  flex: 1;
+  text-align: right;
+  font-size: 12px;
+  color: var(--light-text);
 }
 
 .file-icon {
@@ -834,10 +1002,15 @@ watch(() => route.params.id, () => {
   font-weight: 500;
 }
 
-.file-meta {
-  display: flex;
-  gap: 16px;
-  font-size: 12px;
+.commit-message {
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.update-time {
   color: var(--light-text);
 }
 

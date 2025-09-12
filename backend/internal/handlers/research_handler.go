@@ -38,6 +38,7 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	isPublic := c.Query("is_public") == "true"
 	includePrivate := c.Query("include_private") != "false"
+	ownerIDStr := c.Query("ownerId")
 
 	if page < 1 {
 		page = 1
@@ -57,11 +58,7 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 		projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false)
 	} else {
 		// 获取当前用户信息
-		userUUID, parseErr := uuid.Parse(userID.(string))
-		if parseErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
-			return
-		}
+		userUUID := userID.(uuid.UUID)
 
 		currentUser, err := h.userService.GetUserByID(userUUID)
 		if err != nil {
@@ -69,13 +66,25 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 			return
 		}
 
-		// 根据用户角色和查询参数获取项目
-		if currentUser.EduRole >= models.EduRoleTeacher {
-			// 教师和管理员可以看到所有项目
-			projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate)
+		// 如果指定了ownerId参数，则按创建者过滤
+		if ownerIDStr != "" {
+			ownerUUID, parseErr := uuid.Parse(ownerIDStr)
+			if parseErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "无效的创建者ID"})
+				return
+			}
+
+			// 根据创建者ID获取项目
+			projects, total, err = h.researchService.GetUserProjects(ownerUUID, limit, offset)
 		} else {
-			// 学生只能看到公开项目和自己参与的项目
-			projects, total, err = h.researchService.GetUserAccessibleProjects(userUUID, limit, offset)
+			// 根据用户角色和查询参数获取项目
+			if currentUser.EduRole >= models.EduRoleTeacher {
+				// 教师和管理员可以看到所有项目
+				projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate)
+			} else {
+				// 学生只能看到公开项目和自己参与的项目
+				projects, total, err = h.researchService.GetUserAccessibleProjects(userUUID, limit, offset)
+			}
 		}
 	}
 
@@ -104,11 +113,13 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 	}
 
 	var req struct {
-		Title       string     `json:"title" binding:"required"`
+		Name        string     `json:"name" binding:"required"`
+		Title       string     `json:"title"`
 		Description string     `json:"description"`
 		GitLabURL   string     `json:"gitlab_url"`
 		IsPublic    bool       `json:"is_public"`
-		StartDate   time.Time  `json:"start_date"`
+		Visibility  string     `json:"visibility"`
+		StartDate   *time.Time `json:"start_date"`
 		EndDate     *time.Time `json:"end_date"`
 		Tags        []string   `json:"tags"`
 	}
@@ -138,14 +149,26 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
+	// 处理项目名称和可见性
+	projectName := req.Name
+	if req.Title != "" {
+		projectName = req.Title
+	}
+
+	// 处理可见性设置
+	isPublic := req.IsPublic
+	if req.Visibility != "" {
+		isPublic = req.Visibility == "public"
+	}
+
 	// 创建GitLab项目
 	visibility := "private"
-	if req.IsPublic {
+	if isPublic {
 		visibility = "public"
 	}
 
 	createReq := &services.CreateProjectRequest{
-		Name:                 req.Title,
+		Name:                 projectName,
 		Description:          req.Description,
 		Visibility:           visibility,
 		InitializeWithReadme: true,
@@ -158,14 +181,20 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
+	// 处理开始日期，如果没有提供则使用当前时间
+	startDate := time.Now()
+	if req.StartDate != nil {
+		startDate = *req.StartDate
+	}
+
 	project := &models.ResearchProject{
-		Name:            req.Title,
+		Name:            projectName,
 		Description:     req.Description,
 		GitLabURL:       gitlabProject.WebURL,
 		GitLabProjectID: &gitlabProject.ID,
 		CreatorID:       userID.(uuid.UUID),
-		IsPublic:        req.IsPublic,
-		StartDate:       req.StartDate,
+		IsPublic:        isPublic,
+		StartDate:       startDate,
 		EndDate:         req.EndDate,
 		Status:          "active",
 	}

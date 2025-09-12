@@ -293,7 +293,11 @@ const editFormRules = {
 const fetchUserInfo = async () => {
   loading.value = true
   try {
+    console.log('调用 authService.getCurrentUser()...')
     const response = await authService.getCurrentUser()
+    console.log('API响应:', response)
+    
+    // 由于响应拦截器已经返回了data，所以response就是用户数据
     userInfo.value = response
     
     // 更新编辑表单
@@ -303,9 +307,21 @@ const fetchUserInfo = async () => {
         avatar_url: userInfo.value.avatar_url || ''
       }
     }
-  } catch (error) {
+    
+    console.log('用户信息设置成功:', userInfo.value)
+  } catch (error: any) {
     console.error('获取用户信息失败:', error)
-    ElMessage.error('获取用户信息失败')
+    
+    // 根据错误类型显示不同的提示
+    if (error.response?.status === 401) {
+      ElMessage.error('登录已过期，请重新登录')
+      userStore.logout()
+      router.push('/auth/login')
+    } else if (error.response?.status === 403) {
+      ElMessage.error('权限不足，无法访问个人资料')
+    } else {
+      ElMessage.error('获取用户信息失败，请稍后重试')
+    }
   } finally {
     loading.value = false
   }
@@ -320,12 +336,15 @@ const fetchStats = async () => {
       documentService.getDocuments({ })
     ])
 
+    // 由于响应拦截器已经返回了data，所以value就是实际数据
     stats.value.projectsCount = projectsRes.status === 'fulfilled' ? 
-      (projectsRes.value.data?.total || projectsRes.value.data?.length || 0) : 0
+      (projectsRes.value?.total || projectsRes.value?.length || 0) : 0
     stats.value.topicsCount = topicsRes.status === 'fulfilled' ? 
-      (topicsRes.value.data?.total || topicsRes.value.data?.length || 0) : 0
+      (topicsRes.value?.total || topicsRes.value?.length || 0) : 0
     stats.value.documentsCount = documentsRes.status === 'fulfilled' ? 
-      (documentsRes.value.data?.total || documentsRes.value.data?.length || 0) : 0
+      (documentsRes.value?.total || documentsRes.value?.length || 0) : 0
+      
+    console.log('统计数据:', stats.value)
   } catch (error) {
     console.error('获取统计数据失败:', error)
   }
@@ -336,11 +355,16 @@ const fetchMyProjects = async () => {
   
   projectsLoading.value = true
   try {
+    console.log('获取我的课题，用户ID:', userInfo.value.id)
     const response = await researchService.getProjects({ 
       ownerId: userInfo.value.id,
       pageSize: 10 
     })
-    myProjects.value = response.projects || []
+    console.log('课题API响应:', response)
+    
+    // 由于响应拦截器已经返回了data，所以response就是实际数据
+    myProjects.value = response?.projects || response || []
+    console.log('我的课题:', myProjects.value)
   } catch (error) {
     console.error('获取我的课题失败:', error)
   } finally {
@@ -353,11 +377,16 @@ const fetchMyTopics = async () => {
   
   topicsLoading.value = true
   try {
+    console.log('获取我的话题，用户ID:', userInfo.value.id)
     const response = await topicService.getTopics({ 
       authorId: userInfo.value.id,
       pageSize: 10 
     })
-    myTopics.value = response.topics || []
+    console.log('话题API响应:', response)
+    
+    // 由于响应拦截器已经返回了data，所以response就是实际数据
+    myTopics.value = response?.topics || response || []
+    console.log('我的话题:', myTopics.value)
   } catch (error) {
     console.error('获取我的话题失败:', error)
   } finally {
@@ -368,10 +397,15 @@ const fetchMyTopics = async () => {
 const fetchMyDocuments = async () => {
   documentsLoading.value = true
   try {
+    console.log('获取我的文档')
     const response = await documentService.getDocuments({ pageSize: 10 })
+    console.log('文档API响应:', response)
+    
     // 过滤出当前用户上传的文档
-    const allDocs = response.documents || []
+    // 由于响应拦截器已经返回了data，所以response就是实际数据
+    const allDocs = response?.documents || response || []
     myDocuments.value = allDocs.filter((doc: Document) => doc.uploader_id === userInfo.value?.id)
+    console.log('我的文档:', myDocuments.value)
   } catch (error) {
     console.error('获取我的文档失败:', error)
   } finally {
@@ -523,6 +557,41 @@ watch(() => activeTab.value, handleTabChange)
 
 // 生命周期
 onMounted(async () => {
+  console.log('Profile页面加载，检查登录状态...')
+  console.log('Token:', userStore.token)
+  console.log('User:', userStore.user)
+  console.log('IsLoggedIn:', userStore.isLoggedIn)
+
+  // 检查是否有token
+  if (!userStore.token) {
+    console.warn('没有token，重定向到登录页面')
+    ElMessage.warning('请先登录以查看个人资料')
+    router.push('/auth/login')
+    return
+  }
+
+  // 如果有token但没有用户信息，先尝试获取用户信息
+  if (!userStore.user) {
+    console.log('有token但没有用户信息，尝试获取用户信息...')
+    const success = await userStore.fetchCurrentUser()
+    if (!success) {
+      console.warn('获取用户信息失败，重定向到登录页面')
+      ElMessage.error('登录状态已过期，请重新登录')
+      router.push('/auth/login')
+      return
+    }
+  }
+
+  // 如果用户已登录，从store获取用户信息
+  if (userStore.user) {
+    userInfo.value = userStore.user
+    editForm.value = {
+      name: userStore.user.name,
+      avatar_url: userStore.user.avatar_url || ''
+    }
+  }
+
+  console.log('开始获取用户详细信息和统计数据...')
   await fetchUserInfo()
   await fetchStats()
   

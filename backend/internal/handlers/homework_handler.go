@@ -92,6 +92,10 @@ func (h *HomeworkHandler) GetHomeworkByID(c *gin.Context) {
 func (h *HomeworkHandler) GetHomeworkByProject(c *gin.Context) {
 	projectIDStr := c.Query("project_id")
 	if projectIDStr == "" {
+		// 尝试使用 projectId 参数（前端可能使用驼峰命名）
+		projectIDStr = c.Query("projectId")
+	}
+	if projectIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "项目ID不能为空"})
 		return
 	}

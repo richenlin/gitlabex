@@ -36,6 +36,9 @@ func (m *PermissionMiddleware) RequireProjectPermission(permission services.Proj
 
 		if projectIDStr := c.Param("project_id"); projectIDStr != "" {
 			projectID, err = uuid.Parse(projectIDStr)
+		} else if projectIDStr := c.Param("id"); projectIDStr != "" {
+			// 尝试从 id 参数获取项目ID（用于 /research-projects/:id 路由）
+			projectID, err = uuid.Parse(projectIDStr)
 		} else if projectIDStr := c.Query("project_id"); projectIDStr != "" {
 			projectID, err = uuid.Parse(projectIDStr)
 		} else {

@@ -69,13 +69,18 @@ export const useUserStore = defineStore('user', () => {
     
     isLoading.value = true
     try {
+      console.log('Store: 调用 authService.getCurrentUser()...')
       const response: any = await authService.getCurrentUser()
+      console.log('Store: API响应:', response)
+      
+      // 由于响应拦截器已经返回了data，所以response就是用户数据
       user.value = response
       
       localStorage.setItem('user', JSON.stringify(user.value))
+      console.log('Store: 用户信息保存成功:', user.value)
       return true
     } catch (error) {
-      console.error('获取用户信息失败:', error)
+      console.error('Store: 获取用户信息失败:', error)
       logout()
       return false
     } finally {
@@ -146,6 +151,9 @@ export const useUserStore = defineStore('user', () => {
     }
     return !!user.value
   }
+
+  // 初始化时从localStorage恢复状态
+  initUserFromStorage()
 
   return {
     user,

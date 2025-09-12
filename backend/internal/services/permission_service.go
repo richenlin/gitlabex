@@ -52,6 +52,11 @@ func (s *PermissionService) CheckProjectPermission(userID, projectID uuid.UUID, 
 		return false, err
 	}
 
+	// 项目创建者拥有所有权限
+	if project.CreatorID == userID {
+		return true, nil
+	}
+
 	// 公开项目，所有人都可以查看
 	if project.IsPublic && permission == ProjectPermissionView {
 		return true, nil

@@ -150,7 +150,7 @@ func main() {
 		researchAuth.Use(middleware.RequireAuth(cfg))
 		{
 			researchAuth.GET("/:id", researchHandler.GetResearchProjectByID) // 课题详情
-			researchAuth.POST("", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionCreate), researchHandler.CreateResearchProject)
+			researchAuth.POST("", researchHandler.CreateResearchProject)     // 创建课题不需要项目权限检查
 			researchAuth.PUT("/:id", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionEdit), researchHandler.UpdateResearchProject)
 			researchAuth.DELETE("/:id", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionDelete), researchHandler.DeleteResearchProject)
 		}
@@ -372,6 +372,7 @@ func main() {
 	gitlab := api.Group("/gitlab")
 	gitlab.Use(middleware.RequireAuth(cfg))
 	{
+		gitlab.GET("/config", gitlabHandler.GetGitLabConfig)
 		gitlab.GET("/user", gitlabHandler.GetCurrentUser)
 		gitlab.GET("/projects", gitlabHandler.GetProjects)
 		gitlab.GET("/projects/:id", gitlabHandler.GetProject)

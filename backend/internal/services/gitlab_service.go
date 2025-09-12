@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gitlabex/internal/config"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -627,10 +628,63 @@ func (s *GitLabService) ValidateRepositoryAccess(accessToken string, projectID i
 // GetRepositoryTree 获取仓库文件树
 func (s *GitLabService) GetRepositoryTree(accessToken string, projectID int64, path string, ref string) ([]map[string]interface{}, error) {
 	encodedPath := url.PathEscape(path)
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/tree?path=%s&ref=%s",
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/tree?path=%s&ref=%s",
 		s.Config.GitLabURL, projectID, encodedPath, ref)
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", apiUrl, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建HTTP请求失败: %v", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("GitLab服务器连接失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// 读取响应体用于错误诊断
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	if resp.StatusCode == 401 {
+		return nil, fmt.Errorf("GitLab访问令牌无效或已过期，请重新登录")
+	} else if resp.StatusCode == 403 {
+		return nil, fmt.Errorf("没有访问该项目的权限")
+	} else if resp.StatusCode == 404 {
+		return nil, fmt.Errorf("项目不存在或路径无效")
+	} else if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitLab API错误 (%d): %s", resp.StatusCode, string(body))
+	}
+
+	var tree []map[string]interface{}
+	if err := json.Unmarshal(body, &tree); err != nil {
+		return nil, fmt.Errorf("解析响应数据失败: %v", err)
+	}
+
+	// 为每个文件设置默认值，避免获取提交信息时的额外延迟
+	for i := range tree {
+		// 设置默认值
+		tree[i]["last_commit_message"] = ""
+		tree[i]["last_commit_date"] = ""
+		tree[i]["last_update"] = ""
+		tree[i]["last_commit_author"] = ""
+	}
+
+	return tree, nil
+}
+
+// getFileLastCommit 获取文件的最后提交信息
+func (s *GitLabService) getFileLastCommit(accessToken string, projectID int64, filePath string, ref string) (map[string]interface{}, error) {
+	encodedPath := url.PathEscape(filePath)
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?path=%s&ref_name=%s&per_page=1",
+		s.Config.GitLabURL, projectID, encodedPath, ref)
+
+	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -648,12 +702,16 @@ func (s *GitLabService) GetRepositoryTree(accessToken string, projectID int64, p
 		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
 	}
 
-	var tree []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
+	var commits []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&commits); err != nil {
 		return nil, err
 	}
 
-	return tree, nil
+	if len(commits) > 0 {
+		return commits[0], nil
+	}
+
+	return nil, nil
 }
 
 // SearchFiles 搜索仓库中的文件

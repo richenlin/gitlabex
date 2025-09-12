@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 // JWTClaims JWT声明结构
@@ -15,7 +16,7 @@ type JWTClaims struct {
 	UserID   string `json:"user_id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
-	Role     int    `json:"role"`
+	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -84,7 +85,18 @@ func RequireAuth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// 将用户信息设置到上下文中
-		c.Set("userID", claims.UserID)
+		// 将字符串类型的userID转换为uuid.UUID类型
+		userUUID, err := uuid.Parse(claims.UserID)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "invalid_user_id",
+				"message": "Invalid user ID format in token",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Set("userID", userUUID)
 		c.Set("username", claims.Username)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)
@@ -104,7 +116,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
-			c.Set("role", 0) // guest role
+			c.Set("role", "guest") // guest role
 			c.Next()
 			return
 		}
@@ -117,7 +129,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
-			c.Set("role", 0)
+			c.Set("role", "guest")
 			c.Next()
 			return
 		}
@@ -137,7 +149,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
-			c.Set("role", 0)
+			c.Set("role", "guest")
 			c.Next()
 			return
 		}
@@ -150,14 +162,27 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
-			c.Set("role", 0)
+			c.Set("role", "guest")
 			c.Next()
 			return
 		}
 
 		// 设置已登录用户信息
+		// 将字符串类型的userID转换为uuid.UUID类型
+		userUUID, err := uuid.Parse(claims.UserID)
+		if err != nil {
+			// userID格式错误，设置为游客模式
+			c.Set("is_guest", true)
+			c.Set("userID", "")
+			c.Set("username", "guest")
+			c.Set("email", "")
+			c.Set("role", "guest")
+			c.Next()
+			return
+		}
+
 		c.Set("is_guest", false)
-		c.Set("userID", claims.UserID)
+		c.Set("userID", userUUID)
 		c.Set("username", claims.Username)
 		c.Set("email", claims.Email)
 		c.Set("role", claims.Role)

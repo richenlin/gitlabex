@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // GitLabHandler GitLab API处理器
@@ -69,10 +70,27 @@ func (h *GitLabHandler) GetProjects(c *gin.Context) {
 
 // GetProject 获取特定项目信息
 func (h *GitLabHandler) GetProject(c *gin.Context) {
+	// 优先从请求头获取token，如果没有则从当前用户获取
 	accessToken := c.GetHeader("X-GitLab-Token")
 	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
-		return
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+			return
+		}
+
+		user, err := h.userService.GetUserByID(userID.(uuid.UUID))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
+			return
+		}
+
+		if user.AccessToken == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
+			return
+		}
+
+		accessToken = user.AccessToken
 	}
 
 	projectID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -177,10 +195,27 @@ func (h *GitLabHandler) CreateBranch(c *gin.Context) {
 
 // GetFileContent 获取文件内容
 func (h *GitLabHandler) GetFileContent(c *gin.Context) {
+	// 优先从请求头获取token，如果没有则从当前用户获取
 	accessToken := c.GetHeader("X-GitLab-Token")
 	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
-		return
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+			return
+		}
+
+		user, err := h.userService.GetUserByID(userID.(uuid.UUID))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
+			return
+		}
+
+		if user.AccessToken == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
+			return
+		}
+
+		accessToken = user.AccessToken
 	}
 
 	projectID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -189,7 +224,7 @@ func (h *GitLabHandler) GetFileContent(c *gin.Context) {
 		return
 	}
 
-	filePath := c.Param("path")
+	filePath := strings.TrimPrefix(c.Param("path"), "/")
 	ref := c.DefaultQuery("ref", "main")
 
 	file, err := h.gitlabService.GetFileContent(accessToken, projectID, filePath, ref)
@@ -388,10 +423,35 @@ func (h *GitLabHandler) GetMergeRequests(c *gin.Context) {
 
 // GetRepositoryTree 获取仓库文件树
 func (h *GitLabHandler) GetRepositoryTree(c *gin.Context) {
+	// 优先从请求头获取token，如果没有则从当前用户获取
 	accessToken := c.GetHeader("X-GitLab-Token")
 	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
-		return
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+			return
+		}
+
+		user, err := h.userService.GetUserByID(userID.(uuid.UUID))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败", "details": err.Error()})
+			return
+		}
+
+		if user.AccessToken == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "GitLab access token required",
+				"message": "用户未绑定GitLab访问令牌，请重新登录",
+			})
+			return
+		}
+
+		accessToken = user.AccessToken
+		// 添加调试信息
+		c.Header("X-Debug-Token-Source", "user-database")
+		c.Header("X-Debug-User-ID", user.ID.String())
+	} else {
+		c.Header("X-Debug-Token-Source", "request-header")
 	}
 
 	projectID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -405,11 +465,64 @@ func (h *GitLabHandler) GetRepositoryTree(c *gin.Context) {
 
 	tree, err := h.gitlabService.GetRepositoryTree(accessToken, projectID, path, ref)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// 添加详细的错误信息用于调试
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+			"debug_info": map[string]interface{}{
+				"project_id": projectID,
+				"path":       path,
+				"ref":        ref,
+				"has_token":  accessToken != "",
+				"token_len":  len(accessToken),
+			},
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"tree": tree})
+	// 转换数据格式以匹配前端期望的字段名
+	var formattedTree []map[string]interface{}
+	for _, item := range tree {
+		formattedItem := make(map[string]interface{})
+
+		// 复制所有原始字段
+		for k, v := range item {
+			formattedItem[k] = v
+		}
+
+		// 确保必要的字段存在，如果不存在则设置默认值
+		if _, exists := formattedItem["size"]; !exists {
+			formattedItem["size"] = 0
+		}
+
+		// 添加最后提交信息字段
+		if lastCommit, exists := formattedItem["last_commit"]; exists {
+			if commitMap, ok := lastCommit.(map[string]interface{}); ok {
+				// 提取提交信息
+				if message, ok := commitMap["message"].(string); ok {
+					formattedItem["last_commit_message"] = message
+				}
+				if committedDate, ok := commitMap["committed_date"].(string); ok {
+					formattedItem["last_commit_date"] = committedDate
+					formattedItem["last_update"] = committedDate
+				}
+				if authorName, ok := commitMap["author_name"].(string); ok {
+					formattedItem["last_commit_author"] = authorName
+				}
+			}
+			// 移除原始的 last_commit 对象
+			delete(formattedItem, "last_commit")
+		} else {
+			// 如果没有最后提交信息，设置默认值
+			formattedItem["last_commit_message"] = ""
+			formattedItem["last_commit_date"] = ""
+			formattedItem["last_update"] = ""
+			formattedItem["last_commit_author"] = ""
+		}
+
+		formattedTree = append(formattedTree, formattedItem)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"tree": formattedTree})
 }
 
 // SearchFiles 搜索文件
@@ -462,4 +575,12 @@ func (h *GitLabHandler) ValidateRepositoryAccess(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"valid": true})
+}
+
+// GetGitLabConfig 获取GitLab配置信息
+func (h *GitLabHandler) GetGitLabConfig(c *gin.Context) {
+	config := map[string]interface{}{
+		"gitlab_url": h.gitlabService.Config.GitLabURL,
+	}
+	c.JSON(http.StatusOK, config)
 }
