@@ -521,30 +521,14 @@ func (h *DocumentHandler) SyncDocuments(c *gin.Context) {
 
 	gitLabProjectID := *project.GitLabProjectID
 
-	// 获取用户access token，支持多种格式
-	accessToken := c.GetHeader("Authorization")
-	if accessToken == "" {
-		// 尝试从其他地方获取token
-		accessToken = c.GetHeader("X-Access-Token")
-	}
-	if accessToken == "" {
-		accessToken = c.Query("access_token")
-	}
-
-	// 处理Bearer token格式
-	if strings.HasPrefix(accessToken, "Bearer ") {
-		accessToken = strings.TrimPrefix(accessToken, "Bearer ")
-	}
-
-	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "需要访问令牌",
-			"code":  "MISSING_TOKEN",
-		})
+	// 从JWT token中获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab访问令牌未找到"})
 		return
 	}
 
-	if err := h.documentService.SyncDocumentsFromGitLab(projectID, gitLabProjectID, accessToken); err != nil {
+	if err := h.documentService.SyncDocumentsFromGitLab(projectID, gitLabProjectID, accessToken.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "同步文档失败"})
 		return
 	}
@@ -595,14 +579,14 @@ func (h *DocumentHandler) ScanProjectDocuments(c *gin.Context) {
 
 	gitLabProjectID := *project.GitLabProjectID
 
-	// 获取用户access token
-	accessToken := c.GetHeader("Authorization")
-	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "需要访问令牌"})
+	// 从JWT token中获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab访问令牌未找到"})
 		return
 	}
 
-	if err := h.documentService.ScanProjectDocuments(projectID, gitLabProjectID, accessToken); err != nil {
+	if err := h.documentService.ScanProjectDocuments(projectID, gitLabProjectID, accessToken.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "扫描文档失败",
 			"details": err.Error(),
