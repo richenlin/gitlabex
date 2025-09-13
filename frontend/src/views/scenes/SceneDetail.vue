@@ -81,14 +81,15 @@
                       </el-icon>
                       <span class="file-name">{{ file.name }}</span>
                     </div>
-                  <div class="file-commit-col">
-                    <span class="commit-message">{{ file.last_commit_message || '-' }}</span>
-                  </div>
-                  <div class="file-update-col">
-                    <span class="update-time">{{ formatRelativeTime(file.last_commit_date) }}</span>
-                  </div>
-                  <div class="file-size-col">
-                    <span class="file-size">{{ formatFileSize(file.size || 0) }}</span>
+                    <div class="file-commit-col">
+                      <span class="commit-message">{{ file.last_commit_message || '-' }}</span>
+                    </div>
+                    <div class="file-update-col">
+                      <span class="update-time">{{ formatRelativeTime(file.last_commit_date) }}</span>
+                    </div>
+                    <div class="file-size-col">
+                      <span class="file-size">{{ formatFileSize(file.size || 0) }}</span>
+                    </div>
                   </div>
                 </div>
               </div>

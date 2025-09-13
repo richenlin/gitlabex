@@ -31,7 +31,7 @@ func NewResearchHandler(researchService *services.ResearchService, userService *
 func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 	// 检查是否为游客模式
 	isGuest, _ := c.Get("is_guest")
-	userID, _ := c.Get("userID")
+	gitlabUserID, _ := c.Get("gitlab_user_id")
 
 	// 获取分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -54,36 +54,30 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 	var err error
 
 	// 如果是游客模式，只返回公开项目
-	if isGuest == true || userID == "" {
+	if isGuest == true || gitlabUserID == nil {
 		projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false)
 	} else {
-		// 获取当前用户信息
-		userUUID := userID.(uuid.UUID)
-
-		currentUser, err := h.userService.GetUserByID(userUUID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-			return
-		}
+		gitlabUID := gitlabUserID.(int64)
 
 		// 如果指定了ownerId参数，则按创建者过滤
 		if ownerIDStr != "" {
-			ownerUUID, parseErr := uuid.Parse(ownerIDStr)
+			ownerGitLabID, parseErr := strconv.ParseInt(ownerIDStr, 10, 64)
 			if parseErr != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "无效的创建者ID"})
 				return
 			}
 
-			// 根据创建者ID获取项目
-			projects, total, err = h.researchService.GetUserProjects(ownerUUID, limit, offset)
+			// 根据创建者GitLab ID获取项目
+			projects, total, err = h.researchService.GetUserProjectsByGitLabID(ownerGitLabID, limit, offset)
 		} else {
-			// 根据用户角色和查询参数获取项目
-			if currentUser.EduRole >= models.EduRoleTeacher {
-				// 教师和管理员可以看到所有项目
+			// 检查用户权限 - 管理员可以看到所有项目，普通用户看到公开项目和自己创建的项目
+			isAdmin, _ := c.Get("is_admin")
+			if isAdmin != nil && isAdmin.(bool) {
+				// 管理员可以看到所有项目
 				projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate)
 			} else {
-				// 学生只能看到公开项目和自己参与的项目
-				projects, total, err = h.researchService.GetUserAccessibleProjects(userUUID, limit, offset)
+				// 普通用户只能看到公开项目和自己创建的项目
+				projects, total, err = h.researchService.GetUserAccessibleProjectsByGitLabID(gitlabUID, limit, offset)
 			}
 		}
 	}
@@ -106,9 +100,16 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 
 // CreateResearchProject 创建研究课题
 func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	// 从上下文获取GitLab访问令牌和用户信息
+	accessToken, exists := c.Get("gitlab_access_token")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无法获取用户信息"})
 		return
 	}
 
@@ -129,25 +130,13 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
-	// 获取当前用户信息
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
-
-	// 检查权限 - 只有教师和管理员可以创建项目
-	if currentUser.EduRole < models.EduRoleTeacher {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权限创建课题"})
-		return
-	}
-
-	// 获取用户的访问令牌 (这里需要从用户信息中获取)
-	accessToken := currentUser.AccessToken // 假设从当前用户获取
-	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
-		return
-	}
+	// 检查权限 - 暂时允许所有登录用户创建项目
+	// TODO: 可以根据GitLab用户信息或项目权限进行更细粒度的权限控制
+	// isAdmin, exists := c.Get("is_admin")
+	// if !exists || !isAdmin.(bool) {
+	//     c.JSON(http.StatusForbidden, gin.H{"error": "无权限创建课题"})
+	//     return
+	// }
 
 	// 处理项目名称和可见性
 	projectName := req.Name
@@ -175,7 +164,7 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		DefaultBranch:        "main",
 	}
 
-	gitlabProject, err := h.gitlabService.CreateProject(accessToken, createReq)
+	gitlabProject, err := h.gitlabService.CreateProject(accessToken.(string), createReq)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建GitLab项目失败: " + err.Error()})
 		return
@@ -192,7 +181,7 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		Description:     req.Description,
 		GitLabURL:       gitlabProject.WebURL,
 		GitLabProjectID: &gitlabProject.ID,
-		CreatorID:       userID.(uuid.UUID),
+		CreatorID:       gitlabUserID.(int64),
 		IsPublic:        isPublic,
 		StartDate:       startDate,
 		EndDate:         req.EndDate,
@@ -204,22 +193,20 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
-	// 自动添加创建者为项目管理员
-	if err := h.researchService.AddProjectMember(project.ID, userID.(uuid.UUID), models.ProjectRoleOwner); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "添加项目成员失败"})
-		return
-	}
+	// 注意：项目创建者（CreatorID）本身就是Owner，不需要添加到ProjectMember表中
+	// ProjectMember表只用于存储由创建者添加的其他成员
 
 	c.JSON(http.StatusCreated, project)
 }
 
 // GetResearchProjectByID 根据ID获取研究课题详情
 func (h *ResearchHandler) GetResearchProjectByID(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
+	// 从上下文获取GitLab用户信息
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	accessToken, hasToken := c.Get("gitlab_access_token")
+
+	// 允许游客查看公开项目
+	isGuest := !exists || !hasToken
 
 	projectIDStr := c.Param("id")
 	projectID, err := uuid.Parse(projectIDStr)
@@ -235,17 +222,45 @@ func (h *ResearchHandler) GetResearchProjectByID(c *gin.Context) {
 	}
 
 	// 检查访问权限
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
+	if !isGuest {
+		gitlabUID := gitlabUserID.(int64)
 
-	// 教师和管理员可以访问所有项目
-	// 学生只能访问公开项目或自己参与的项目
-	if currentUser.EduRole < models.EduRoleTeacher && !project.IsPublic {
-		isMember, err := h.researchService.IsProjectMember(projectID, userID.(uuid.UUID))
-		if err != nil || !isMember {
+		// 使用GitLab权限检查（如果项目关联了GitLab）
+		if project.GitLabProjectID != nil {
+			// 对于关联GitLab的项目，使用GitLab权限检查
+			hasPermission := false
+
+			// 检查是否是管理员
+			isAdmin, _ := c.Get("is_admin")
+			if isAdmin != nil && isAdmin.(bool) {
+				hasPermission = true
+			} else if project.IsPublic {
+				// 公开项目所有人都可以查看
+				hasPermission = true
+			} else if project.CreatorID == gitlabUID {
+				// 项目创建者可以访问
+				hasPermission = true
+			} else {
+				// 使用GitLab API检查项目权限
+				err := h.gitlabService.ValidateRepositoryAccess(accessToken.(string), *project.GitLabProjectID)
+				hasPermission = (err == nil)
+			}
+
+			if !hasPermission {
+				c.JSON(http.StatusForbidden, gin.H{"error": "无权限访问该课题"})
+				return
+			}
+		} else {
+			// 对于未关联GitLab的项目，使用简化权限检查
+			isAdmin, _ := c.Get("is_admin")
+			if !(isAdmin != nil && isAdmin.(bool)) && !project.IsPublic && project.CreatorID != gitlabUID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "无权限访问该课题"})
+				return
+			}
+		}
+	} else {
+		// 游客只能查看公开项目
+		if !project.IsPublic {
 			c.JSON(http.StatusForbidden, gin.H{"error": "无权限访问该课题"})
 			return
 		}
@@ -256,7 +271,8 @@ func (h *ResearchHandler) GetResearchProjectByID(c *gin.Context) {
 
 // UpdateResearchProject 更新研究课题信息
 func (h *ResearchHandler) UpdateResearchProject(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	// 从上下文获取GitLab用户信息
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -285,19 +301,20 @@ func (h *ResearchHandler) UpdateResearchProject(c *gin.Context) {
 	}
 
 	// 检查权限 - 只有创建者和管理员可以更新
-	isOwner, err := h.researchService.IsProjectOwner(projectID, userID.(uuid.UUID))
+	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "检查项目所有者失败",
+			"details":    err.Error(),
+			"user_id":    gitlabUserID,
+			"project_id": projectID.String(),
+		})
 		return
 	}
 
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
-
-	if !isOwner && currentUser.EduRole < models.EduRoleAdmin {
+	// 检查权限：项目创建者或管理员可以更新
+	isAdmin, _ := c.Get("is_admin")
+	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权限修改该课题"})
 		return
 	}
@@ -335,7 +352,7 @@ func (h *ResearchHandler) UpdateResearchProject(c *gin.Context) {
 
 // DeleteResearchProject 删除研究课题
 func (h *ResearchHandler) DeleteResearchProject(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -349,19 +366,15 @@ func (h *ResearchHandler) DeleteResearchProject(c *gin.Context) {
 	}
 
 	// 检查权限
-	isOwner, err := h.researchService.IsProjectOwner(projectID, userID.(uuid.UUID))
+	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
 		return
 	}
 
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
-
-	if !isOwner && currentUser.EduRole < models.EduRoleAdmin {
+	// 检查权限：项目创建者或管理员可以删除
+	isAdmin, _ := c.Get("is_admin")
+	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权限删除该课题"})
 		return
 	}
@@ -392,25 +405,16 @@ func (h *ResearchHandler) DeleteResearchProject(c *gin.Context) {
 
 // GetMembers 获取课题成员列表
 func (h *ResearchHandler) GetMembers(c *gin.Context) {
-	projectIDStr := c.Param("id")
-	projectID, err := uuid.Parse(projectIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课题ID"})
-		return
-	}
-
-	members, err := h.researchService.GetProjectMembers(projectID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取成员列表失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"members": members})
+	// 注意：成员管理已移至GitLab，这里返回提示信息
+	c.JSON(http.StatusOK, gin.H{
+		"message": "成员管理已移至GitLab，请在GitLab项目中管理成员",
+		"members": []interface{}{},
+	})
 }
 
 // AddMember 添加课题成员
 func (h *ResearchHandler) AddMember(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -434,56 +438,28 @@ func (h *ResearchHandler) AddMember(c *gin.Context) {
 	}
 
 	// 检查权限 - 只有项目所有者和管理员可以添加成员
-	isOwner, err := h.researchService.IsProjectOwner(projectID, userID.(uuid.UUID))
+	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
 		return
 	}
 
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
-
-	if !isOwner && currentUser.EduRole < models.EduRoleAdmin {
+	// 检查权限：项目创建者或管理员可以操作
+	isAdmin, _ := c.Get("is_admin")
+	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权限添加成员"})
 		return
 	}
 
-	// 映射角色到项目角色
-	var projectRole models.ProjectRole
-	switch req.Role {
-	case "owner":
-		projectRole = models.ProjectRoleOwner
-	case "maintainer":
-		projectRole = models.ProjectRoleMaintainer
-	case "developer":
-		projectRole = models.ProjectRoleDeveloper
-	case "reporter":
-		projectRole = models.ProjectRoleReporter
-	default:
-		projectRole = models.ProjectRoleReporter
-	}
-
-	if err := h.researchService.AddProjectMember(projectID, req.UserID, projectRole); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "添加成员失败"})
-		return
-	}
-
-	// 同步到GitLab项目权限 (AddProjectMember方法需要实现)
-	// TODO: 实现GitLab项目成员添加
-	// if err := h.gitlabService.AddProjectMember(projectID, req.UserID, projectRole); err != nil {
-	//     c.JSON(http.StatusInternalServerError, gin.H{"error": "同步GitLab权限失败"})
-	//     return
-	// }
-
-	c.JSON(http.StatusOK, gin.H{"message": "成员添加成功"})
+	// 注意：成员管理已移至GitLab
+	c.JSON(http.StatusNotImplemented, gin.H{
+		"error": "成员管理已移至GitLab，请在GitLab项目中添加成员",
+	})
 }
 
 // RemoveMember 移除课题成员
 func (h *ResearchHandler) RemoveMember(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -504,19 +480,15 @@ func (h *ResearchHandler) RemoveMember(c *gin.Context) {
 	}
 
 	// 检查权限
-	isOwner, err := h.researchService.IsProjectOwner(projectID, userID.(uuid.UUID))
+	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
 		return
 	}
 
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
-
-	if !isOwner && currentUser.EduRole < models.EduRoleAdmin {
+	// 检查权限：项目创建者或管理员可以操作
+	isAdmin, _ := c.Get("is_admin")
+	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权限移除成员"})
 		return
 	}
@@ -533,19 +505,10 @@ func (h *ResearchHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	if err := h.researchService.RemoveProjectMember(projectID, userIDToRemove); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "移除成员失败"})
-		return
-	}
-
-	// 同步到GitLab (RemoveProjectMember方法需要实现)
-	// TODO: 实现GitLab项目成员移除
-	// if err := h.gitlabService.RemoveProjectMember(projectID, userIDToRemove); err != nil {
-	//     c.JSON(http.StatusInternalServerError, gin.H{"error": "同步GitLab权限失败"})
-	//     return
-	// }
-
-	c.JSON(http.StatusOK, gin.H{"message": "成员移除成功"})
+	// 注意：成员管理已移至GitLab
+	c.JSON(http.StatusNotImplemented, gin.H{
+		"error": "成员管理已移至GitLab，请在GitLab项目中移除成员",
+	})
 }
 
 // GetIssues 获取课题相关Issues
@@ -583,7 +546,7 @@ func (h *ResearchHandler) GetIssues(c *gin.Context) {
 
 // CreateIssue 创建新Issue
 func (h *ResearchHandler) CreateIssue(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	_, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -608,19 +571,7 @@ func (h *ResearchHandler) CreateIssue(c *gin.Context) {
 		return
 	}
 
-	// 检查权限
-	isMember, err := h.researchService.IsProjectMember(projectID, userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
-		return
-	}
-
-	if !isMember {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权限创建Issue"})
-		return
-	}
-
-	// 获取课题信息
+	// 获取课题信息以检查GitLab关联
 	project, err := h.researchService.GetResearchProjectByID(projectID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
@@ -633,22 +584,18 @@ func (h *ResearchHandler) CreateIssue(c *gin.Context) {
 		return
 	}
 
-	// 获取当前用户信息
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
-
-	// 获取用户的访问令牌
-	accessToken := currentUser.AccessToken
-	if accessToken == "" {
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
 
+	// 权限检查将由GitLab API在创建Issue时进行
+	// 如果用户没有权限，GitLab API会返回错误
+
 	// 创建GitLab Issue
-	issue, err := h.gitlabService.CreateIssue(accessToken, *project.GitLabProjectID, req.Title, req.Description, req.Labels, req.AssigneeID)
+	issue, err := h.gitlabService.CreateIssue(accessToken.(string), *project.GitLabProjectID, req.Title, req.Description, req.Labels, req.AssigneeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建Issue失败: " + err.Error()})
 		return
@@ -745,7 +692,7 @@ func (h *ResearchHandler) GetDiscussions(c *gin.Context) {
 
 // CreateDiscussion 创建新讨论
 func (h *ResearchHandler) CreateDiscussion(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	_, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -774,17 +721,7 @@ func (h *ResearchHandler) CreateDiscussion(c *gin.Context) {
 		return
 	}
 
-	// 检查权限
-	isMember, err := h.researchService.IsProjectMember(projectID, userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
-		return
-	}
-
-	if !isMember {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权限创建讨论"})
-		return
-	}
+	// 注意：权限检查已简化，具体权限由GitLab控制
 
 	// 获取课题信息
 	project, err := h.researchService.GetResearchProjectByID(projectID)
@@ -831,7 +768,7 @@ func (h *ResearchHandler) GetHomework(c *gin.Context) {
 
 // CreateHomework 创建课题作业
 func (h *ResearchHandler) CreateHomework(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -857,19 +794,17 @@ func (h *ResearchHandler) CreateHomework(c *gin.Context) {
 	}
 
 	// 检查权限
-	isOwner, err := h.researchService.IsProjectOwner(projectID, userID.(uuid.UUID))
+	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
 		return
 	}
 
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
+	// 用户信息已从GitLab获取，无需本地查询
 
-	if !isOwner && currentUser.EduRole < models.EduRoleTeacher {
+	// 检查权限：项目创建者或管理员可以创建作业
+	isAdmin, _ := c.Get("is_admin")
+	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权限创建作业"})
 		return
 	}
@@ -880,7 +815,7 @@ func (h *ResearchHandler) CreateHomework(c *gin.Context) {
 		Description: req.Description,
 		DueDate:     req.DueDate,
 		MaxGrade:    req.MaxGrade,
-		CreatorID:   userID.(uuid.UUID),
+		CreatorID:   gitlabUserID.(int64),
 		Status:      "active",
 	}
 

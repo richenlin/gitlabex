@@ -14,7 +14,6 @@ require (
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/rs/cors v1.10.1
-	golang.org/x/crypto v0.39.0
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.25.5
 )
@@ -55,6 +54,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	golang.org/x/arch v0.3.0 // indirect
+	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.26.0 // indirect

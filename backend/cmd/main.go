@@ -57,7 +57,7 @@ func main() {
 		log.Fatalf("Failed to initialize MinIO service: %v", err)
 	}
 
-	userService := services.NewUserService(db, gitlabService)
+	userService := services.NewUserService(gitlabService, cfg)
 	researchService := services.NewResearchService(db, gitlabService)
 	topicService := services.NewTopicService(db, gitlabService)
 	documentService := services.NewDocumentService(db, gitlabService, minioService)
@@ -70,10 +70,6 @@ func main() {
 
 	// 初始化活动服务
 	activityService := services.NewActivityService(db)
-
-	// 权限服务必须在其他handler之前初始化
-	permissionService := services.NewPermissionService(db)
-	permissionMiddleware := middleware.NewPermissionMiddleware(permissionService)
 
 	// 初始化处理器
 	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
@@ -151,25 +147,25 @@ func main() {
 		{
 			researchAuth.GET("/:id", researchHandler.GetResearchProjectByID) // 课题详情
 			researchAuth.POST("", researchHandler.CreateResearchProject)     // 创建课题不需要项目权限检查
-			researchAuth.PUT("/:id", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionEdit), researchHandler.UpdateResearchProject)
-			researchAuth.DELETE("/:id", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionDelete), researchHandler.DeleteResearchProject)
+			researchAuth.PUT("/:id", researchHandler.UpdateResearchProject)
+			researchAuth.DELETE("/:id", researchHandler.DeleteResearchProject)
 		}
 
 		// 成员管理 - 需要认证
-		researchAuth.GET("/:id/members", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionView), researchHandler.GetMembers)
-		researchAuth.POST("/:id/members", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionManage), researchHandler.AddMember)
-		researchAuth.DELETE("/:id/members/:userId", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionManage), researchHandler.RemoveMember)
+		researchAuth.GET("/:id/members", researchHandler.GetMembers)
+		researchAuth.POST("/:id/members", researchHandler.AddMember)
+		researchAuth.DELETE("/:id/members/:userId", researchHandler.RemoveMember)
 
 		// 话题管理（基于GitLab Issues）- 需要认证
-		researchAuth.GET("/:id/issues", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionView), researchHandler.GetIssues)
-		researchAuth.POST("/:id/issues", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionCreate), researchHandler.CreateIssue)
-		researchAuth.GET("/:id/issues/:issueId", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionView), researchHandler.GetIssue)
-		researchAuth.GET("/:id/issues/:issueId/discussions", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionView), researchHandler.GetDiscussions)
-		researchAuth.POST("/:id/issues/:issueId/discussions", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionCreate), researchHandler.CreateDiscussion)
+		researchAuth.GET("/:id/issues", researchHandler.GetIssues)
+		researchAuth.POST("/:id/issues", researchHandler.CreateIssue)
+		researchAuth.GET("/:id/issues/:issueId", researchHandler.GetIssue)
+		researchAuth.GET("/:id/issues/:issueId/discussions", researchHandler.GetDiscussions)
+		researchAuth.POST("/:id/issues/:issueId/discussions", researchHandler.CreateDiscussion)
 
 		// 作业管理 - 需要认证
-		researchAuth.GET("/:id/homework", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionView), researchHandler.GetHomework)
-		researchAuth.POST("/:id/homework", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionCreate), researchHandler.CreateHomework)
+		researchAuth.GET("/:id/homework", researchHandler.GetHomework)
+		researchAuth.POST("/:id/homework", researchHandler.CreateHomework)
 	}
 
 	// 话题相关路由
@@ -188,9 +184,9 @@ func main() {
 		{
 			topicsAuth.GET("/:id", topicHandler.GetTopicByID) // 话题详情
 			topicsAuth.POST("", topicHandler.CreateTopic)
-			topicsAuth.PUT("/:id", permissionMiddleware.RequireTopicPermission(services.ProjectPermissionEdit), topicHandler.UpdateTopic)
-			topicsAuth.DELETE("/:id", permissionMiddleware.RequireTopicPermission(services.ProjectPermissionDelete), topicHandler.DeleteTopic)
-			topicsAuth.POST("/:id/comments", permissionMiddleware.RequireTopicPermission(services.ProjectPermissionCreate), topicHandler.CreateComment)
+			topicsAuth.PUT("/:id", topicHandler.UpdateTopic)
+			topicsAuth.DELETE("/:id", topicHandler.DeleteTopic)
+			topicsAuth.POST("/:id/comments", topicHandler.CreateComment)
 			topicsAuth.POST("/:id/like", topicHandler.LikeTopic)
 			topicsAuth.DELETE("/:id/like", topicHandler.UnlikeTopic)
 		}
@@ -211,17 +207,17 @@ func main() {
 		documentsAuth.Use(middleware.RequireAuth(cfg))
 		{
 			documentsAuth.GET("/:id/download", documentHandler.DownloadDocument) // 文档下载 - 需要登录
-			documentsAuth.PUT("/:id", permissionMiddleware.RequireDocumentPermission(services.ProjectPermissionEdit), documentHandler.UpdateDocument)
-			documentsAuth.DELETE("/:id", permissionMiddleware.RequireDocumentPermission(services.ProjectPermissionDelete), documentHandler.DeleteDocument)
+			documentsAuth.PUT("/:id", documentHandler.UpdateDocument)
+			documentsAuth.DELETE("/:id", documentHandler.DeleteDocument)
 			documentsAuth.GET("/stats", documentHandler.GetDocumentStats)
-			documentsAuth.POST("", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionUpload), documentHandler.CreateDocument)
+			documentsAuth.POST("", documentHandler.CreateDocument)
 
 			// 文件上传路由
-			documentsAuth.POST("/upload", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionUpload), documentHandler.UploadDocument)
+			documentsAuth.POST("/upload", documentHandler.UploadDocument)
 
 			// 自动文档索引路由 - 需要认证
-			documentsAuth.POST("/sync/:project_id", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionManage), documentHandler.SyncDocuments)
-			documentsAuth.POST("/scan/:project_id", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionManage), documentHandler.ScanProjectDocuments)
+			documentsAuth.POST("/sync/:project_id", documentHandler.SyncDocuments)
+			documentsAuth.POST("/scan/:project_id", documentHandler.ScanProjectDocuments)
 
 			// 文档审核路由 - 需要认证
 			documentsAuth.POST("/:id/edit-request", documentHandler.SubmitEditRequest)
@@ -295,30 +291,30 @@ func main() {
 	homework.Use(middleware.RequireAuth(cfg))
 	{
 		homework.GET("", homeworkHandler.GetHomeworkByProject)
-		homework.GET("/:id", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionView), homeworkHandler.GetHomeworkByID)
-		homework.POST("", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionCreate), homeworkHandler.CreateHomework)
-		homework.PUT("/:id", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionEdit), homeworkHandler.UpdateHomework)
-		homework.DELETE("/:id", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionDelete), homeworkHandler.DeleteHomework)
-		homework.GET("/:id/submissions", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionView), homeworkHandler.GetSubmissions)
+		homework.GET("/:id", homeworkHandler.GetHomeworkByID)
+		homework.POST("", homeworkHandler.CreateHomework)
+		homework.PUT("/:id", homeworkHandler.UpdateHomework)
+		homework.DELETE("/:id", homeworkHandler.DeleteHomework)
+		homework.GET("/:id/submissions", homeworkHandler.GetSubmissions)
 		homework.GET("/:id/my-submission", homeworkHandler.GetMySubmission)
-		homework.POST("/:id/submissions", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionCreate), homeworkHandler.SubmitHomework)
-		homework.PUT("/submissions/:id", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionManage), homeworkHandler.GradeHomework)
-		homework.GET("/:id/grade-distribution", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionView), homeworkHandler.GetGradeDistribution)
-		homework.GET("/:id/export-grades", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionManage), homeworkHandler.ExportGrades)
-		homework.GET("/:id/details", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionView), homeworkHandler.GetAssignmentDetails)
-		homework.POST("/bulk-create", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionCreate), homeworkHandler.BulkCreateHomework)
-		homework.PUT("/bulk-update-due-date", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionManage), homeworkHandler.BulkUpdateDueDate)
-		homework.PUT("/:id/archive", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionManage), homeworkHandler.ArchiveHomework)
-		homework.PUT("/:id/restore", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionManage), homeworkHandler.RestoreHomework)
+		homework.POST("/:id/submissions", homeworkHandler.SubmitHomework)
+		homework.PUT("/submissions/:id", homeworkHandler.GradeHomework)
+		homework.GET("/:id/grade-distribution", homeworkHandler.GetGradeDistribution)
+		homework.GET("/:id/export-grades", homeworkHandler.ExportGrades)
+		homework.GET("/:id/details", homeworkHandler.GetAssignmentDetails)
+		homework.POST("/bulk-create", homeworkHandler.BulkCreateHomework)
+		homework.PUT("/bulk-update-due-date", homeworkHandler.BulkUpdateDueDate)
+		homework.PUT("/:id/archive", homeworkHandler.ArchiveHomework)
+		homework.PUT("/:id/restore", homeworkHandler.RestoreHomework)
 		homework.GET("/user-submissions", homeworkHandler.GetUserSubmissions)
 		homework.GET("/pending-reviews", homeworkHandler.GetPendingReviews)
 		homework.GET("/student-progress", homeworkHandler.GetStudentProgress)
 		homework.GET("/homework-stats", homeworkHandler.GetHomeworkStats)
-		homework.GET("/generate-report", permissionMiddleware.RequireProjectPermission(services.ProjectPermissionManage), homeworkHandler.GenerateReport)
+		homework.GET("/generate-report", homeworkHandler.GenerateReport)
 
 		// 作业分支管理路由
 		homework.POST("/:id/create-branch", homeworkHandler.CreateStudentBranch)
-		homework.GET("/:id/branches", permissionMiddleware.RequireHomeworkPermission(services.ProjectPermissionView), homeworkHandler.GetHomeworkBranches)
+		homework.GET("/:id/branches", homeworkHandler.GetHomeworkBranches)
 		homework.POST("/:id/submit-to-branch", homeworkHandler.SubmitHomeworkToBranch)
 		homework.GET("/:id/branch-info", homeworkHandler.GetStudentBranchInfo)
 	}

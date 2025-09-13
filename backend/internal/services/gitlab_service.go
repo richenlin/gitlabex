@@ -28,8 +28,9 @@ func NewGitLabService(cfg *config.Config) *GitLabService {
 	}
 }
 
-// GitLabUser GitLab用户信息
-type GitLabUser struct {
+// GitLabUser GitLab用户信息 - 使用models包中的定义
+// 这里保留一个简化的结构用于API响应解析
+type GitLabAPIUser struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
@@ -56,7 +57,7 @@ type GitLabProject struct {
 		Name string `json:"name"`
 		Path string `json:"path"`
 	} `json:"namespace"`
-	Owner *GitLabUser `json:"owner,omitempty"`
+	Owner *GitLabAPIUser `json:"owner,omitempty"`
 }
 
 // GitLabFile GitLab文件信息
@@ -90,46 +91,46 @@ type GitLabBranch struct {
 
 // GitLabCommit GitLab提交信息
 type GitLabCommit struct {
-	ID        string      `json:"id"`
-	ShortID   string      `json:"short_id"`
-	Title     string      `json:"title"`
-	Author    *GitLabUser `json:"author"`
-	Committer *GitLabUser `json:"committer"`
-	Message   string      `json:"message"`
-	CreatedAt time.Time   `json:"created_at"`
-	WebURL    string      `json:"web_url"`
+	ID        string         `json:"id"`
+	ShortID   string         `json:"short_id"`
+	Title     string         `json:"title"`
+	Author    *GitLabAPIUser `json:"author"`
+	Committer *GitLabAPIUser `json:"committer"`
+	Message   string         `json:"message"`
+	CreatedAt time.Time      `json:"created_at"`
+	WebURL    string         `json:"web_url"`
 }
 
 // GitLabIssue GitLab议题信息
 type GitLabIssue struct {
-	ID          int64       `json:"id"`
-	IID         int64       `json:"iid"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
-	State       string      `json:"state"`
-	Author      *GitLabUser `json:"author"`
-	Assignee    *GitLabUser `json:"assignee"`
-	Labels      []string    `json:"labels"`
-	CreatedAt   string      `json:"created_at"`
-	UpdatedAt   string      `json:"updated_at"`
-	WebURL      string      `json:"web_url"`
+	ID          int64          `json:"id"`
+	IID         int64          `json:"iid"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	State       string         `json:"state"`
+	Author      *GitLabAPIUser `json:"author"`
+	Assignee    *GitLabAPIUser `json:"assignee"`
+	Labels      []string       `json:"labels"`
+	CreatedAt   string         `json:"created_at"`
+	UpdatedAt   string         `json:"updated_at"`
+	WebURL      string         `json:"web_url"`
 }
 
 // GitLabMergeRequest GitLab合并请求信息
 type GitLabMergeRequest struct {
-	ID           int64       `json:"id"`
-	IID          int64       `json:"iid"`
-	Title        string      `json:"title"`
-	Description  string      `json:"description"`
-	State        string      `json:"state"`
-	SourceBranch string      `json:"source_branch"`
-	TargetBranch string      `json:"target_branch"`
-	Author       *GitLabUser `json:"author"`
-	Assignee     *GitLabUser `json:"assignee"`
-	CreatedAt    string      `json:"created_at"`
-	UpdatedAt    string      `json:"updated_at"`
-	WebURL       string      `json:"web_url"`
-	MergedAt     *string     `json:"merged_at,omitempty"`
+	ID           int64          `json:"id"`
+	IID          int64          `json:"iid"`
+	Title        string         `json:"title"`
+	Description  string         `json:"description"`
+	State        string         `json:"state"`
+	SourceBranch string         `json:"source_branch"`
+	TargetBranch string         `json:"target_branch"`
+	Author       *GitLabAPIUser `json:"author"`
+	Assignee     *GitLabAPIUser `json:"assignee"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
+	WebURL       string         `json:"web_url"`
+	MergedAt     *string        `json:"merged_at,omitempty"`
 }
 
 // CreateProjectRequest 创建项目请求
@@ -161,7 +162,7 @@ type CreateFileRequest struct {
 type GitLabWebhookPayload struct {
 	ObjectKind string          `json:"object_kind"`
 	EventName  string          `json:"event_name"`
-	User       *GitLabUser     `json:"user"`
+	User       *GitLabAPIUser  `json:"user"`
 	Project    *GitLabProject  `json:"project"`
 	Commits    []*GitLabCommit `json:"commits"`
 	Ref        string          `json:"ref"`
@@ -176,7 +177,7 @@ type GitLabWebhookPayload struct {
 }
 
 // GetUser 获取当前用户信息
-func (s *GitLabService) GetUser(accessToken string) (*GitLabUser, error) {
+func (s *GitLabService) GetUser(accessToken string) (*GitLabAPIUser, error) {
 	url := fmt.Sprintf("%s/api/v4/user", s.Config.GitLabURL)
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -197,7 +198,7 @@ func (s *GitLabService) GetUser(accessToken string) (*GitLabUser, error) {
 		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
 	}
 
-	var user GitLabUser
+	var user GitLabAPIUser
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, err
 	}
@@ -623,6 +624,70 @@ func (s *GitLabService) GetMergeRequests(accessToken string, projectID int64, st
 func (s *GitLabService) ValidateRepositoryAccess(accessToken string, projectID int64) error {
 	_, err := s.GetProject(accessToken, projectID)
 	return err
+}
+
+// GetUserProjectAccessLevel 获取用户在项目中的访问级别
+func (s *GitLabService) GetUserProjectAccessLevel(accessToken string, projectID int64) (int, error) {
+	// 首先获取当前用户信息
+	user, err := s.GetUser(accessToken)
+	if err != nil {
+		return 0, err
+	}
+
+	// 获取项目成员信息
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/members/all", s.Config.GitLabURL, projectID)
+
+	req, err := http.NewRequest("GET", apiUrl, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return 0, fmt.Errorf("项目不存在或用户无权限")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("获取项目成员失败: %s", resp.Status)
+	}
+
+	var members []struct {
+		ID          int `json:"id"`
+		AccessLevel int `json:"access_level"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&members); err != nil {
+		return 0, err
+	}
+
+	// 查找当前用户的访问级别
+	for _, member := range members {
+		if member.ID == int(user.ID) {
+			return member.AccessLevel, nil
+		}
+	}
+
+	// 如果用户不是项目成员，检查项目是否为公开项目
+	project, err := s.GetProject(accessToken, projectID)
+	if err != nil {
+		return 0, err
+	}
+
+	// 如果是公开项目，返回Guest级别权限
+	if project.Visibility == "public" {
+		return 10, nil // Guest level
+	}
+
+	return 0, fmt.Errorf("用户不是项目成员且项目非公开")
 }
 
 // GetRepositoryTree 获取仓库文件树

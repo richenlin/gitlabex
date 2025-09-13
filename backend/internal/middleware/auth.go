@@ -1,23 +1,62 @@
 package middleware
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"gitlabex/internal/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
-// JWTClaims JWT声明结构
+// JWTClaims JWT声明结构 - 简化结构，只包含GitLab访问令牌
 type JWTClaims struct {
-	UserID   string `json:"user_id"`
+	GitLabAccessToken string `json:"gitlab_access_token"`
+	jwt.RegisteredClaims
+}
+
+// GitLabUser GitLab用户信息
+type GitLabUser struct {
+	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
-	Role     string `json:"role"`
-	jwt.RegisteredClaims
+	Name     string `json:"name"`
+	IsAdmin  bool   `json:"is_admin"`
+}
+
+// getGitLabUser 从GitLab API获取用户信息
+func getGitLabUser(accessToken, gitlabURL string) (*GitLabUser, error) {
+	url := fmt.Sprintf("%s/api/v4/user", gitlabURL)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitLab API返回错误: %s", resp.Status)
+	}
+
+	var user GitLabUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 }
 
 // RequireAuth JWT认证中间件
@@ -84,22 +123,24 @@ func RequireAuth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// 将用户信息设置到上下文中
-		// 将字符串类型的userID转换为uuid.UUID类型
-		userUUID, err := uuid.Parse(claims.UserID)
+		// 验证GitLab访问令牌并获取用户信息
+		gitlabUser, err := getGitLabUser(claims.GitLabAccessToken, cfg.GitLabURL)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "invalid_user_id",
-				"message": "Invalid user ID format in token",
+				"error":   "gitlab_auth_failed",
+				"message": "GitLab authentication failed: " + err.Error(),
 			})
 			c.Abort()
 			return
 		}
 
-		c.Set("userID", userUUID)
-		c.Set("username", claims.Username)
-		c.Set("email", claims.Email)
-		c.Set("role", claims.Role)
+		// 将GitLab用户信息存储到上下文中
+		c.Set("gitlab_access_token", claims.GitLabAccessToken)
+		c.Set("gitlab_user_id", gitlabUser.ID)
+		c.Set("username", gitlabUser.Username)
+		c.Set("email", gitlabUser.Email)
+		c.Set("name", gitlabUser.Name)
+		c.Set("is_admin", gitlabUser.IsAdmin)
 
 		c.Next()
 	}
@@ -167,25 +208,25 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// 设置已登录用户信息
-		// 将字符串类型的userID转换为uuid.UUID类型
-		userUUID, err := uuid.Parse(claims.UserID)
+		// 验证GitLab访问令牌并获取用户信息
+		gitlabUser, err := getGitLabUser(claims.GitLabAccessToken, cfg.GitLabURL)
 		if err != nil {
-			// userID格式错误，设置为游客模式
+			// GitLab认证失败，设置为游客模式
 			c.Set("is_guest", true)
-			c.Set("userID", "")
 			c.Set("username", "guest")
 			c.Set("email", "")
-			c.Set("role", "guest")
 			c.Next()
 			return
 		}
 
+		// 设置已登录用户信息
 		c.Set("is_guest", false)
-		c.Set("userID", userUUID)
-		c.Set("username", claims.Username)
-		c.Set("email", claims.Email)
-		c.Set("role", claims.Role)
+		c.Set("gitlab_access_token", claims.GitLabAccessToken)
+		c.Set("gitlab_user_id", gitlabUser.ID)
+		c.Set("username", gitlabUser.Username)
+		c.Set("email", gitlabUser.Email)
+		c.Set("name", gitlabUser.Name)
+		c.Set("is_admin", gitlabUser.IsAdmin)
 
 		c.Next()
 	}

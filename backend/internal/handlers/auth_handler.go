@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"gitlabex/internal/config"
-	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 	"io"
 	"net/http"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
 // AuthHandler 认证处理器
@@ -46,11 +44,9 @@ type GitLabOAuthResponse struct {
 	Scope        string `json:"scope"`
 }
 
-// JWTClaims JWT声明
+// JWTClaims JWT声明 - 简化结构，只包含GitLab访问令牌
 type JWTClaims struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	GitLabAccessToken string `json:"gitlab_access_token"`
 	jwt.RegisteredClaims
 }
 
@@ -121,41 +117,23 @@ func (h *AuthHandler) GitLabCallback(c *gin.Context) {
 		return
 	}
 
-	// 创建或更新用户
-	user, err := h.userService.CreateOrUpdateUserFromGitLab(gitlabUser, oauthResp.AccessToken, oauthResp.RefreshToken)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建用户失败: " + err.Error()})
-		return
-	}
-
-	// 生成JWT令牌
-	jwtToken, err := h.generateJWT(user)
+	// 生成JWT令牌 - 只包含GitLab访问令牌
+	jwtToken, err := h.generateJWT(oauthResp.AccessToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成JWT令牌失败: " + err.Error()})
 		return
 	}
 
-	// 更新用户最后登录时间
-	now := time.Now()
-	user.LastLoginAt = &now
-	if err := h.userService.UpdateUser(user.ID, map[string]interface{}{
-		"last_login_at": now,
-	}); err != nil {
-		// 记录错误但不影响登录流程
-		fmt.Printf("更新用户登录时间失败: %v\n", err)
-	}
-
-	// 返回认证结果
+	// 返回认证结果 - 用户信息直接从GitLab获取
 	c.JSON(http.StatusOK, gin.H{
 		"message": "登录成功",
 		"token":   jwtToken,
 		"user": gin.H{
-			"id":       user.ID,
-			"username": user.Username,
-			"name":     user.Name,
-			"email":    user.Email,
-			"role":     user.Role,
-			"edu_role": user.EduRole,
+			"id":         gitlabUser.ID,
+			"username":   gitlabUser.Username,
+			"name":       gitlabUser.Name,
+			"email":      gitlabUser.Email,
+			"avatar_url": gitlabUser.Avatar,
 		},
 	})
 }
@@ -195,39 +173,18 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		claims = token.Claims.(*JWTClaims)
 	}
 
-	// 获取用户信息
-	userID, err := uuid.Parse(claims.UserID)
+	// 验证当前GitLab访问令牌是否仍然有效
+	_, err = h.gitlabService.GetUser(claims.GitLabAccessToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的用户ID"})
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "gitlab_token_expired",
+			"message": "GitLab访问令牌已过期，请重新登录",
+		})
 		return
-	}
-
-	user, err := h.userService.GetUserByID(userID)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在"})
-		return
-	}
-
-	// 使用用户的refresh token刷新GitLab访问令牌
-	if user.RefreshToken != "" {
-		newOAuthResp, err := h.refreshGitLabToken(user.RefreshToken)
-		if err == nil {
-			// 更新用户的访问令牌
-			user.AccessToken = newOAuthResp.AccessToken
-			if newOAuthResp.RefreshToken != "" {
-				user.RefreshToken = newOAuthResp.RefreshToken
-			}
-
-			// 保存到数据库
-			h.userService.UpdateUser(user.ID, map[string]interface{}{
-				"access_token":  user.AccessToken,
-				"refresh_token": user.RefreshToken,
-			})
-		}
 	}
 
 	// 生成新的JWT令牌
-	newJWTToken, err := h.generateJWT(user)
+	newJWTToken, err := h.generateJWT(claims.GitLabAccessToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成新令牌失败"})
 		return
@@ -241,11 +198,11 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 // Logout 用户登出
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// 从上下文获取用户ID
-	userID, exists := c.Get("userID")
+	// 从上下文获取GitLab用户ID
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if exists {
 		// 可以在这里添加登出逻辑，比如将令牌加入黑名单
-		fmt.Printf("用户 %v 登出\n", userID)
+		fmt.Printf("GitLab用户 %v 登出\n", gitlabUserID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "登出成功"})
@@ -324,19 +281,16 @@ func (h *AuthHandler) refreshGitLabToken(refreshToken string) (*GitLabOAuthRespo
 	return &oauthResp, nil
 }
 
-// generateJWT 生成JWT令牌
-func (h *AuthHandler) generateJWT(user *models.User) (string, error) {
+// generateJWT 生成JWT令牌 - 简化结构，只包含GitLab访问令牌
+func (h *AuthHandler) generateJWT(gitlabAccessToken string) (string, error) {
 	now := time.Now()
 	claims := &JWTClaims{
-		UserID:   user.ID.String(),
-		Username: user.Username,
-		Role:     string(user.Role),
+		GitLabAccessToken: gitlabAccessToken,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(h.config.JWTExpirationHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    "gitlabex",
-			Subject:   user.ID.String(),
 		},
 	}
 

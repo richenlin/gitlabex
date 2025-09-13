@@ -52,9 +52,9 @@ type Document struct {
 	LastSyncTime   *time.Time     `gorm:"column:last_sync_time" json:"last_sync_time,omitempty"`
 
 	// 关联关系
-	Uploader User             `gorm:"foreignKey:UploaderID" json:"uploader,omitempty"`
-	Project  ResearchProject  `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	Reviews  []DocumentReview `gorm:"foreignKey:DocumentID" json:"reviews,omitempty"`
+	// 注意：Uploader关联已移除，上传者信息从GitLab API获取
+	Project ResearchProject  `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	Reviews []DocumentReview `gorm:"foreignKey:DocumentID" json:"reviews,omitempty"`
 }
 
 // DocumentReview 文档审核模型
@@ -69,7 +69,7 @@ type DocumentReview struct {
 
 	// 关联关系
 	Document Document `gorm:"foreignKey:DocumentID" json:"document,omitempty"`
-	Reviewer User     `gorm:"foreignKey:ReviewerID" json:"reviewer,omitempty"`
+	// 注意：Reviewer关联已移除，审核者信息从GitLab API获取
 }
 
 // DocumentEditRequest 文档编辑请求模型（用于学生提交的修改请求）

@@ -1,65 +1,80 @@
 package models
 
-import "time"
-
-// UserRole 用户角色枚举
-type UserRole string
+// GitLabRole GitLab角色枚举 - 基于GitLab权限映射
+type GitLabRole int
 
 const (
-	RoleAdmin     UserRole = "admin"
-	RoleTeacher   UserRole = "teacher"
-	RoleAssistant UserRole = "assistant"
-	RoleStudent   UserRole = "student"
-	RoleGuest     UserRole = "guest"
+	GitLabGuest      GitLabRole = 10 // GitLab Guest -> 访客
+	GitLabReporter   GitLabRole = 20 // GitLab Reporter -> 学生
+	GitLabDeveloper  GitLabRole = 30 // GitLab Developer -> 研究员
+	GitLabMaintainer GitLabRole = 40 // GitLab Maintainer -> 教师
+	GitLabOwner      GitLabRole = 50 // GitLab Owner -> 管理员
 )
 
-// EducationRole 教育角色枚举 - 基于GitLab权限映射
-type EducationRole int
-
-const (
-	EduRoleGuest     EducationRole = 10 // GitLab Guest -> 访客
-	EduRoleStudent   EducationRole = 20 // GitLab Reporter -> 学生
-	EduRoleAssistant EducationRole = 30 // GitLab Developer -> 研究员
-	EduRoleTeacher   EducationRole = 40 // GitLab Maintainer -> 教师
-	EduRoleAdmin     EducationRole = 50 // GitLab Owner -> 管理员
-)
-
-// ProjectRole 项目角色枚举
-type ProjectRole string
-
-const (
-	ProjectRoleOwner      ProjectRole = "owner"
-	ProjectRoleMaintainer ProjectRole = "maintainer"
-	ProjectRoleDeveloper  ProjectRole = "developer"
-	ProjectRoleReporter   ProjectRole = "reporter"
-	ProjectRoleGuest      ProjectRole = "guest"
-)
-
-// User 用户模型
-type User struct {
-	BaseModel
-	GitLabID     int64         `gorm:"uniqueIndex;not null" json:"gitlab_id"`
-	Username     string        `gorm:"uniqueIndex;not null;size:50" json:"username"`
-	Email        string        `gorm:"uniqueIndex;not null;size:100" json:"email"`
-	Name         string        `gorm:"not null;size:100" json:"name"`
-	AvatarURL    string        `gorm:"size:500" json:"avatar_url"`
-	Role         UserRole      `gorm:"not null;default:student" json:"role"`
-	EduRole      EducationRole `gorm:"not null;default:20" json:"edu_role"`
-	IsActive     bool          `gorm:"default:true" json:"is_active"`
-	LastLoginAt  *time.Time    `json:"last_login_at,omitempty"`
-	AccessToken  string        `gorm:"size:500" json:"-"`
-	RefreshToken string        `gorm:"size:500" json:"-"`
-	TokenExpiry  *time.Time    `json:"token_expiry,omitempty"`
-
-	// 关联关系
-	CreatedProjects       []ResearchProject `gorm:"foreignKey:CreatorID" json:"created_projects,omitempty"`
-	ProjectMembers        []ProjectMember   `gorm:"foreignKey:UserID" json:"project_members,omitempty"`
-	Topics                []Topic           `gorm:"foreignKey:AuthorID" json:"topics,omitempty"`
-	Comments              []Comment         `gorm:"foreignKey:AuthorID" json:"comments,omitempty"`
-	Documents             []Document        `gorm:"foreignKey:UploaderID" json:"documents,omitempty"`
-	Submissions           []Submission      `gorm:"foreignKey:StudentID" json:"submissions,omitempty"`
-	GradedSubmissions     []Submission      `gorm:"foreignKey:GradedBy" json:"graded_submissions,omitempty"`
-	SentNotifications     []Notification    `gorm:"foreignKey:SenderID" json:"sent_notifications,omitempty"`
-	ReceivedNotifications []Notification    `gorm:"foreignKey:RecipientID" json:"received_notifications,omitempty"`
-	CreatedAnnouncements  []Announcement    `gorm:"foreignKey:AuthorID" json:"created_announcements,omitempty"`
+// GitLabUser GitLab用户信息 - 不存储在本地数据库，仅用于API传输
+type GitLabUser struct {
+	ID        int64      `json:"id"`
+	Username  string     `json:"username"`
+	Email     string     `json:"email"`
+	Name      string     `json:"name"`
+	AvatarURL string     `json:"avatar_url"`
+	IsAdmin   bool       `json:"is_admin"`
+	Role      GitLabRole `json:"role,omitempty"` // 在项目上下文中的角色
 }
+
+// GetEducationRole 获取教育角色名称
+func (r GitLabRole) GetEducationRole() string {
+	switch r {
+	case GitLabOwner:
+		return "管理员"
+	case GitLabMaintainer:
+		return "教师"
+	case GitLabDeveloper:
+		return "研究员"
+	case GitLabReporter:
+		return "学生"
+	case GitLabGuest:
+		return "访客"
+	default:
+		return "未知"
+	}
+}
+
+// GetRoleString 获取角色字符串
+func (r GitLabRole) GetRoleString() string {
+	switch r {
+	case GitLabOwner:
+		return "owner"
+	case GitLabMaintainer:
+		return "maintainer"
+	case GitLabDeveloper:
+		return "developer"
+	case GitLabReporter:
+		return "reporter"
+	case GitLabGuest:
+		return "guest"
+	default:
+		return "guest"
+	}
+}
+
+// ParseGitLabRole 解析GitLab角色
+func ParseGitLabRole(accessLevel int) GitLabRole {
+	switch accessLevel {
+	case 50:
+		return GitLabOwner
+	case 40:
+		return GitLabMaintainer
+	case 30:
+		return GitLabDeveloper
+	case 20:
+		return GitLabReporter
+	case 10:
+		return GitLabGuest
+	default:
+		return GitLabGuest
+	}
+}
+
+// 注意：完全移除本地User模型，用户信息完全从GitLab API获取
+// 所有用户相关的外键关系将使用GitLab用户ID (int64)而不是本地UUID

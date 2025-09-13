@@ -1,1 +1,0 @@
-import{d as t,f as n,h as o,g as a}from"./index-D6m0uNFb.js";const p=t({__name:"TopicEdit",setup(r){return(s,e)=>(a(),n("div",null,[...e[0]||(e[0]=[o("h1",null,"编辑话题 (待实现)",-1)])]))}});export{p as default};

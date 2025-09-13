@@ -40,12 +40,11 @@ type Notification struct {
 	ActionURL   string           `json:"action_url"`
 
 	// 关联关系
-	Recipient User             `gorm:"foreignKey:RecipientID" json:"recipient,omitempty"`
-	Sender    *User            `gorm:"foreignKey:SenderID" json:"sender,omitempty"`
-	Project   *ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	Topic     *Topic           `gorm:"foreignKey:TopicID" json:"topic,omitempty"`
-	Homework  *Homework        `gorm:"foreignKey:HomeworkID" json:"homework,omitempty"`
-	Document  *Document        `gorm:"foreignKey:DocumentID" json:"document,omitempty"`
+	// 注意：Recipient和Sender关联已移除，用户信息从GitLab API获取
+	Project  *ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	Topic    *Topic           `gorm:"foreignKey:TopicID" json:"topic,omitempty"`
+	Homework *Homework        `gorm:"foreignKey:HomeworkID" json:"homework,omitempty"`
+	Document *Document        `gorm:"foreignKey:DocumentID" json:"document,omitempty"`
 }
 
 // Announcement 公告模型
@@ -61,7 +60,7 @@ type Announcement struct {
 	TargetRoles pq.StringArray `gorm:"type:text[]" json:"target_roles"` // 目标角色
 
 	// 关联关系
-	Author User `gorm:"foreignKey:AuthorID" json:"author,omitempty"`
+	// 注意：Author关联已移除，作者信息从GitLab API获取
 }
 
 // AssignmentTemplate 作业模板

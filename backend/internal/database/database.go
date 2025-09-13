@@ -54,10 +54,9 @@ func autoMigrate(db *gorm.DB) error {
 	log.Println("Starting database migration...")
 
 	// 定义所有需要迁移的模型
+	// 注意：User模型已移除，用户信息完全从GitLab API获取
 	models := []interface{}{
-		&models.User{},
 		&models.ResearchProject{},
-		&models.ProjectMember{},
 		&models.Document{},
 		&models.Homework{},
 		&models.Submission{},

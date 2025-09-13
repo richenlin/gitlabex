@@ -1,1 +1,0 @@
-import{d as t,f as a,h as n,g as o}from"./index-D6m0uNFb.js";const p=t({__name:"SceneCreate",setup(r){return(l,e)=>(o(),a("div",null,[...e[0]||(e[0]=[n("h1",null,"创建研究课题 (待实现)",-1),n("p",null,"此页面将用于创建新的研究课题",-1)])]))}});export{p as default};

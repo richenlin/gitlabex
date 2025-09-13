@@ -32,7 +32,7 @@ type Homework struct {
 	Title         string         `gorm:"not null;size:200" json:"title"`
 	Description   string         `gorm:"type:text" json:"description"`
 	ProjectID     uuid.UUID      `gorm:"not null" json:"project_id"`
-	CreatorID     uuid.UUID      `gorm:"not null" json:"creator_id"`
+	CreatorID     int64          `gorm:"not null" json:"creator_id"` // GitLab用户ID
 	Status        HomeworkStatus `gorm:"not null;default:draft" json:"status"`
 	DueDate       *time.Time     `json:"due_date,omitempty"`
 	MaxGrade      int            `gorm:"default:100" json:"max_grade"`
@@ -45,9 +45,9 @@ type Homework struct {
 	GitLabPath    string         `gorm:"size:500" json:"gitlab_path,omitempty"`
 
 	// 关联关系
-	Project     ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
-	Creator     User            `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
-	Submissions []Submission    `gorm:"foreignKey:HomeworkID" json:"submissions,omitempty"`
+	Project ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	// 注意：Creator关联已移除，创建者信息从GitLab API获取
+	Submissions []Submission `gorm:"foreignKey:HomeworkID" json:"submissions,omitempty"`
 }
 
 // Submission 作业提交模型
@@ -68,8 +68,7 @@ type Submission struct {
 
 	// 关联关系
 	Homework Homework `gorm:"foreignKey:HomeworkID" json:"homework,omitempty"`
-	Student  User     `gorm:"foreignKey:StudentID" json:"student,omitempty"`
-	Grader   *User    `gorm:"foreignKey:GradedBy" json:"grader,omitempty"`
+	// 注意：Student和Grader关联已移除，用户信息从GitLab API获取
 }
 
 // GradeDistribution 成绩分布模型
