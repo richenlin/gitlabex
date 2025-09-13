@@ -80,7 +80,7 @@ func main() {
 	topicHandler := handlers.NewTopicHandler(gitlabService, researchService, topicService)
 	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWTSecret)
 	activityHandler := handlers.NewActivityHandler(activityService)
-	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService)
+	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService, topicService)
 
 	// 创建Gin路由器
 	r := gin.Default()

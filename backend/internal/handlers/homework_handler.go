@@ -834,7 +834,14 @@ func (h *HomeworkHandler) CreateStudentBranch(c *gin.Context) {
 		return
 	}
 
-	if err := h.homeworkService.CreateStudentBranch(homeworkID, studentID.(int64)); err != nil {
+	// 获取访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少访问令牌"})
+		return
+	}
+
+	if err := h.homeworkService.CreateStudentBranch(homeworkID, studentID.(int64), accessToken.(string)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -851,13 +858,14 @@ func (h *HomeworkHandler) GetHomeworkBranches(c *gin.Context) {
 		return
 	}
 
-	accessToken := c.GetHeader("Authorization")
-	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "需要访问令牌"})
+	// 获取访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少访问令牌"})
 		return
 	}
 
-	branches, err := h.homeworkService.GetHomeworkBranches(homeworkID, accessToken)
+	branches, err := h.homeworkService.GetHomeworkBranches(homeworkID, accessToken.(string))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -881,6 +889,13 @@ func (h *HomeworkHandler) SubmitHomeworkToBranch(c *gin.Context) {
 		return
 	}
 
+	// 获取访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少访问令牌"})
+		return
+	}
+
 	var req struct {
 		Content string   `json:"content" binding:"required"`
 		Files   []string `json:"files"`
@@ -896,6 +911,7 @@ func (h *HomeworkHandler) SubmitHomeworkToBranch(c *gin.Context) {
 		studentID.(int64),
 		req.Content,
 		req.Files,
+		accessToken.(string),
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -920,7 +936,14 @@ func (h *HomeworkHandler) GetStudentBranchInfo(c *gin.Context) {
 		return
 	}
 
-	branchInfo, err := h.homeworkService.GetStudentBranchInfo(homeworkID, studentID.(int64))
+	// 获取访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少访问令牌"})
+		return
+	}
+
+	branchInfo, err := h.homeworkService.GetStudentBranchInfo(homeworkID, studentID.(int64), accessToken.(string))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

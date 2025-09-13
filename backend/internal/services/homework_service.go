@@ -640,32 +640,42 @@ func (s *HomeworkService) ArchiveOldHomework(daysOld int) error {
 }
 
 // CreateStudentBranch 为学生创建个人作业分支
-func (s *HomeworkService) CreateStudentBranch(homeworkID uuid.UUID, studentID int64) error {
+func (s *HomeworkService) CreateStudentBranch(homeworkID uuid.UUID, studentID int64, accessToken string) error {
 	// 获取作业信息
 	var homework models.Homework
 	if err := s.DB.Preload("Project").First(&homework, homeworkID).Error; err != nil {
 		return err
 	}
 
-	// TODO: 重构学生信息获取以使用GitLab用户系统
-	// 暂时跳过学生信息检查
-
 	// 检查项目是否有GitLab项目ID
 	if homework.Project.GitLabProjectID == nil {
 		return fmt.Errorf("项目没有关联GitLab项目")
 	}
 
-	// TODO: 重构分支创建以使用GitLab用户系统
-	// 暂时跳过分支创建，分支名称将在提交时生成
-	// branchName := fmt.Sprintf("homework-%s-student-%d", homework.ID.String()[:8], studentID)
+	// 生成分支名称
+	branchName := fmt.Sprintf("homework-%s-student-%d", homework.ID.String()[:8], studentID)
 
-	// TODO: 实现GitLab分支创建
-	// _, err := s.GitLabService.CreateBranch(...)
-	// if err != nil {
-	//     return fmt.Errorf("创建GitLab分支失败: %v", err)
-	// }
+	// 检查分支是否已存在
+	branches, err := s.GitLabService.GetProjectBranches(accessToken, *homework.Project.GitLabProjectID)
+	if err == nil {
+		for _, branch := range branches {
+			if branch["name"] == branchName {
+				return nil // 分支已存在，无需创建
+			}
+		}
+	}
 
-	// 分支信息现在存储在Submission记录中，不再存储在Homework中
+	// 创建GitLab分支
+	// 从主分支创建新的学生分支
+	createBranchReq := &CreateBranchRequest{
+		Branch: branchName,
+		Ref:    "main", // 从默认的main分支创建
+	}
+
+	_, err = s.GitLabService.CreateBranch(accessToken, *homework.Project.GitLabProjectID, createBranchReq)
+	if err != nil {
+		return fmt.Errorf("创建GitLab分支失败: %v", err)
+	}
 
 	return nil
 }
@@ -682,12 +692,11 @@ func (s *HomeworkService) GetHomeworkBranches(homeworkID uuid.UUID, accessToken 
 		return nil, fmt.Errorf("项目没有关联GitLab项目")
 	}
 
-	// 获取项目的所有分支 - TODO: 实现GetProjectBranches方法
-	// branches, err := s.GitLabService.GetProjectBranches(accessToken, *homework.Project.GitLabProjectID)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	branches := []map[string]interface{}{} // 临时返回空数组
+	// 获取项目的所有分支
+	branches, err := s.GitLabService.GetProjectBranches(accessToken, *homework.Project.GitLabProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("获取项目分支失败: %v", err)
+	}
 
 	// 过滤作业相关的分支
 	var homeworkBranches []map[string]interface{}
@@ -696,15 +705,17 @@ func (s *HomeworkService) GetHomeworkBranches(homeworkID uuid.UUID, accessToken 
 	for _, branch := range branches {
 		if branchName, ok := branch["name"].(string); ok {
 			if strings.HasPrefix(branchName, homeworkPrefix) {
-				// 从分支名称解析学生用户名
+				// 从分支名称解析学生ID
 				parts := strings.Split(branchName, "-")
 				if len(parts) >= 3 {
-					username := strings.Join(parts[2:], "-")
+					// 解析学生ID（格式：homework-{homework_id}-student-{student_id}）
+					if len(parts) >= 4 && parts[2] == "student" {
+						studentIDStr := parts[3]
 
-					// TODO: 重构学生信息获取以使用GitLab用户系统
-					// 暂时只显示用户名
-					branch["student"] = map[string]interface{}{
-						"username": username,
+						// 添加学生信息到分支数据中
+						branch["student"] = map[string]interface{}{
+							"student_id": studentIDStr,
+						}
 					}
 				}
 				homeworkBranches = append(homeworkBranches, branch)
@@ -770,9 +781,9 @@ func (s *HomeworkService) GetSubmissionViewURL(submissionID uuid.UUID) (string, 
 }
 
 // SubmitHomeworkToBranch 提交作业到个人分支
-func (s *HomeworkService) SubmitHomeworkToBranch(homeworkID uuid.UUID, studentID int64, content string, files []string) (*models.Submission, error) {
+func (s *HomeworkService) SubmitHomeworkToBranch(homeworkID uuid.UUID, studentID int64, content string, files []string, accessToken string) (*models.Submission, error) {
 	// 首先尝试创建分支（如果不存在）
-	if err := s.CreateStudentBranch(homeworkID, studentID); err != nil {
+	if err := s.CreateStudentBranch(homeworkID, studentID, accessToken); err != nil {
 		// 分支可能已存在，继续执行
 	}
 
@@ -807,51 +818,52 @@ func (s *HomeworkService) SubmitHomeworkToBranch(homeworkID uuid.UUID, studentID
 }
 
 // GetStudentBranchInfo 获取学生分支信息
-func (s *HomeworkService) GetStudentBranchInfo(homeworkID uuid.UUID, studentID int64) (map[string]interface{}, error) {
+func (s *HomeworkService) GetStudentBranchInfo(homeworkID uuid.UUID, studentID int64, accessToken string) (map[string]interface{}, error) {
 	// 获取作业信息
 	var homework models.Homework
 	if err := s.DB.Preload("Project").First(&homework, homeworkID).Error; err != nil {
 		return nil, err
 	}
 
-	// 获取学生信息
-	// TODO: 重构学生信息获取以使用GitLab用户系统
-	// 暂时使用学生ID生成分支名称
+	// 生成分支名称
 	branchName := fmt.Sprintf("homework-%s-student-%d", homework.ID.String()[:8], studentID)
 
 	if homework.Project.GitLabProjectID == nil {
 		return nil, fmt.Errorf("项目没有关联GitLab项目")
 	}
 
-	// 获取分支信息 - TODO: 实现GetBranchInfo方法
-	// branchInfo, err := s.GitLabService.GetBranchInfo(
-	// 	student.AccessToken,
-	// 	*homework.Project.GitLabProjectID,
-	// 	branchName,
-	// )
-	// if err != nil {
-	// 	return nil, err
-	// }
-	branchInfo := map[string]interface{}{
-		"name":      branchName,
-		"protected": false,
-	} // 临时返回简单分支信息
+	// 获取分支信息
+	branchInfo, err := s.GitLabService.GetBranchInfo(
+		accessToken,
+		*homework.Project.GitLabProjectID,
+		branchName,
+	)
+	if err != nil {
+		// 如果分支不存在，返回基本信息
+		branchInfo = map[string]interface{}{
+			"name":      branchName,
+			"protected": false,
+			"exists":    false,
+		}
+	} else {
+		branchInfo["exists"] = true
+	}
 
-	// 获取提交历史 - TODO: 实现GetBranchCommits方法
-	// commits, err := s.GitLabService.GetBranchCommits(
-	// 	student.AccessToken,
-	// 	*homework.Project.GitLabProjectID,
-	// 	branchName,
-	// )
-	// if err != nil {
-	// 	commits = []map[string]interface{}{} // 如果获取失败，返回空数组
-	// }
-	commits := []map[string]interface{}{} // 临时返回空提交历史
+	// 获取提交历史
+	commits, err := s.GitLabService.GetBranchCommits(
+		accessToken,
+		*homework.Project.GitLabProjectID,
+		branchName,
+	)
+	if err != nil {
+		commits = []map[string]interface{}{} // 如果获取失败，返回空数组
+	}
 
 	return map[string]interface{}{
 		"branch_name": branchName,
 		"branch_info": branchInfo,
 		"commits":     commits,
 		"project_url": homework.Project.GitLabURL,
+		"student_id":  studentID,
 	}, nil
 }

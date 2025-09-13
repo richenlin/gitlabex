@@ -265,6 +265,9 @@ export const topicService = {
   undislikeTopic: (id: string, projectId: string) =>
     api.delete(`/topics/${id}/dislike?project_id=${projectId}`),
   
+  getComments: (id: string, projectId: string) =>
+    api.get(`/topics/${id}/comments?project_id=${projectId}`),
+  
   createComment: (id: string, content: string, projectId: string, parentId?: string) =>
     api.post(`/topics/${id}/comments?project_id=${projectId}`, { content, parentId })
 }

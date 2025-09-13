@@ -13,13 +13,15 @@ import (
 type PermissionHandler struct {
 	gitlabService   *services.GitLabService
 	researchService *services.ResearchService
+	topicService    *services.TopicService
 }
 
 // NewPermissionHandler 创建权限处理器
-func NewPermissionHandler(gitlabService *services.GitLabService, researchService *services.ResearchService) *PermissionHandler {
+func NewPermissionHandler(gitlabService *services.GitLabService, researchService *services.ResearchService, topicService *services.TopicService) *PermissionHandler {
 	return &PermissionHandler{
 		gitlabService:   gitlabService,
 		researchService: researchService,
+		topicService:    topicService,
 	}
 }
 
@@ -416,11 +418,59 @@ func (h *PermissionHandler) checkTopicPermission(accessToken string, userID int6
 		// 所有人都可以查看话题
 		return true, "可以查看话题"
 	case "update", "delete":
-		// TODO: 实现话题的编辑和删除权限检查
-		return true, "暂时允许编辑话题"
+		// 检查话题的编辑和删除权限
+		return h.checkTopicEditPermission(accessToken, userID, resourceID)
 	default:
 		return false, "未知的操作类型"
 	}
+}
+
+// checkTopicEditPermission 检查话题编辑权限
+func (h *PermissionHandler) checkTopicEditPermission(accessToken string, userID int64, topicID string) (bool, string) {
+	// 解析话题ID
+	topicUUID, err := uuid.Parse(topicID)
+	if err != nil {
+		return false, "无效的话题ID"
+	}
+
+	// 获取话题信息
+	topic, err := h.topicService.GetTopicByID(topicUUID)
+	if err != nil {
+		return false, "话题不存在"
+	}
+
+	// 话题作者可以编辑和删除自己的话题
+	if topic.AuthorID == userID {
+		return true, "话题作者权限"
+	}
+
+	// 如果话题属于项目，检查项目权限
+	if topic.ProjectID != nil {
+		// 获取项目信息
+		project, err := h.researchService.GetResearchProjectByID(*topic.ProjectID)
+		if err == nil {
+			// 项目创建者可以编辑项目内的话题
+			if project.CreatorID == userID {
+				return true, "项目创建者权限"
+			}
+
+			// 检查GitLab项目权限（如果是GitLab项目）
+			if project.GitLabProjectID != nil {
+				accessLevel, err := h.gitlabService.GetUserProjectAccessLevel(
+					accessToken,
+					*project.GitLabProjectID,
+				)
+				if err == nil {
+					// Maintainer级别以上可以编辑话题
+					if accessLevel >= 40 { // Maintainer level
+						return true, "项目维护者权限"
+					}
+				}
+			}
+		}
+	}
+
+	return false, "无权限编辑此话题"
 }
 
 // checkHomeworkPermission 检查作业权限
