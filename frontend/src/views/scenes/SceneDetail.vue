@@ -22,6 +22,7 @@
           </div>
           <div class="header-actions" v-if="canManage">
             <el-button @click="editProject">编辑课题</el-button>
+            <el-button type="danger" @click="showDeleteDialog">删除课题</el-button>
             <el-button @click="showMembersDialog">管理成员</el-button>
           </div>
         </div>
@@ -270,18 +271,22 @@
           >
             <div class="member-info">
               <div class="member-avatar">
-                <img :src="member.user?.avatar_url || '/default-avatar.png'" alt="用户头像">
+                <img :src="member.avatar_url || '/default-avatar.png'" alt="用户头像">
               </div>
               <div class="member-details">
-                <h4>{{ member.user?.name }}</h4>
-                <span :class="`member-role ${member.role}-role`">{{ getRoleText(member.role) }}</span>
+                <h4>{{ member.name || member.username }}</h4>
+                <span :class="`member-role access-level-${member.access_level}`">
+                  {{ getAccessLevelText(member.access_level) }}
+                </span>
               </div>
             </div>
             <div class="member-actions">
               <el-button 
                 size="small" 
-                @click="removeMember(member.user_id)"
-                :disabled="member.role === 'owner'"
+                type="danger"
+                @click="removeMember(member.id)"
+                :disabled="member.access_level === 50"
+                v-if="canManage"
               >
                 移除
               </el-button>
@@ -351,6 +356,52 @@
         <el-button type="primary" @click="createHomework" :loading="creatingHomework">创建</el-button>
       </template>
     </el-dialog>
+
+    <!-- 删除课题确认对话框 -->
+    <el-dialog v-model="deleteDialogVisible" title="⚠️ 危险操作：删除课题" width="500px">
+      <div class="delete-warning">
+        <el-icon class="warning-icon" color="#F56C6C" size="64">
+          <WarningFilled />
+        </el-icon>
+        <p class="warning-text">
+          确定要<strong>永久删除</strong>课题 <strong>"{{ project?.name }}"</strong> 吗？
+        </p>
+        
+        <div class="warning-details">
+          <p class="warning-subtitle">⚠️ 此操作将导致以下数据被永久删除：</p>
+          <ul class="warning-list">
+            <li>📝 课题的所有话题讨论</li>
+            <li>📋 课题的所有作业和提交</li>
+            <li>📁 课题的所有文档资料</li>
+            <li>👥 课题的成员关系</li>
+            <li>🔗 与GitLab项目的关联</li>
+          </ul>
+          <p class="warning-emphasis">
+            <strong>注意：</strong>删除后这些数据将无法恢复，请谨慎操作！
+          </p>
+        </div>
+        
+        <div class="confirmation-input">
+          <p class="input-label">请输入课题名称以确认删除：</p>
+          <el-input 
+            v-model="deleteConfirmInput" 
+            placeholder="请输入课题名称"
+            :disabled="deleting"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="cancelDelete" :disabled="deleting">取消</el-button>
+        <el-button 
+          type="danger" 
+          @click="confirmDelete" 
+          :loading="deleting"
+          :disabled="deleteConfirmInput !== project?.name"
+        >
+          {{ deleting ? '删除中...' : '确认永久删除' }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -359,7 +410,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { researchService, gitlabService, topicService, homeworkService } from '@/services/api'
-import type { ResearchProject, ProjectMember, Topic, Homework } from '@/types'
+import type { ResearchProject, GitLabProjectMember, Topic, Homework } from '@/types'
 import { ElMessage } from 'element-plus'
 import { 
   Folder, 
@@ -370,7 +421,8 @@ import {
   Edit,
   ArrowDown,
   Plus,
-  Delete
+  Delete,
+  WarningFilled
 } from '@element-plus/icons-vue'
 import { handleApiError, showSuccess } from '@/utils/errorHandler'
 
@@ -380,7 +432,7 @@ const userStore = useUserStore()
 
 // 响应式数据
 const project = ref<ResearchProject | null>(null)
-const members = ref<ProjectMember[]>([])
+const members = ref<GitLabProjectMember[]>([])
 const topics = ref<Topic[]>([])
 const homeworks = ref<Homework[]>([])
 const files = ref<any[]>([])
@@ -403,6 +455,9 @@ const topicsTotal = ref(0)
 const membersDialogVisible = ref(false)
 const createTopicDialogVisible = ref(false)
 const createHomeworkDialogVisible = ref(false)
+const deleteDialogVisible = ref(false)
+const deleting = ref(false)
+const deleteConfirmInput = ref('')
 const memberSearchQuery = ref('')
 const creatingTopic = ref(false)
 const creatingHomework = ref(false)
@@ -498,9 +553,12 @@ const fetchProject = async () => {
 const fetchMembers = async () => {
   try {
     const response: any = await researchService.getMembers(projectId.value)
-    members.value = response || []
+    // 后端现在返回GitLab项目成员，格式为 {members: [...], count: number}
+    members.value = response.members || []
   } catch (error) {
     console.error('获取成员列表失败:', error)
+    handleApiError(error, '获取成员列表')
+    members.value = []
   }
 }
 
@@ -531,11 +589,16 @@ const fetchFiles = async (path = '') => {
 const fetchTopics = async () => {
   topicsLoading.value = true
   try {
-    const response: any = await researchService.getIssues(projectId.value)
-    topics.value = response || []
-    topicsTotal.value = topics.value.length
+    const response: any = await topicService.getTopics({
+      project_id: projectId.value,
+      page: topicsCurrentPage.value,
+      limit: topicsPageSize.value
+    })
+    topics.value = response.topics || []
+    topicsTotal.value = response.pagination?.total || 0
   } catch (error) {
     console.error('获取话题列表失败:', error)
+    handleApiError(error, '获取话题列表')
   } finally {
     topicsLoading.value = false
   }
@@ -645,10 +708,11 @@ const showCreateHomeworkDialog = () => {
 const createTopic = async () => {
   creatingTopic.value = true
   try {
-    await researchService.createIssue(projectId.value, {
+    await topicService.createTopic({
       title: topicForm.value.title,
       content: topicForm.value.content,
-      labels: topicForm.value.labels
+      labels: topicForm.value.labels,
+      project_id: projectId.value
     })
     showSuccess('话题创建成功')
     createTopicDialogVisible.value = false
@@ -708,14 +772,60 @@ const editProject = () => {
   router.push(`/scenes/${projectId.value}/edit`)
 }
 
-const removeMember = async (userId: string) => {
+const showDeleteDialog = () => {
+  deleteConfirmInput.value = ''
+  deleteDialogVisible.value = true
+}
+
+const cancelDelete = () => {
+  deleteConfirmInput.value = ''
+  deleteDialogVisible.value = false
+}
+
+const confirmDelete = async () => {
+  if (!project.value) return
+  
+  // 验证输入的课题名称
+  if (deleteConfirmInput.value !== project.value.name) {
+    ElMessage.error('课题名称输入错误，请重新输入')
+    return
+  }
+  
+  deleting.value = true
   try {
-    await researchService.removeMember(projectId.value, userId)
-    ElMessage.success('成员移除成功')
+    await researchService.deleteProject(projectId.value)
+    showSuccess('课题已永久删除')
+    router.push('/scenes')
+  } catch (error) {
+    console.error('删除课题失败:', error)
+    handleApiError(error, '删除课题')
+  } finally {
+    deleting.value = false
+    deleteDialogVisible.value = false
+    deleteConfirmInput.value = ''
+  }
+}
+
+const removeMember = async (userId: number) => {
+  try {
+    await researchService.removeMember(projectId.value, userId.toString())
+    showSuccess('成员移除成功')
     fetchMembers()
   } catch (error) {
     console.error('移除成员失败:', error)
-    ElMessage.error('移除成员失败')
+    handleApiError(error, '移除成员')
+  }
+}
+
+// 获取GitLab访问级别对应的文本
+const getAccessLevelText = (accessLevel: number): string => {
+  switch (accessLevel) {
+    case 10: return 'Guest'
+    case 20: return 'Reporter'
+    case 30: return 'Developer'
+    case 40: return 'Maintainer'
+    case 50: return 'Owner'
+    default: return 'Unknown'
   }
 }
 
@@ -1394,5 +1504,76 @@ watch(() => route.params.id, () => {
     align-items: stretch;
     gap: 12px;
   }
+}
+
+/* 删除确认对话框样式 */
+.delete-warning {
+  text-align: center;
+  padding: 20px;
+}
+
+.warning-icon {
+  margin-bottom: 20px;
+}
+
+.warning-text {
+  font-size: 18px;
+  color: #303133;
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.warning-text strong {
+  color: #F56C6C;
+}
+
+.warning-details {
+  text-align: left;
+  background: #FEF0F0;
+  border: 1px solid #FCDCDC;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.warning-subtitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #F56C6C;
+  margin: 0 0 12px 0;
+}
+
+.warning-list {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+}
+
+.warning-list li {
+  font-size: 14px;
+  color: #606266;
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+
+.warning-emphasis {
+  font-size: 14px;
+  color: #E6A23C;
+  margin: 0;
+  padding: 8px;
+  background: #FDF6EC;
+  border-radius: 4px;
+  border-left: 4px solid #E6A23C;
+}
+
+.confirmation-input {
+  text-align: left;
+  margin-top: 20px;
+}
+
+.input-label {
+  font-size: 14px;
+  color: #606266;
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 </style>

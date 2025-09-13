@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 	"net/http"
@@ -453,13 +454,15 @@ func (h *ResearchHandler) DeleteResearchProject(c *gin.Context) {
 		return
 	}
 
-	// 删除GitLab项目 (DeleteProject方法需要实现)
+	// 删除GitLab项目
 	if project.GitLabProjectID != nil {
-		// TODO: 实现GitLab项目删除
-		// if err := h.gitlabService.DeleteProject(*project.GitLabProjectID); err != nil {
-		//     c.JSON(http.StatusInternalServerError, gin.H{"error": "删除GitLab项目失败"})
-		//     return
-		// }
+		accessToken, exists := c.Get("gitlab_access_token")
+		if exists {
+			if err := h.gitlabService.DeleteProject(accessToken.(string), *project.GitLabProjectID); err != nil {
+				// 记录错误但不阻止删除，因为数据库中的项目记录仍需要删除
+				fmt.Printf("警告: 删除GitLab项目失败: %v\n", err)
+			}
+		}
 	}
 
 	if err := h.researchService.DeleteResearchProject(projectID); err != nil {
@@ -472,10 +475,50 @@ func (h *ResearchHandler) DeleteResearchProject(c *gin.Context) {
 
 // GetMembers 获取课题成员列表
 func (h *ResearchHandler) GetMembers(c *gin.Context) {
-	// 注意：成员管理已移至GitLab，这里返回提示信息
+	projectIDStr := c.Param("id")
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的课题ID"})
+		return
+	}
+
+	// 获取项目信息
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+		return
+	}
+
+	// 如果没有关联GitLab项目，返回空成员列表
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "该课题未关联GitLab项目",
+			"members": []interface{}{},
+		})
+		return
+	}
+
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
+
+	// 通过GitLab API获取项目成员
+	members, err := h.gitlabService.GetProjectMembers(accessToken.(string), *project.GitLabProjectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取项目成员失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "成员管理已移至GitLab，请在GitLab项目中管理成员",
-		"members": []interface{}{},
+		"message": "获取成员列表成功",
+		"members": members,
+		"count":   len(members),
 	})
 }
 
@@ -495,8 +538,8 @@ func (h *ResearchHandler) AddMember(c *gin.Context) {
 	}
 
 	var req struct {
-		UserID uuid.UUID `json:"user_id" binding:"required"`
-		Role   string    `json:"role" binding:"required"`
+		Username    string `json:"username" binding:"required"`     // GitLab用户名
+		AccessLevel int    `json:"access_level" binding:"required"` // GitLab访问级别
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -518,10 +561,37 @@ func (h *ResearchHandler) AddMember(c *gin.Context) {
 		return
 	}
 
-	// 注意：成员管理已移至GitLab
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error": "成员管理已移至GitLab，请在GitLab项目中添加成员",
-	})
+	// 获取项目信息
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+		return
+	}
+
+	// 检查是否关联了GitLab项目
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
+		return
+	}
+
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
+
+	// 通过GitLab API添加项目成员
+	err = h.gitlabService.AddProjectMember(accessToken.(string), *project.GitLabProjectID, req.Username, req.AccessLevel)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "添加项目成员失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "成员添加成功"})
 }
 
 // RemoveMember 移除课题成员
@@ -539,8 +609,13 @@ func (h *ResearchHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	// TODO: 重构用户ID解析以使用GitLab用户系统
-	// 暂时跳过用户ID解析
+	// 获取要移除的用户ID
+	userIDStr := c.Param("userId")
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
+		return
+	}
 
 	// 检查权限
 	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
@@ -556,13 +631,37 @@ func (h *ResearchHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	// TODO: 重构项目所有者检查以使用GitLab用户系统
-	// 暂时跳过所有者检查
+	// 获取项目信息
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+		return
+	}
 
-	// 注意：成员管理已移至GitLab
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error": "成员管理已移至GitLab，请在GitLab项目中移除成员",
-	})
+	// 检查是否关联了GitLab项目
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
+		return
+	}
+
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
+
+	// 通过GitLab API移除项目成员
+	err = h.gitlabService.RemoveProjectMember(accessToken.(string), *project.GitLabProjectID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "移除项目成员失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "成员移除成功"})
 }
 
 // GetIssues 获取课题相关Issues

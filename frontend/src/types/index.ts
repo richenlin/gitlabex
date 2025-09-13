@@ -37,6 +37,17 @@ export enum EducationRole {
   ADMIN = 50
 }
 
+// GitLab项目成员类型
+export interface GitLabProjectMember {
+  id: number
+  username: string
+  name: string
+  email?: string
+  avatar_url: string
+  access_level: number
+  state: string
+}
+
 // 研究课题相关类型
 export interface ResearchProject {
   id: string

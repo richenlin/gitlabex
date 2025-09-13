@@ -962,3 +962,161 @@ func (s *GitLabService) GetBranchCommits(accessToken string, projectID int64, br
 
 	return commits, nil
 }
+
+// DeleteProject 删除GitLab项目
+func (s *GitLabService) DeleteProject(accessToken string, projectID int64) error {
+	url := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLabURL, projectID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// GitLab删除项目成功返回202 Accepted
+	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("删除GitLab项目失败: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// ProjectMember GitLab项目成员结构
+type ProjectMember struct {
+	ID          int64  `json:"id"`
+	Username    string `json:"username"`
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	AvatarURL   string `json:"avatar_url"`
+	AccessLevel int    `json:"access_level"`
+	State       string `json:"state"`
+}
+
+// GetProjectMembers 获取GitLab项目成员列表
+func (s *GitLabService) GetProjectMembers(accessToken string, projectID int64) ([]ProjectMember, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLabURL, projectID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("获取项目成员失败: %s - %s", resp.Status, string(body))
+	}
+
+	var members []ProjectMember
+	if err := json.NewDecoder(resp.Body).Decode(&members); err != nil {
+		return nil, err
+	}
+
+	return members, nil
+}
+
+// AddProjectMember 添加GitLab项目成员
+func (s *GitLabService) AddProjectMember(accessToken string, projectID int64, username string, accessLevel int) error {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLabURL, projectID)
+
+	data := map[string]interface{}{
+		"user_id":      username, // 可以是用户名或用户ID
+		"access_level": accessLevel,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("添加项目成员失败: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// RemoveProjectMember 移除GitLab项目成员
+func (s *GitLabService) RemoveProjectMember(accessToken string, projectID int64, userID int64) error {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/members/%d", s.Config.GitLabURL, projectID, userID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("移除项目成员失败: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// GetUserByID 根据用户ID获取GitLab用户信息
+func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*GitLabAPIUser, error) {
+	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLabURL, userID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("获取用户信息失败: %s - %s", resp.Status, string(body))
+	}
+
+	var user GitLabAPIUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}

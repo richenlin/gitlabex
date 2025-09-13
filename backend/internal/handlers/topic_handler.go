@@ -96,8 +96,61 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 		return
 	}
 
+	// 填充作者信息
+	topicsWithAuthors := make([]map[string]interface{}, len(topics))
+	for i, topic := range topics {
+		topicMap := map[string]interface{}{
+			"id":              topic.ID,
+			"created_at":      topic.CreatedAt,
+			"updated_at":      topic.UpdatedAt,
+			"deleted_at":      topic.DeletedAt,
+			"title":           topic.Title,
+			"content":         topic.Content,
+			"project_id":      topic.ProjectID,
+			"author_id":       topic.AuthorID,
+			"gitlab_issue_id": topic.GitLabIssueID,
+			"status":          topic.Status,
+			"priority":        topic.Priority,
+			"tags":            topic.Tags,
+			"view_count":      topic.ViewCount,
+			"like_count":      topic.LikeCount,
+			"project":         topic.Project,
+		}
+
+		// 获取作者信息
+		if accessToken, exists := c.Get("gitlab_access_token"); exists {
+			if author, err := h.gitlabService.GetUserByID(accessToken.(string), topic.AuthorID); err == nil {
+				topicMap["author"] = map[string]interface{}{
+					"id":         author.ID,
+					"username":   author.Username,
+					"name":       author.Name,
+					"avatar_url": author.AvatarURL,
+					"email":      author.Email,
+				}
+			} else {
+				// 如果获取失败，设置默认值
+				topicMap["author"] = map[string]interface{}{
+					"id":         topic.AuthorID,
+					"username":   fmt.Sprintf("user_%d", topic.AuthorID),
+					"name":       fmt.Sprintf("用户%d", topic.AuthorID),
+					"avatar_url": "/default-avatar.png",
+				}
+			}
+		} else {
+			// 没有访问令牌时的默认值
+			topicMap["author"] = map[string]interface{}{
+				"id":         topic.AuthorID,
+				"username":   fmt.Sprintf("user_%d", topic.AuthorID),
+				"name":       fmt.Sprintf("用户%d", topic.AuthorID),
+				"avatar_url": "/default-avatar.png",
+			}
+		}
+
+		topicsWithAuthors[i] = topicMap
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"topics": topics,
+		"topics": topicsWithAuthors,
 		"pagination": gin.H{
 			"page":  page,
 			"limit": limit,
