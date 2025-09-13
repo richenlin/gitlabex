@@ -32,7 +32,6 @@
               <el-dropdown-item v-if="userStore.isAdmin" command="user-management">用户管理</el-dropdown-item>
               <el-dropdown-item command="profile">个人资料</el-dropdown-item>
               <el-dropdown-item command="settings">设置</el-dropdown-item>
-              <el-dropdown-item command="notifications">通知</el-dropdown-item>
               <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -72,21 +71,6 @@ const navItems = [
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
-const announcements = [
-  {
-    id: 1,
-    title: '系统维护通知',
-    content: '系统将于今晚22:00-24:00进行维护升级，请提前做好保存工作。',
-    createdAt: '2024-01-15 09:00'
-  },
-  {
-    id: 2,
-    title: '新功能上线',
-    content: '作业管理系统已升级，增加了批量评分功能。',
-    createdAt: '2024-01-14 14:30'
-  }
-]
-
 const handleUserAction = (command: string) => {
   switch (command) {
     case 'user-management':
@@ -97,10 +81,6 @@ const handleUserAction = (command: string) => {
       break
     case 'settings':
       router.push('/settings')
-      break
-    case 'notifications':
-      // 通知功能暂时禁用，因为Notifications.vue已被删除
-      ElMessage.info('通知功能正在开发中')
       break
     case 'logout':
       userStore.logout()

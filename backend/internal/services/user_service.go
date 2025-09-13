@@ -421,3 +421,30 @@ func indexOf(s, substr string) int {
 	}
 	return -1
 }
+
+// GetNotifications 获取用户通知列表
+func (s *UserService) GetNotifications(accessToken string, page, perPage int) ([]map[string]interface{}, error) {
+	notifications, err := s.gitlabService.GetNotifications(accessToken, page, perPage)
+	if err != nil {
+		return nil, fmt.Errorf("获取通知列表失败: %w", err)
+	}
+	return notifications, nil
+}
+
+// MarkNotificationAsRead 标记通知为已读
+func (s *UserService) MarkNotificationAsRead(accessToken string, notificationID string) error {
+	err := s.gitlabService.MarkNotificationAsRead(accessToken, notificationID)
+	if err != nil {
+		return fmt.Errorf("标记通知为已读失败: %w", err)
+	}
+	return nil
+}
+
+// MarkAllNotificationsAsRead 标记所有通知为已读
+func (s *UserService) MarkAllNotificationsAsRead(accessToken string) error {
+	err := s.gitlabService.MarkAllNotificationsAsRead(accessToken)
+	if err != nil {
+		return fmt.Errorf("标记所有通知为已读失败: %w", err)
+	}
+	return nil
+}

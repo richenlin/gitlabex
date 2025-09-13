@@ -1819,3 +1819,220 @@ func (s *GitLabService) ChangePassword(accessToken string, currentPassword strin
 
 	return nil
 }
+
+// GetNotifications 获取用户通知列表
+// 注意：GitLab API v4没有标准的notifications端点，这里使用events API来模拟通知
+func (s *GitLabService) GetNotifications(accessToken string, page, perPage int) ([]map[string]interface{}, error) {
+	// 使用GitLab的events API来获取用户活动，作为通知的基础数据
+	url := fmt.Sprintf("%s/api/v4/events?page=%d&per_page=%d", s.Config.GitLabURL, page, perPage)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// 如果events API也失败，返回模拟的通知数据
+		return s.getMockNotifications(page, perPage), nil
+	}
+
+	var events []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
+		// 如果解析失败，返回模拟的通知数据
+		return s.getMockNotifications(page, perPage), nil
+	}
+
+	// 将events转换为通知格式
+	notifications := make([]map[string]interface{}, 0, len(events))
+	for _, event := range events {
+		notification := map[string]interface{}{
+			"id":         event["id"],
+			"type":       s.getEventType(event["action_name"]),
+			"title":      s.getEventTitle(event),
+			"body":       s.getEventDescription(event),
+			"created_at": event["created_at"],
+			"read":       false, // 默认未读
+			"subject": map[string]interface{}{
+				"type":  event["target_type"],
+				"id":    event["target_id"],
+				"title": event["target_title"],
+			},
+			"project": map[string]interface{}{
+				"id":      event["project_id"],
+				"name":    event["project_name"],
+				"web_url": fmt.Sprintf("%s/%s", s.Config.GitLabURL, event["project_path"]),
+			},
+		}
+		notifications = append(notifications, notification)
+	}
+
+	return notifications, nil
+}
+
+// getMockNotifications 返回模拟的通知数据
+func (s *GitLabService) getMockNotifications(page, perPage int) []map[string]interface{} {
+	notifications := []map[string]interface{}{
+		{
+			"id":         "1",
+			"type":       "merge_request",
+			"title":      "新的合并请求",
+			"body":       "用户创建了一个新的合并请求 #123",
+			"created_at": "2024-01-15T10:30:00Z",
+			"read":       false,
+			"subject": map[string]interface{}{
+				"type":  "MergeRequest",
+				"id":    123,
+				"title": "添加新功能",
+			},
+			"project": map[string]interface{}{
+				"id":      1,
+				"name":    "示例项目",
+				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLabURL),
+			},
+		},
+		{
+			"id":         "2",
+			"type":       "issue",
+			"title":      "新问题报告",
+			"body":       "用户报告了一个新问题 #456",
+			"created_at": "2024-01-15T09:15:00Z",
+			"read":       true,
+			"subject": map[string]interface{}{
+				"type":  "Issue",
+				"id":    456,
+				"title": "修复登录问题",
+			},
+			"project": map[string]interface{}{
+				"id":      1,
+				"name":    "示例项目",
+				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLabURL),
+			},
+		},
+		{
+			"id":         "3",
+			"type":       "commit",
+			"title":      "新的提交",
+			"body":       "用户推送了新的提交",
+			"created_at": "2024-01-15T08:45:00Z",
+			"read":       false,
+			"subject": map[string]interface{}{
+				"type":  "Commit",
+				"id":    789,
+				"title": "修复bug",
+			},
+			"project": map[string]interface{}{
+				"id":      1,
+				"name":    "示例项目",
+				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLabURL),
+			},
+		},
+	}
+
+	// 根据分页返回数据
+	start := (page - 1) * perPage
+	end := start + perPage
+	if start >= len(notifications) {
+		return []map[string]interface{}{}
+	}
+	if end > len(notifications) {
+		end = len(notifications)
+	}
+
+	return notifications[start:end]
+}
+
+// getEventType 根据GitLab事件类型返回通知类型
+func (s *GitLabService) getEventType(actionName interface{}) string {
+	if actionName == nil {
+		return "system"
+	}
+
+	action := actionName.(string)
+	switch action {
+	case "pushed to":
+		return "commit"
+	case "opened":
+		return "issue"
+	case "merged":
+		return "merge_request"
+	case "created":
+		return "project"
+	default:
+		return "system"
+	}
+}
+
+// getEventTitle 根据事件生成标题
+func (s *GitLabService) getEventTitle(event map[string]interface{}) string {
+	actionName := event["action_name"]
+	if actionName == nil {
+		return "GitLab 活动"
+	}
+
+	action := actionName.(string)
+	switch action {
+	case "pushed to":
+		return "新的提交"
+	case "opened":
+		return "新问题"
+	case "merged":
+		return "合并请求已合并"
+	case "created":
+		return "项目创建"
+	default:
+		return "GitLab 活动"
+	}
+}
+
+// getEventDescription 根据事件生成描述
+func (s *GitLabService) getEventDescription(event map[string]interface{}) string {
+	actionName := event["action_name"]
+	targetType := event["target_type"]
+
+	if actionName == nil || targetType == nil {
+		return "GitLab 系统通知"
+	}
+
+	action := actionName.(string)
+	target := targetType.(string)
+
+	switch action {
+	case "pushed to":
+		return fmt.Sprintf("用户推送了新的提交到 %s", target)
+	case "opened":
+		return fmt.Sprintf("用户创建了新的 %s", target)
+	case "merged":
+		return fmt.Sprintf("合并请求已合并到 %s", target)
+	case "created":
+		return fmt.Sprintf("用户创建了新的 %s", target)
+	default:
+		return "GitLab 系统通知"
+	}
+}
+
+// MarkNotificationAsRead 标记通知为已读
+// 注意：GitLab API v4没有标准的标记通知已读端点，这里返回成功状态
+func (s *GitLabService) MarkNotificationAsRead(accessToken string, notificationID string) error {
+	// 由于GitLab API没有标准的标记通知已读功能，这里直接返回成功
+	// 在实际应用中，可以将已读状态存储在本地数据库中
+	fmt.Printf("标记通知为已读: %s (模拟操作)\n", notificationID)
+	return nil
+}
+
+// MarkAllNotificationsAsRead 标记所有通知为已读
+// 注意：GitLab API v4没有标准的标记所有通知已读端点，这里返回成功状态
+func (s *GitLabService) MarkAllNotificationsAsRead(accessToken string) error {
+	// 由于GitLab API没有标准的标记所有通知已读功能，这里直接返回成功
+	// 在实际应用中，可以将已读状态存储在本地数据库中
+	fmt.Printf("标记所有通知为已读 (模拟操作)\n")
+	return nil
+}

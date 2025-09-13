@@ -1,32 +1,35 @@
 import { ref, computed } from 'vue'
 import { ElNotification } from 'element-plus'
-import { useUserStore } from '@/stores/user'
+import { authService } from '@/services/api'
 
-interface NotificationItem {
+interface GitLabNotification {
   id: string
   type: string
-  title: string
-  content: string
-  data?: any
-  timestamp: number
+  title?: string
+  body?: string
+  message?: string
+  subject?: {
+    type: string
+    id: number
+    title?: string
+    name?: string
+  }
+  project?: {
+    id: number
+    name: string
+    web_url: string
+  }
+  created_at: string
   read: boolean
-}
-
-interface NotificationMessage {
-  type: string
-  title: string
-  content: string
-  data?: any
-  timestamp: number
+  timestamp?: number
 }
 
 // 全局通知状态
-const notifications = ref<NotificationItem[]>([])
-const isConnected = ref(false)
+const notifications = ref<GitLabNotification[]>([])
+const loading = ref(false)
+const isConnected = ref(true) // GitLab API始终可用
 
 export function useNotifications() {
-  const userStore = useUserStore()
-
   // 计算属性
   const unreadCount = computed(() => 
     notifications.value.filter(n => !n.read).length
@@ -34,71 +37,152 @@ export function useNotifications() {
 
   const recentNotifications = computed(() =>
     notifications.value
-      .sort((a, b) => b.timestamp - a.timestamp)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 10)
   )
 
-  // 空函数，用于兼容性
-  const connect = () => {
-    // WebSocket功能已移除
-    console.log('WebSocket功能已移除')
+  // 获取通知列表
+  const fetchNotifications = async (page = 1, perPage = 20) => {
+    try {
+      loading.value = true
+      console.log('获取GitLab通知列表...', { page, perPage })
+      
+      const response = await authService.getNotifications({
+        page,
+        per_page: perPage
+      })
+      
+      console.log('GitLab通知API响应:', response)
+      
+      const data = response?.data || response
+      notifications.value = data?.notifications || []
+      
+      console.log('GitLab通知列表:', notifications.value)
+      return notifications.value
+    } catch (error) {
+      console.error('获取GitLab通知列表失败:', error)
+      notifications.value = []
+      return []
+    } finally {
+      loading.value = false
+    }
   }
 
-  // 空函数，用于兼容性
-  const disconnect = () => {
-    // WebSocket功能已移除
-    console.log('WebSocket功能已移除')
+  // 标记单个通知为已读
+  const markAsRead = async (notificationId: string) => {
+    try {
+      console.log('标记GitLab通知为已读:', notificationId)
+      
+      await authService.markNotificationAsRead(notificationId)
+      
+      // 更新本地状态
+      const notification = notifications.value.find(n => n.id === notificationId)
+      if (notification) {
+        notification.read = true
+      }
+      
+      return true
+    } catch (error) {
+      console.error('标记GitLab通知为已读失败:', error)
+      return false
+    }
   }
 
-  // 处理通知消息
-  const handleNotificationMessage = (message: NotificationMessage) => {
-    const notification: NotificationItem = {
-      id: generateNotificationId(),
-      type: message.type,
-      title: message.title,
-      content: message.content,
-      data: message.data,
-      timestamp: message.timestamp * 1000, // 转换为毫秒
-      read: false
+  // 标记所有通知为已读
+  const markAllAsRead = async () => {
+    try {
+      console.log('标记所有GitLab通知为已读')
+      
+      await authService.markAllNotificationsAsRead()
+      
+      // 更新本地状态
+      notifications.value.forEach(n => {
+        n.read = true
+      })
+      
+      return true
+    } catch (error) {
+      console.error('标记所有GitLab通知为已读失败:', error)
+      return false
     }
+  }
 
-    // 添加到通知列表
-    notifications.value.unshift(notification)
-
-    // 限制通知数量
-    if (notifications.value.length > 100) {
-      notifications.value = notifications.value.slice(0, 100)
+  // 清除通知（本地操作）
+  const removeNotification = (notificationId: string) => {
+    const index = notifications.value.findIndex(n => n.id === notificationId)
+    if (index !== -1) {
+      notifications.value.splice(index, 1)
     }
+  }
 
-    // 显示桌面通知
-    showDesktopNotification(notification)
+  // 清除所有通知（本地操作）
+  const clearAllNotifications = () => {
+    notifications.value = []
+  }
+
+  // 处理GitLab通知点击
+  const handleNotificationClick = (notification: GitLabNotification) => {
+    // 根据GitLab通知类型进行路由跳转
+    if (notification.subject && notification.project) {
+      switch (notification.subject.type) {
+        case 'MergeRequest':
+          if (notification.subject.id) {
+            // 跳转到合并请求页面
+            window.open(`${notification.project.web_url}/-/merge_requests/${notification.subject.id}`, '_blank')
+          }
+          break
+        case 'Issue':
+          if (notification.subject.id) {
+            // 跳转到问题页面
+            window.open(`${notification.project.web_url}/-/issues/${notification.subject.id}`, '_blank')
+          }
+          break
+        case 'Commit':
+          if (notification.subject.id) {
+            // 跳转到提交页面
+            window.open(`${notification.project.web_url}/-/commit/${notification.subject.id}`, '_blank')
+          }
+          break
+        case 'Project':
+          if (notification.project.web_url) {
+            // 跳转到项目页面
+            window.open(notification.project.web_url, '_blank')
+          }
+          break
+        default:
+          break
+      }
+    }
   }
 
   // 显示桌面通知
-  const showDesktopNotification = (notification: NotificationItem) => {
+  const showDesktopNotification = (notification: GitLabNotification) => {
     // 根据通知类型设置不同的样式
     let notificationType: 'success' | 'warning' | 'info' | 'error' = 'info'
     
-    switch (notification.type) {
-      case 'system':
-        notificationType = 'info'
-        break
-      case 'project':
+    switch (notification.subject?.type) {
+      case 'MergeRequest':
         notificationType = 'success'
         break
-      case 'homework':
+      case 'Issue':
         notificationType = 'warning'
         break
-      case 'error':
-        notificationType = 'error'
+      case 'Commit':
+        notificationType = 'info'
+        break
+      case 'Project':
+        notificationType = 'info'
         break
       default:
         notificationType = 'info'
     }
 
+    const title = notification.title || notification.subject?.title || 'GitLab 通知'
+    const content = notification.body || notification.message || notification.subject?.name || 'GitLab 通知'
+
     ElNotification({
-      title: notification.title,
-      message: notification.content,
+      title,
+      message: content,
       type: notificationType,
       duration: 5000,
       position: 'top-right',
@@ -109,65 +193,65 @@ export function useNotifications() {
     })
   }
 
-  // 处理通知点击
-  const handleNotificationClick = (notification: NotificationItem) => {
-    // 根据通知类型和数据进行路由跳转
-    if (notification.data) {
-      const router = useRouter()
-      
-      switch (notification.type) {
-        case 'project':
-          if (notification.data.project_id) {
-            router.push(`/projects/${notification.data.project_id}`)
-          }
-          break
-        case 'homework':
-          if (notification.data.homework_id) {
-            router.push(`/homework/${notification.data.homework_id}`)
-          }
-          break
-        default:
-          // 其他类型的通知处理
-          break
-      }
+  // 获取通知图标类型
+  const getNotificationIconType = (notification: GitLabNotification) => {
+    return notification.subject?.type || 'system'
+  }
+
+  // 获取通知内容
+  const getNotificationContent = (notification: GitLabNotification) => {
+    if (notification.body) {
+      return notification.body
+    }
+    if (notification.message) {
+      return notification.message
+    }
+    if (notification.subject) {
+      return notification.subject.title || notification.subject.name || 'GitLab 通知'
+    }
+    return 'GitLab 通知'
+  }
+
+  // 格式化时间
+  const formatTime = (timestamp: string | number) => {
+    if (!timestamp) return '未知时间'
+    
+    const date = new Date(timestamp)
+    const now = new Date()
+    const diff = now.getTime() - date.getTime()
+    
+    const minute = 60 * 1000
+    const hour = 60 * minute
+    const day = 24 * hour
+    
+    if (diff < minute) {
+      return '刚刚'
+    } else if (diff < hour) {
+      return `${Math.floor(diff / minute)}分钟前`
+    } else if (diff < day) {
+      return `${Math.floor(diff / hour)}小时前`
+    } else if (diff < 7 * day) {
+      return `${Math.floor(diff / day)}天前`
+    } else {
+      return date.toLocaleDateString()
     }
   }
 
-  // 标记为已读
-  const markAsRead = (notificationId: string) => {
-    const notification = notifications.value.find(n => n.id === notificationId)
-    if (notification) {
-      notification.read = true
-    }
+  // 连接状态（GitLab API始终可用）
+  const connect = () => {
+    isConnected.value = true
+    console.log('GitLab通知API连接状态：已连接')
   }
 
-  // 标记所有为已读
-  const markAllAsRead = () => {
-    notifications.value.forEach(n => n.read = true)
+  // 断开连接（GitLab API始终可用）
+  const disconnect = () => {
+    isConnected.value = false
+    console.log('GitLab通知API连接状态：已断开')
   }
 
-  // 清除通知
-  const removeNotification = (notificationId: string) => {
-    const index = notifications.value.findIndex(n => n.id === notificationId)
-    if (index !== -1) {
-      notifications.value.splice(index, 1)
-    }
-  }
-
-  // 清除所有通知
-  const clearAllNotifications = () => {
-    notifications.value = []
-  }
-
-  // 生成通知ID
-  const generateNotificationId = () => {
-    return Date.now().toString() + Math.random().toString(36).substr(2, 9)
-  }
-
-  // 发送消息（WebSocket功能已移除）
+  // 发送消息（GitLab通知由GitLab系统自动生成）
   const sendMessage = (message: any) => {
-    // WebSocket功能已移除，这里可以改为其他通知方式
-    console.log('发送消息功能已移除:', message)
+    console.log('GitLab通知由系统自动生成，不支持手动发送:', message)
   }
 
   // 请求桌面通知权限
@@ -179,18 +263,25 @@ export function useNotifications() {
 
   return {
     // 状态
-    notifications: notifications,
+    notifications,
+    loading,
     isConnected,
     unreadCount,
     recentNotifications,
 
     // 方法
-    connect,
-    disconnect,
+    fetchNotifications,
     markAsRead,
     markAllAsRead,
     removeNotification,
     clearAllNotifications,
+    handleNotificationClick,
+    showDesktopNotification,
+    getNotificationIconType,
+    getNotificationContent,
+    formatTime,
+    connect,
+    disconnect,
     sendMessage,
     requestNotificationPermission
   }
@@ -198,22 +289,11 @@ export function useNotifications() {
 
 // 在路由守卫中使用
 export function setupNotifications() {
-  const { requestNotificationPermission } = useNotifications()
-  const userStore = useUserStore()
+  const { requestNotificationPermission, fetchNotifications } = useNotifications()
 
-  // 用户登录后请求通知权限
-  if (userStore.isLoggedIn) {
-    requestNotificationPermission()
-  }
-}
-
-// 导入useRouter（需要在组件内使用）
-function useRouter() {
-  // 这个函数需要在组件内部调用，这里只是占位符
-  // 实际使用时需要从vue-router导入
-  return {
-    push: (path: string) => {
-      console.log('导航到:', path)
-    }
-  }
+  // 用户登录后请求通知权限并获取通知
+  requestNotificationPermission()
+  
+  // 初始获取通知
+  fetchNotifications()
 }

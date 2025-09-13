@@ -158,6 +158,16 @@ export const authService = {
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.put('/users/me/password', data),
   
+  // 通知管理
+  getNotifications: (params?: { page?: number; per_page?: number }) =>
+    api.get('/users/me/notifications', { params }),
+  
+  markNotificationAsRead: (id: string) =>
+    api.post(`/users/me/notifications/${id}/read`),
+  
+  markAllNotificationsAsRead: () =>
+    api.post('/users/me/notifications/read-all'),
+  
   refreshToken: () =>
     api.post('/auth/refresh')
 }

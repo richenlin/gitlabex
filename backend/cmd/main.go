@@ -128,6 +128,9 @@ func main() {
 		users.POST("/me/ssh-keys", userHandler.AddSSHKey)
 		users.DELETE("/me/ssh-keys/:id", userHandler.DeleteSSHKey)
 		users.PUT("/me/password", userHandler.ChangePassword)
+		users.GET("/me/notifications", userHandler.GetNotifications)
+		users.POST("/me/notifications/:id/read", userHandler.MarkNotificationAsRead)
+		users.POST("/me/notifications/read-all", userHandler.MarkAllNotificationsAsRead)
 		users.GET("", userHandler.GetUsers)
 		users.GET("/:id", userHandler.GetUserByID)
 	}

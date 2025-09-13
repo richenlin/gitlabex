@@ -248,3 +248,87 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
 }
+
+// GetNotifications 获取用户通知列表
+func (h *UserHandler) GetNotifications(c *gin.Context) {
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	// 获取分页参数
+	page := 1
+	perPage := 20
+	if pageStr := c.Query("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if perPageStr := c.Query("per_page"); perPageStr != "" {
+		if pp, err := strconv.Atoi(perPageStr); err == nil && pp > 0 && pp <= 100 {
+			perPage = pp
+		}
+	}
+
+	notifications, err := h.userService.GetNotifications(accessToken.(string), page, perPage)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取通知列表失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"notifications": notifications,
+		"page":          page,
+		"per_page":      perPage,
+	})
+}
+
+// MarkNotificationAsRead 标记通知为已读
+func (h *UserHandler) MarkNotificationAsRead(c *gin.Context) {
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	notificationID := c.Param("id")
+	if notificationID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "通知ID不能为空"})
+		return
+	}
+
+	err := h.userService.MarkNotificationAsRead(accessToken.(string), notificationID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "标记通知为已读失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "通知已标记为已读"})
+}
+
+// MarkAllNotificationsAsRead 标记所有通知为已读
+func (h *UserHandler) MarkAllNotificationsAsRead(c *gin.Context) {
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	err := h.userService.MarkAllNotificationsAsRead(accessToken.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "标记所有通知为已读失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "所有通知已标记为已读"})
+}

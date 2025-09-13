@@ -26,43 +26,43 @@
         <div class="notification-header">
           <div class="header-title">
             <h3>通知中心</h3>
-            <span class="connection-status" :class="{ connected: isConnected }">
-              {{ isConnected ? '已连接' : '未连接' }}
-            </span>
           </div>
           <div class="header-actions">
-            <el-button 
+            <!-- 暂时屏蔽全部已读功能，因为GitLab没有通知已读机制 -->
+            <!-- <el-button 
               link 
               size="small" 
               @click="markAllAsRead"
               :disabled="unreadCount === 0"
+              :loading="markAllLoading"
             >
               全部已读
-            </el-button>
+            </el-button> -->
             <el-button 
               link 
               size="small" 
-              @click="clearAllNotifications"
-              :disabled="notifications.length === 0"
+              @click="refreshNotifications"
+              :loading="loading"
             >
-              清空
+              刷新
             </el-button>
           </div>
         </div>
 
         <!-- 通知列表 -->
-        <div class="notification-list">
-          <div v-if="notifications.length === 0" class="empty-state">
+        <div class="notification-list" v-loading="loading">
+          <div v-if="notifications.length === 0 && !loading" class="empty-state">
             <el-icon size="48" color="#c0c4cc"><Bell /></el-icon>
             <p>暂无通知</p>
           </div>
 
           <div
-            v-for="notification in recentNotifications"
+            v-for="notification in notifications"
             :key="notification.id"
             class="notification-item"
             :class="{ 
-              'unread': !notification.read,
+              // 暂时屏蔽未读状态样式，因为GitLab没有通知已读机制
+              // 'unread': !notification.read,
               [`type-${notification.type}`]: true 
             }"
             @click="handleNotificationClick(notification)"
@@ -74,38 +74,38 @@
             </div>
             
             <div class="notification-body">
-              <div class="notification-title">{{ notification.title }}</div>
-              <div class="notification-content-text">{{ notification.content }}</div>
+              <div class="notification-title">{{ notification.title || 'GitLab 通知' }}</div>
+              <div class="notification-content-text">{{ getNotificationContent(notification) }}</div>
               <div class="notification-time">
-                {{ formatTime(notification.timestamp) }}
+                {{ formatTime(notification.created_at || notification.timestamp) }}
               </div>
             </div>
 
             <div class="notification-actions">
-              <el-button
+              <!-- 暂时屏蔽标记已读功能，因为GitLab没有通知已读机制 -->
+              <!-- <el-button
                 link
                 size="small"
                 @click.stop="markAsRead(notification.id)"
                 v-if="!notification.read"
+                :loading="markingRead === notification.id"
               >
                 标记已读
-              </el-button>
-              <el-button
-                link
-                size="small"
-                @click.stop="removeNotification(notification.id)"
-              >
-                删除
-              </el-button>
+              </el-button> -->
             </div>
           </div>
         </div>
 
-        <!-- 底部 -->
-        <div class="notification-footer" v-if="notifications.length > 10">
-          <el-button link @click="$router.push('/notifications')">
-            查看全部通知
-          </el-button>
+        <!-- 分页 -->
+        <div class="notification-footer" v-if="notifications.length > 0">
+          <el-pagination
+            v-model:current-page="currentPage"
+            :page-size="pageSize"
+            :total="total"
+            layout="prev, pager, next"
+            small
+            @current-change="handlePageChange"
+          />
         </div>
       </div>
     </el-popover>
@@ -113,9 +113,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useNotifications } from '@/composables/useNotifications'
+import { ElMessage } from 'element-plus'
+import { authService } from '@/services/api'
 import { 
   Bell, 
   Message, 
@@ -124,59 +125,188 @@ import {
   Warning, 
   InfoFilled,
   SuccessFilled,
-  CircleCheck 
+  CircleCheck,
+  Link,
+  ArrowRight,
+  Switch
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
-const {
-  notifications,
-  isConnected,
-  unreadCount,
-  recentNotifications,
-  markAsRead,
-  markAllAsRead,
-  removeNotification,
-  clearAllNotifications
-} = useNotifications()
 
+// 响应式数据
 const visible = ref(false)
+const notifications = ref<any[]>([])
+const loading = ref(false)
+const markAllLoading = ref(false)
+const markingRead = ref<string | null>(null)
+const currentPage = ref(1)
+const pageSize = ref(10)
+const total = ref(0)
+
+// 计算属性
+const unreadCount = computed(() => {
+  // 暂时屏蔽未读计数，因为GitLab没有通知已读机制
+  // return notifications.value.filter(n => !n.read).length
+  return 0
+})
+
+// 获取通知列表
+const fetchNotifications = async () => {
+  try {
+    loading.value = true
+    console.log('获取通知列表...', { page: currentPage.value, per_page: pageSize.value })
+    
+    const response = await authService.getNotifications({
+      page: currentPage.value,
+      per_page: pageSize.value
+    })
+    
+    console.log('通知API响应:', response)
+    
+    const data = response?.data || response
+    notifications.value = data?.notifications || []
+    total.value = data?.total || notifications.value.length
+    
+    console.log('通知列表:', notifications.value)
+  } catch (error) {
+    console.error('获取通知列表失败:', error)
+    ElMessage.error('获取通知列表失败')
+    notifications.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+// 标记单个通知为已读
+const markAsRead = async (notificationId: string) => {
+  try {
+    markingRead.value = notificationId
+    console.log('标记通知为已读:', notificationId)
+    
+    await authService.markNotificationAsRead(notificationId)
+    
+    // 更新本地状态
+    const notification = notifications.value.find(n => n.id === notificationId)
+    if (notification) {
+      notification.read = true
+    }
+    
+    ElMessage.success('通知已标记为已读')
+  } catch (error) {
+    console.error('标记通知为已读失败:', error)
+    ElMessage.error('标记通知为已读失败')
+  } finally {
+    markingRead.value = null
+  }
+}
+
+// 标记所有通知为已读
+const markAllAsRead = async () => {
+  try {
+    markAllLoading.value = true
+    console.log('标记所有通知为已读')
+    
+    await authService.markAllNotificationsAsRead()
+    
+    // 更新本地状态
+    notifications.value.forEach(n => {
+      n.read = true
+    })
+    
+    ElMessage.success('所有通知已标记为已读')
+  } catch (error) {
+    console.error('标记所有通知为已读失败:', error)
+    ElMessage.error('标记所有通知为已读失败')
+  } finally {
+    markAllLoading.value = false
+  }
+}
+
+// 刷新通知
+const refreshNotifications = async () => {
+  await fetchNotifications()
+}
 
 // 处理面板显示状态变化
 const handleVisibleChange = (val: boolean) => {
   visible.value = val
+  if (val) {
+    fetchNotifications()
+  }
+}
+
+// 处理分页变化
+const handlePageChange = (page: number) => {
+  currentPage.value = page
+  fetchNotifications()
 }
 
 // 获取通知图标
 const getNotificationIcon = (type: string) => {
   const iconMap: { [key: string]: any } = {
-    system: InfoFilled,
+    issue: Warning,
+    merge_request: ArrowRight,
+    commit: Link,
+    push: Switch,
     project: Document,
-    homework: Document,
     user: User,
     success: SuccessFilled,
     warning: Warning,
     error: Warning,
-    message: Message
+    message: Message,
+    system: InfoFilled
   }
   return iconMap[type] || Bell
 }
 
+// 获取通知内容
+const getNotificationContent = (notification: any) => {
+  // GitLab通知的内容通常在body或message字段中
+  if (notification.body) {
+    return notification.body
+  }
+  if (notification.message) {
+    return notification.message
+  }
+  if (notification.subject) {
+    return notification.subject.title || notification.subject.name || 'GitLab 通知'
+  }
+  return 'GitLab 通知'
+}
+
 // 处理通知点击
 const handleNotificationClick = (notification: any) => {
-  markAsRead(notification.id)
+  // 暂时屏蔽自动标记已读功能，因为GitLab没有通知已读机制
+  // markAsRead(notification.id)
   
-  // 根据通知类型进行路由跳转
-  if (notification.data) {
-    switch (notification.type) {
-      case 'project':
-        if (notification.data.project_id) {
-          router.push(`/projects/${notification.data.project_id}`)
+  // 根据GitLab通知类型进行路由跳转
+  if (notification.subject) {
+    switch (notification.subject.type) {
+      case 'MergeRequest':
+        if (notification.subject.id) {
+          // 跳转到合并请求页面
+          window.open(`${notification.project?.web_url}/-/merge_requests/${notification.subject.id}`, '_blank')
           visible.value = false
         }
         break
-      case 'homework':
-        if (notification.data.homework_id) {
-          router.push(`/homework/${notification.data.homework_id}`)
+      case 'Issue':
+        if (notification.subject.id) {
+          // 跳转到问题页面
+          window.open(`${notification.project?.web_url}/-/issues/${notification.subject.id}`, '_blank')
+          visible.value = false
+        }
+        break
+      case 'Commit':
+        if (notification.subject.id) {
+          // 跳转到提交页面
+          window.open(`${notification.project?.web_url}/-/commit/${notification.subject.id}`, '_blank')
+          visible.value = false
+        }
+        break
+      case 'Project':
+        if (notification.project?.web_url) {
+          // 跳转到项目页面
+          window.open(notification.project.web_url, '_blank')
           visible.value = false
         }
         break
@@ -187,9 +317,12 @@ const handleNotificationClick = (notification: any) => {
 }
 
 // 格式化时间
-const formatTime = (timestamp: number) => {
-  const now = Date.now()
-  const diff = now - timestamp
+const formatTime = (timestamp: string | number) => {
+  if (!timestamp) return '未知时间'
+  
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
   
   const minute = 60 * 1000
   const hour = 60 * minute
@@ -201,10 +334,27 @@ const formatTime = (timestamp: number) => {
     return `${Math.floor(diff / minute)}分钟前`
   } else if (diff < day) {
     return `${Math.floor(diff / hour)}小时前`
+  } else if (diff < 7 * day) {
+    return `${Math.floor(diff / day)}天前`
   } else {
-    return new Date(timestamp).toLocaleDateString()
+    return date.toLocaleDateString()
   }
 }
+
+// 监听面板显示状态，自动刷新通知
+watch(visible, (newVal) => {
+  if (newVal) {
+    fetchNotifications()
+  }
+})
+
+// 组件挂载时获取通知
+onMounted(() => {
+  // 延迟获取，避免在用户未登录时调用
+  setTimeout(() => {
+    fetchNotifications()
+  }, 1000)
+})
 </script>
 
 <style scoped>
@@ -246,19 +396,6 @@ const formatTime = (timestamp: number) => {
   font-size: 16px;
   font-weight: 600;
   color: var(--el-text-color-primary);
-}
-
-.connection-status {
-  font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background-color: var(--el-color-danger-light-9);
-  color: var(--el-color-danger);
-}
-
-.connection-status.connected {
-  background-color: var(--el-color-success-light-9);
-  color: var(--el-color-success);
 }
 
 .header-actions {
@@ -310,20 +447,28 @@ const formatTime = (timestamp: number) => {
   flex-shrink: 0;
 }
 
-.type-system .notification-icon {
+.type-issue .notification-icon {
+  color: var(--el-color-warning);
+}
+
+.type-merge_request .notification-icon {
+  color: var(--el-color-success);
+}
+
+.type-commit .notification-icon {
   color: var(--el-color-info);
+}
+
+.type-push .notification-icon {
+  color: var(--el-color-primary);
 }
 
 .type-project .notification-icon {
   color: var(--el-color-success);
 }
 
-.type-homework .notification-icon {
-  color: var(--el-color-warning);
-}
-
-.type-error .notification-icon {
-  color: var(--el-color-danger);
+.type-system .notification-icon {
+  color: var(--el-color-info);
 }
 
 .notification-body {
