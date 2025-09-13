@@ -188,11 +188,17 @@ func (s *GitLabService) SetupProjectBranchProtection(accessToken string, project
 // GitLabUser GitLab用户信息 - 使用models包中的定义
 // 这里保留一个简化的结构用于API响应解析
 type GitLabAPIUser struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Avatar   string `json:"avatar_url"`
+	ID           int64  `json:"id"`
+	Username     string `json:"username"`
+	Email        string `json:"email"`
+	Name         string `json:"name"`
+	Avatar       string `json:"avatar_url"`
+	IsAdmin      bool   `json:"is_admin"`
+	State        string `json:"state"`
+	UserType     string `json:"user_type"`
+	External     bool   `json:"external"`
+	CanCreateGroup bool `json:"can_create_group"`
+	CanCreateProject bool `json:"can_create_project"`
 }
 
 // GitLabProject GitLab项目信息
@@ -1991,6 +1997,36 @@ func (s *GitLabService) getEventTitle(event map[string]interface{}) string {
 	default:
 		return "GitLab 活动"
 	}
+}
+
+// GetUserProjects 获取用户参与的项目列表
+func (s *GitLabService) GetUserProjects(accessToken string, userID int64) ([]*GitLabProject, error) {
+	url := fmt.Sprintf("%s/api/v4/users/%d/projects", s.Config.GitLabURL, userID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+	}
+
+	var projects []*GitLabProject
+	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+		return nil, err
+	}
+
+	return projects, nil
 }
 
 // getEventDescription 根据事件生成描述

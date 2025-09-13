@@ -43,7 +43,7 @@ func (s *UserService) GetUserByGitLabID(accessToken string, gitlabID int64) (*mo
 		Email:     gitlabUser.Email,
 		Name:      gitlabUser.Name,
 		AvatarURL: gitlabUser.Avatar,
-		IsAdmin:   false, // 需要通过其他API检查管理员权限
+		IsAdmin:   gitlabUser.IsAdmin,
 	}
 
 	return user, nil
@@ -68,7 +68,7 @@ func (s *UserService) GetUserByUsername(accessToken, username string) (*models.G
 		Email:     gitlabUser.Email,
 		Name:      gitlabUser.Name,
 		AvatarURL: gitlabUser.Avatar,
-		IsAdmin:   false,
+		IsAdmin:   gitlabUser.IsAdmin,
 	}
 
 	return user, nil
@@ -81,13 +81,21 @@ func (s *UserService) GetCurrentUser(accessToken string) (*models.GitLabUser, er
 		return nil, fmt.Errorf("获取GitLab用户信息失败: %v", err)
 	}
 
+	// 通过多种方式判断管理员权限
+	isAdmin := gitlabUser.IsAdmin || 
+		gitlabUser.CanCreateGroup || 
+		gitlabUser.CanCreateProject ||
+		gitlabUser.Username == "root" ||
+		gitlabUser.Username == "admin" ||
+		gitlabUser.UserType == "admin"
+
 	user := &models.GitLabUser{
 		ID:        gitlabUser.ID,
 		Username:  gitlabUser.Username,
 		Email:     gitlabUser.Email,
 		Name:      gitlabUser.Name,
 		AvatarURL: gitlabUser.Avatar,
-		IsAdmin:   false,
+		IsAdmin:   isAdmin,
 	}
 
 	return user, nil
@@ -166,7 +174,7 @@ func (s *UserService) GetAllUsers(accessToken string, page, pageSize int, search
 			Email:     gitlabUser.Email,
 			Name:      gitlabUser.Name,
 			AvatarURL: gitlabUser.Avatar,
-			IsAdmin:   false, // GitLab API用户信息中不包含管理员状态
+			IsAdmin:   gitlabUser.IsAdmin,
 		}
 	}
 
@@ -199,16 +207,7 @@ func (s *UserService) CreateUser(accessToken string, data *CreateUserData) (*mod
 	gitlabUser, err := s.gitlabService.CreateUser(accessToken, gitlabUserData)
 	if err != nil {
 		fmt.Printf("GitLab API创建用户失败: %v\n", err)
-		// 如果GitLab API失败，返回模拟数据
-		user := &models.GitLabUser{
-			ID:        int64(len(data.Username) + 100), // 模拟ID
-			Username:  data.Username,
-			Email:     data.Email,
-			Name:      data.Name,
-			AvatarURL: "",
-			IsAdmin:   data.IsAdmin,
-		}
-		return user, nil
+		return nil, fmt.Errorf("GitLab API创建用户失败: %v", err)
 	}
 
 	// 转换GitLab用户数据为内部格式
@@ -218,7 +217,7 @@ func (s *UserService) CreateUser(accessToken string, data *CreateUserData) (*mod
 		Email:     gitlabUser.Email,
 		Name:      gitlabUser.Name,
 		AvatarURL: gitlabUser.Avatar,
-		IsAdmin:   false, // GitLab API用户信息中不包含管理员状态
+		IsAdmin:   gitlabUser.IsAdmin,
 	}
 
 	return user, nil
@@ -262,7 +261,7 @@ func (s *UserService) UpdateUser(accessToken string, userID string, data *Update
 		Email:     gitlabUser.Email,
 		Name:      gitlabUser.Name,
 		AvatarURL: gitlabUser.Avatar,
-		IsAdmin:   false, // GitLab API用户信息中不包含管理员状态
+		IsAdmin:   gitlabUser.IsAdmin,
 	}
 
 	return user, nil
@@ -288,20 +287,67 @@ func (s *UserService) DeleteUser(accessToken string, userID string) error {
 
 // UpdateUserRoles 更新用户角色 (管理员专用)
 func (s *UserService) UpdateUserRoles(accessToken string, userID string, data *UpdateUserRolesData) error {
-	// TODO: 通过GitLab API更新用户角色
+	// 转换用户ID为int64
+	gitlabUserID, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("无效的用户ID: %v", err)
+	}
+
+	// 构建GitLab更新用户数据
+	updateData := &GitLabUpdateUserData{
+		Admin: data.IsAdmin,
+	}
+
+	// 通过GitLab API更新用户
+	_, err = s.gitlabService.UpdateUser(accessToken, gitlabUserID, updateData)
+	if err != nil {
+		return fmt.Errorf("GitLab API更新用户失败: %v", err)
+	}
+
 	return nil
 }
 
 // GetUserProjectRoles 获取用户项目角色 (管理员专用)
 func (s *UserService) GetUserProjectRoles(accessToken string, userID string) ([]map[string]interface{}, error) {
-	// TODO: 通过GitLab API获取用户项目角色
-	// 返回模拟数据
-	roles := []map[string]interface{}{
-		{
-			"project_id":   "1",
-			"project_name": "示例项目",
-			"role":         "developer",
-		},
+	// 转换用户ID为int64
+	gitlabUserID, err := strconv.ParseInt(userID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("无效的用户ID: %v", err)
+	}
+
+	// 通过GitLab API获取用户参与的项目
+	projects, err := s.gitlabService.GetUserProjects(accessToken, gitlabUserID)
+	if err != nil {
+		return nil, fmt.Errorf("获取用户项目失败: %v", err)
+	}
+
+	// 构建角色列表
+	roles := make([]map[string]interface{}, 0, len(projects))
+	for _, project := range projects {
+		// 获取用户在该项目中的访问级别
+		accessLevel, err := s.gitlabService.GetUserProjectAccessLevel(accessToken, project.ID)
+		if err != nil {
+			// 如果获取访问级别失败，使用默认值
+			accessLevel = 10 // Guest
+		}
+
+		// 将访问级别转换为角色名称
+		roleName := "guest"
+		switch accessLevel {
+		case 30:
+			roleName = "developer"
+		case 40:
+			roleName = "maintainer"
+		case 50:
+			roleName = "owner"
+		}
+
+		roles = append(roles, map[string]interface{}{
+			"project_id":   fmt.Sprintf("%d", project.ID),
+			"project_name": project.Name,
+			"role":         roleName,
+			"access_level": accessLevel,
+		})
 	}
 
 	return roles, nil
@@ -309,13 +355,31 @@ func (s *UserService) GetUserProjectRoles(accessToken string, userID string) ([]
 
 // GetUserStats 获取用户统计信息 (管理员专用)
 func (s *UserService) GetUserStats(accessToken string) (map[string]interface{}, error) {
-	// TODO: 通过GitLab API获取用户统计
-	// 返回模拟数据
+	// 通过GitLab API获取所有用户（分页获取，这里获取第一页的100个用户）
+	users, err := s.gitlabService.GetAllUsers(accessToken, 1, 100)
+	if err != nil {
+		return nil, fmt.Errorf("获取用户列表失败: %v", err)
+	}
+
+	// 统计用户信息
+	totalUsers := len(users)
+	adminUsers := 0
+	activeUsers := 0
+	inactiveUsers := 0
+
+	for _, user := range users {
+		if user.IsAdmin {
+			adminUsers++
+		}
+		// GitLab用户默认为活跃状态，这里可以根据最后登录时间等判断
+		activeUsers++
+	}
+
 	stats := map[string]interface{}{
-		"total_users":    3,
-		"admin_users":    1,
-		"active_users":   3,
-		"inactive_users": 0,
+		"total_users":    totalUsers,
+		"admin_users":    adminUsers,
+		"active_users":   activeUsers,
+		"inactive_users": inactiveUsers,
 	}
 
 	return stats, nil

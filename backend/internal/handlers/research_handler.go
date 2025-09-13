@@ -692,15 +692,40 @@ func (h *ResearchHandler) GetIssues(c *gin.Context) {
 		return
 	}
 
-	// TODO: 实现GetProjectIssues方法
-	// issues, err := h.gitlabService.GetProjectIssues(*project.GitLabProjectID)
-	// if err != nil {
-	//     c.JSON(http.StatusInternalServerError, gin.H{"error": "获取Issues失败"})
-	//     return
-	// }
+	// 获取访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
 
-	// 临时返回空列表
-	c.JSON(http.StatusOK, gin.H{"issues": []interface{}{}})
+	// 通过GitLab API获取项目Issues（获取第一页，每页20个）
+	issues, err := h.gitlabService.GetProjectIssues(accessToken.(string), *project.GitLabProjectID, 1, 20)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取Issues失败", "details": err.Error()})
+		return
+	}
+
+	// 转换为map格式以便前端处理
+	issuesList := make([]map[string]interface{}, len(issues))
+	for i, issue := range issues {
+		issuesList[i] = map[string]interface{}{
+			"id":          issue.ID,
+			"iid":         issue.IID,
+			"title":       issue.Title,
+			"description": issue.Description,
+			"state":       issue.State,
+			"created_at":  issue.CreatedAt,
+			"updated_at":  issue.UpdatedAt,
+			"author": map[string]interface{}{
+				"id":       issue.Author.ID,
+				"name":     issue.Author.Name,
+				"username": issue.Author.Username,
+			},
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"issues": issuesList})
 }
 
 // CreateIssue 创建新Issue
@@ -792,20 +817,37 @@ func (h *ResearchHandler) GetIssue(c *gin.Context) {
 		return
 	}
 
-	// TODO: 实现GetIssue方法
-	// issue, err := h.gitlabService.GetIssue(*project.GitLabProjectID, issueID)
-	// if err != nil {
-	//     c.JSON(http.StatusNotFound, gin.H{"error": "Issue不存在"})
-	//     return
-	// }
-
-	// 临时返回模拟数据
-	issue := map[string]interface{}{
-		"id":    issueID,
-		"title": "模拟Issue",
+	// 获取访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
 	}
 
-	c.JSON(http.StatusOK, issue)
+	// 通过GitLab API获取Issue详情
+	issue, err := h.gitlabService.GetIssue(accessToken.(string), *project.GitLabProjectID, issueID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Issue不存在", "details": err.Error()})
+		return
+	}
+
+	// 转换为map格式以便前端处理
+	issueData := map[string]interface{}{
+		"id":          issue.ID,
+		"iid":         issue.IID,
+		"title":       issue.Title,
+		"description": issue.Description,
+		"state":       issue.State,
+		"created_at":  issue.CreatedAt,
+		"updated_at":  issue.UpdatedAt,
+		"author": map[string]interface{}{
+			"id":       issue.Author.ID,
+			"name":     issue.Author.Name,
+			"username": issue.Author.Username,
+		},
+	}
+
+	c.JSON(http.StatusOK, issueData)
 }
 
 // GetDiscussions 获取Issue的讨论

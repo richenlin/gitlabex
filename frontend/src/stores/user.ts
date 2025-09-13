@@ -12,7 +12,32 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => !!token.value && !!user.value)
   const username = computed(() => user.value?.username || '')
   const avatar = computed(() => user.value?.avatar_url)
-  const isAdmin = computed(() => user.value?.is_admin || false)
+  
+  // 管理员权限状态
+  const adminPermission = ref(false)
+  const isAdmin = computed(() => adminPermission.value)
+
+  // 检查管理员权限
+  const checkAdminPermission = async () => {
+    if (!isLoggedIn.value) {
+      adminPermission.value = false
+      return false
+    }
+
+    try {
+      const response: any = await permissionService.checkPermission({
+        action: 'manage',
+        resource: 'users'
+      })
+      adminPermission.value = response.allowed || false
+      console.log('管理员权限检查结果:', adminPermission.value)
+      return adminPermission.value
+    } catch (error) {
+      console.error('管理员权限检查失败:', error)
+      adminPermission.value = false
+      return false
+    }
+  }
 
   // 权限检查方法 - 现在通过后端API进行
   const checkPermission = async (action: string, resource: string, resourceId?: string) => {
@@ -122,6 +147,7 @@ export const useUserStore = defineStore('user', () => {
   const logout = () => {
     token.value = null
     user.value = null
+    adminPermission.value = false
     
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -141,6 +167,10 @@ export const useUserStore = defineStore('user', () => {
       
       localStorage.setItem('user', JSON.stringify(user.value))
       console.log('Store: 用户信息保存成功:', user.value)
+      
+      // 检查管理员权限
+      await checkAdminPermission()
+      
       return true
     } catch (error) {
       console.error('Store: 获取用户信息失败:', error)
@@ -228,6 +258,7 @@ export const useUserStore = defineStore('user', () => {
     isAdmin,
     hasRole,
     hasAnyRole,
+    checkAdminPermission,
     checkPermission,
     checkProjectPermission,
     checkProjectPermissionDetailed,

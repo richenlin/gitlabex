@@ -55,9 +55,15 @@ const handleOAuthCallback = async () => {
     
     const data = response.data || response
     if (data.token && data.user) {
-      // 保存用户信息和令牌
-      userStore.setUser(data.user)
+      // 保存令牌
       userStore.setToken(data.token)
+      
+      // 获取完整的用户信息（包括is_admin字段）
+      const success = await userStore.fetchCurrentUser()
+      if (!success) {
+        error.value = '获取用户信息失败，请重试'
+        return
+      }
       
       ElMessage.success('登录成功，欢迎回来！')
       

@@ -26,7 +26,7 @@
         <div class="popular-scenes card">
           <div class="section-header">
             <h2>热门课题</h2>
-            <div class="section-controls">
+            <!-- <div class="section-controls">
               <div class="search-box">
                 <el-input
                   v-model="searchQuery"
@@ -42,7 +42,7 @@
               <el-button v-if="canCreateScene" type="primary" @click="createScene">
                 创建课题
               </el-button>
-            </div>
+            </div> -->
           </div>
 
           <div v-loading="loading" class="scene-list">

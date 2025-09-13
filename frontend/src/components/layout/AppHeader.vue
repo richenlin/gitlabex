@@ -37,13 +37,10 @@
           </template>
         </el-dropdown>
         
-        <!-- 游客显示登录/注册按钮 -->
+        <!-- 游客显示登录按钮 -->
         <div v-else class="guest-actions">
           <el-button size="small" @click="$router.push('/auth/login')">
             登录
-          </el-button>
-          <el-button size="small" type="primary" @click="$router.push('/auth/register')">
-            注册
           </el-button>
         </div>
       </div>
@@ -70,6 +67,11 @@ const navItems = [
 ]
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+
+// 调试信息
+console.log('AppHeader: userStore.user:', userStore.user)
+console.log('AppHeader: userStore.isAdmin:', userStore.isAdmin)
+console.log('AppHeader: userStore.user?.is_admin:', userStore.user?.is_admin)
 
 const handleUserAction = (command: string) => {
   switch (command) {

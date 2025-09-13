@@ -121,6 +121,27 @@
             placeholder="请输入密码"
             show-password
           />
+          <div class="password-tips">
+            <el-alert
+              title="GitLab密码要求"
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-top: 8px;"
+            >
+              <template #default>
+                <ul style="margin: 0; padding-left: 16px;">
+                  <li>密码长度至少8个字符</li>
+                  <li>必须包含大小写字母和数字</li>
+                  <li>不能包含常用单词（如password、admin、user等）</li>
+                  <li>不能包含常见字母组合（如123456、abcdef等）</li>
+                </ul>
+                <div style="margin-top: 8px;">
+                  <strong>推荐格式：</strong>MyStr0ng!P@ss、T3st!Us3r#2024
+                </div>
+              </template>
+            </el-alert>
+          </div>
         </el-form-item>
         <el-form-item label="管理员" prop="is_admin">
           <el-switch v-model="userForm.is_admin" />
@@ -259,7 +280,47 @@ const userFormRules = {
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能少于 6 个字符', trigger: 'blur' }
+    { min: 8, message: '密码长度不能少于 8 个字符', trigger: 'blur' },
+    { 
+      validator: (rule: any, value: string, callback: Function) => {
+        if (!value) {
+          callback()
+          return
+        }
+        
+        // GitLab密码要求验证
+        const commonPatterns = [
+          /password/i,
+          /admin/i,
+          /user/i,
+          /test/i,
+          /123456/,
+          /abcdef/,
+          /qwerty/i,
+          /asdfgh/i,
+          /zxcvbn/i
+        ]
+        
+        const hasCommonPattern = commonPatterns.some(pattern => pattern.test(value))
+        if (hasCommonPattern) {
+          callback(new Error('密码不能包含常用的单词和字母组合'))
+          return
+        }
+        
+        // 检查是否包含至少一个数字、一个大写字母、一个小写字母
+        const hasNumber = /\d/.test(value)
+        const hasUpper = /[A-Z]/.test(value)
+        const hasLower = /[a-z]/.test(value)
+        
+        if (!hasNumber || !hasUpper || !hasLower) {
+          callback(new Error('密码必须包含大小写字母和数字'))
+          return
+        }
+        
+        callback()
+      },
+      trigger: 'blur'
+    }
   ]
 }
 
