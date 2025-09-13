@@ -144,6 +144,20 @@ export const authService = {
   getUserStats: () =>
     api.get('/users/me/stats'),
   
+  // SSH密钥管理
+  getSSHKeys: () =>
+    api.get('/users/me/ssh-keys'),
+  
+  addSSHKey: (data: { title: string; key: string }) =>
+    api.post('/users/me/ssh-keys', data),
+  
+  deleteSSHKey: (id: number) =>
+    api.delete(`/users/me/ssh-keys/${id}`),
+  
+  // 密码管理
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    api.put('/users/me/password', data),
+  
   refreshToken: () =>
     api.post('/auth/refresh')
 }

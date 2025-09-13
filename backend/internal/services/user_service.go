@@ -360,6 +360,50 @@ func (s *UserService) GetUserPersonalStats(userID int64) (map[string]interface{}
 	return stats, nil
 }
 
+// GetSSHKeys 获取用户SSH密钥列表
+func (s *UserService) GetSSHKeys(accessToken string) ([]map[string]interface{}, error) {
+	// 通过GitLab API获取SSH密钥
+	keys, err := s.gitlabService.GetSSHKeys(accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("获取SSH密钥失败: %w", err)
+	}
+
+	return keys, nil
+}
+
+// AddSSHKey 添加SSH密钥
+func (s *UserService) AddSSHKey(accessToken string, title string, key string) (map[string]interface{}, error) {
+	// 通过GitLab API添加SSH密钥
+	newKey, err := s.gitlabService.AddSSHKey(accessToken, title, key)
+	if err != nil {
+		return nil, fmt.Errorf("添加SSH密钥失败: %w", err)
+	}
+
+	return newKey, nil
+}
+
+// DeleteSSHKey 删除SSH密钥
+func (s *UserService) DeleteSSHKey(accessToken string, keyID int) error {
+	// 通过GitLab API删除SSH密钥
+	err := s.gitlabService.DeleteSSHKey(accessToken, keyID)
+	if err != nil {
+		return fmt.Errorf("删除SSH密钥失败: %w", err)
+	}
+
+	return nil
+}
+
+// ChangePassword 修改密码
+func (s *UserService) ChangePassword(accessToken string, currentPassword string, newPassword string) error {
+	// 通过GitLab API修改密码
+	err := s.gitlabService.ChangePassword(accessToken, currentPassword, newPassword)
+	if err != nil {
+		return fmt.Errorf("修改密码失败: %w", err)
+	}
+
+	return nil
+}
+
 // contains 检查字符串是否包含子字符串
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||

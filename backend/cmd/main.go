@@ -124,6 +124,10 @@ func main() {
 		users.GET("/me", userHandler.GetCurrentUser)
 		users.PUT("/me", userHandler.UpdateCurrentUser)
 		users.GET("/me/stats", userHandler.GetUserPersonalStats)
+		users.GET("/me/ssh-keys", userHandler.GetSSHKeys)
+		users.POST("/me/ssh-keys", userHandler.AddSSHKey)
+		users.DELETE("/me/ssh-keys/:id", userHandler.DeleteSSHKey)
+		users.PUT("/me/password", userHandler.ChangePassword)
 		users.GET("", userHandler.GetUsers)
 		users.GET("/:id", userHandler.GetUserByID)
 	}

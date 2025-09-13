@@ -141,3 +141,110 @@ func (h *UserHandler) GetUserPersonalStats(c *gin.Context) {
 
 	c.JSON(http.StatusOK, stats)
 }
+
+// GetSSHKeys 获取用户SSH密钥列表
+func (h *UserHandler) GetSSHKeys(c *gin.Context) {
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	keys, err := h.userService.GetSSHKeys(accessToken.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取SSH密钥失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, keys)
+}
+
+// AddSSHKey 添加SSH密钥
+func (h *UserHandler) AddSSHKey(c *gin.Context) {
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	var req struct {
+		Title string `json:"title" binding:"required"`
+		Key   string `json:"key" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
+		return
+	}
+
+	key, err := h.userService.AddSSHKey(accessToken.(string), req.Title, req.Key)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "添加SSH密钥失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, key)
+}
+
+// DeleteSSHKey 删除SSH密钥
+func (h *UserHandler) DeleteSSHKey(c *gin.Context) {
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	keyIDStr := c.Param("id")
+	keyID, err := strconv.Atoi(keyIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的密钥ID"})
+		return
+	}
+
+	err = h.userService.DeleteSSHKey(accessToken.(string), keyID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "删除SSH密钥失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "SSH密钥删除成功"})
+}
+
+// ChangePassword 修改密码
+func (h *UserHandler) ChangePassword(c *gin.Context) {
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"currentPassword" binding:"required"`
+		NewPassword     string `json:"newPassword" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
+		return
+	}
+
+	err := h.userService.ChangePassword(accessToken.(string), req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "修改密码失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
+}

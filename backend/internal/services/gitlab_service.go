@@ -1687,3 +1687,135 @@ type GitLabUpdateUserData struct {
 	Name     string `json:"name,omitempty"`
 	Admin    *bool  `json:"admin,omitempty"`
 }
+
+// GetSSHKeys 获取用户SSH密钥列表
+func (s *GitLabService) GetSSHKeys(accessToken string) ([]map[string]interface{}, error) {
+	url := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLabURL)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+	}
+
+	var keys []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&keys); err != nil {
+		return nil, err
+	}
+
+	return keys, nil
+}
+
+// AddSSHKey 添加SSH密钥
+func (s *GitLabService) AddSSHKey(accessToken string, title string, key string) (map[string]interface{}, error) {
+	url := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLabURL)
+
+	data := map[string]string{
+		"title": title,
+		"key":   key,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var newKey map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&newKey); err != nil {
+		return nil, err
+	}
+
+	return newKey, nil
+}
+
+// DeleteSSHKey 删除SSH密钥
+func (s *GitLabService) DeleteSSHKey(accessToken string, keyID int) error {
+	url := fmt.Sprintf("%s/api/v4/user/keys/%d", s.Config.GitLabURL, keyID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// ChangePassword 修改密码
+func (s *GitLabService) ChangePassword(accessToken string, currentPassword string, newPassword string) error {
+	url := fmt.Sprintf("%s/api/v4/user/password", s.Config.GitLabURL)
+
+	data := map[string]string{
+		"current_password": currentPassword,
+		"password":         newPassword,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	return nil
+}
