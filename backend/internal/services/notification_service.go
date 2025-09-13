@@ -25,7 +25,7 @@ func (s *NotificationService) CreateNotification(notification *models.Notificati
 }
 
 // CreateAnnouncement 创建公告并发送给目标用户
-func (s *NotificationService) CreateAnnouncement(announcement *models.Announcement, targetUserIDs []uuid.UUID) error {
+func (s *NotificationService) CreateAnnouncement(announcement *models.Announcement, targetUserIDs []int64) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
 		// 保存公告
 		if err := tx.Create(announcement).Error; err != nil {
@@ -75,7 +75,7 @@ func (s *NotificationService) GetAnnouncementByID(id uuid.UUID) (*models.Announc
 }
 
 // GetUserNotifications 获取用户通知列表
-func (s *NotificationService) GetUserNotifications(userID uuid.UUID, limit, offset int) ([]models.Notification, int64, error) {
+func (s *NotificationService) GetUserNotifications(userID int64, limit, offset int) ([]models.Notification, int64, error) {
 	var notifications []models.Notification
 	var total int64
 
@@ -93,7 +93,7 @@ func (s *NotificationService) GetUserNotifications(userID uuid.UUID, limit, offs
 }
 
 // GetUnreadNotificationsCount 获取未读通知数量
-func (s *NotificationService) GetUnreadNotificationsCount(userID uuid.UUID) (int64, error) {
+func (s *NotificationService) GetUnreadNotificationsCount(userID int64) (int64, error) {
 	var count int64
 	err := s.db.Model(&models.Notification{}).
 		Where("recipient_id = ? AND is_read = false", userID).
@@ -102,7 +102,7 @@ func (s *NotificationService) GetUnreadNotificationsCount(userID uuid.UUID) (int
 }
 
 // MarkAsRead 标记通知为已读
-func (s *NotificationService) MarkAsRead(notificationID uuid.UUID, userID uuid.UUID) error {
+func (s *NotificationService) MarkAsRead(notificationID uuid.UUID, userID int64) error {
 	now := time.Now()
 	return s.db.Model(&models.Notification{}).
 		Where("id = ? AND recipient_id = ?", notificationID, userID).
@@ -113,7 +113,7 @@ func (s *NotificationService) MarkAsRead(notificationID uuid.UUID, userID uuid.U
 }
 
 // MarkAllAsRead 标记所有通知为已读
-func (s *NotificationService) MarkAllAsRead(userID uuid.UUID) error {
+func (s *NotificationService) MarkAllAsRead(userID int64) error {
 	now := time.Now()
 	return s.db.Model(&models.Notification{}).
 		Where("recipient_id = ? AND is_read = false", userID).
@@ -125,7 +125,7 @@ func (s *NotificationService) MarkAllAsRead(userID uuid.UUID) error {
 
 // CreateProjectNotification 创建课题相关通知
 func (s *NotificationService) CreateProjectNotification(projectID uuid.UUID, projectTitle string,
-	notificationType models.NotificationType, userIDs []uuid.UUID, senderID uuid.UUID) error {
+	notificationType models.NotificationType, userIDs []int64, senderID int64) error {
 
 	var title, content string
 
@@ -165,7 +165,7 @@ func (s *NotificationService) CreateProjectNotification(projectID uuid.UUID, pro
 
 // CreateTopicNotification 创建话题相关通知
 func (s *NotificationService) CreateTopicNotification(topicID uuid.UUID, topicTitle string,
-	notificationType models.NotificationType, userIDs []uuid.UUID, senderID uuid.UUID) error {
+	notificationType models.NotificationType, userIDs []int64, senderID int64) error {
 
 	var title, content string
 
@@ -205,7 +205,7 @@ func (s *NotificationService) CreateTopicNotification(topicID uuid.UUID, topicTi
 
 // CreateHomeworkNotification 创建作业相关通知
 func (s *NotificationService) CreateHomeworkNotification(homeworkID uuid.UUID, homeworkTitle string,
-	notificationType models.NotificationType, userIDs []uuid.UUID, senderID uuid.UUID) error {
+	notificationType models.NotificationType, userIDs []int64, senderID int64) error {
 
 	var title, content string
 

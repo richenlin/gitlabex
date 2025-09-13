@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // ActivityHandler 活动处理器
@@ -49,20 +48,20 @@ func (h *ActivityHandler) GetRecentActivities(c *gin.Context) {
 func (h *ActivityHandler) GetUserActivities(c *gin.Context) {
 	// 获取用户ID
 	userIDParam := c.Param("userID")
-	var userID uuid.UUID
+	var userID int64
 	var err error
 
 	if userIDParam == "me" {
 		// 获取当前用户ID
-		currentUserID, exists := c.Get("userID")
+		currentUserID, exists := c.Get("gitlab_user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 			return
 		}
-		userID = currentUserID.(uuid.UUID)
+		userID = currentUserID.(int64)
 	} else {
-		// 解析指定用户ID
-		userID, err = uuid.Parse(userIDParam)
+		// 解析指定用户ID（GitLab用户ID是int64）
+		userID, err = strconv.ParseInt(userIDParam, 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
 			return

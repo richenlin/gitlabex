@@ -25,13 +25,14 @@ func NewGitLabHandler(gitlabService *services.GitLabService, userService *servic
 
 // GetCurrentUser 获取当前用户信息
 func (h *GitLabHandler) GetCurrentUser(c *gin.Context) {
-	accessToken := c.GetHeader("X-GitLab-Token")
-	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
+	// 从JWT token中获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token not found"})
 		return
 	}
 
-	user, err := h.gitlabService.GetUser(accessToken)
+	user, err := h.gitlabService.GetUser(accessToken.(string))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

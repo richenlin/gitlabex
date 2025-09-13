@@ -48,7 +48,7 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 	offset := (page - 1) * limit
 
 	notifications, total, err := h.notificationService.GetUserNotifications(
-		userID.(uuid.UUID),
+		userID.(int64),
 		limit,
 		offset,
 	)
@@ -76,7 +76,7 @@ func (h *NotificationHandler) GetUnreadCount(c *gin.Context) {
 		return
 	}
 
-	count, err := h.notificationService.GetUnreadNotificationsCount(userID.(uuid.UUID))
+	count, err := h.notificationService.GetUnreadNotificationsCount(userID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取未读通知数量失败"})
 		return
@@ -100,7 +100,7 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 		return
 	}
 
-	if err := h.notificationService.MarkAsRead(notificationID, userID.(uuid.UUID)); err != nil {
+	if err := h.notificationService.MarkAsRead(notificationID, userID.(int64)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "标记通知已读失败"})
 		return
 	}
@@ -116,7 +116,7 @@ func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 		return
 	}
 
-	if err := h.notificationService.MarkAllAsRead(userID.(uuid.UUID)); err != nil {
+	if err := h.notificationService.MarkAllAsRead(userID.(int64)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "标记所有通知已读失败"})
 		return
 	}
@@ -128,13 +128,13 @@ func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 func (h *NotificationHandler) CreateAnnouncement(c *gin.Context) {
 
 	var req struct {
-		Title       string      `json:"title" binding:"required"`
-		Content     string      `json:"content" binding:"required"`
-		Priority    string      `json:"priority"`
-		ValidFrom   *time.Time  `json:"valid_from"`
-		ValidTo     *time.Time  `json:"valid_to"`
-		TargetRoles []string    `json:"target_roles"`
-		TargetUsers []uuid.UUID `json:"target_users"`
+		Title       string     `json:"title" binding:"required"`
+		Content     string     `json:"content" binding:"required"`
+		Priority    string     `json:"priority"`
+		ValidFrom   *time.Time `json:"valid_from"`
+		ValidTo     *time.Time `json:"valid_to"`
+		TargetRoles []string   `json:"target_roles"`
+		TargetUsers []int64    `json:"target_users"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {

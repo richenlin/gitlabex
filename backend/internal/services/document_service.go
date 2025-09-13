@@ -129,8 +129,20 @@ func (s *DocumentService) UpdateDocumentStatus(id uuid.UUID, status string, revi
 
 // ScanProjectDocuments 扫描项目中的文档
 func (s *DocumentService) ScanProjectDocuments(projectID uuid.UUID, gitLabProjectID int64, accessToken string) error {
+	// 先获取项目信息以获取默认分支
+	project, err := s.GitLabService.GetProject(accessToken, gitLabProjectID)
+	if err != nil {
+		return fmt.Errorf("获取GitLab项目信息失败: %v", err)
+	}
+
+	// 使用项目的默认分支
+	defaultBranch := project.DefaultBranch
+	if defaultBranch == "" {
+		defaultBranch = "main" // 如果默认分支为空，使用main作为后备
+	}
+
 	// 获取GitLab项目文件树
-	files, err := s.GitLabService.GetRepositoryTree(accessToken, gitLabProjectID, "", "master")
+	files, err := s.GitLabService.GetRepositoryTree(accessToken, gitLabProjectID, "", defaultBranch)
 	if err != nil {
 		return err
 	}
@@ -167,7 +179,7 @@ func (s *DocumentService) ScanProjectDocuments(projectID uuid.UUID, gitLabProjec
 		}
 
 		// 获取文件内容用于提取描述
-		fileContent, err := s.GitLabService.GetFileContent(accessToken, gitLabProjectID, filePath, "master")
+		fileContent, err := s.GitLabService.GetFileContent(accessToken, gitLabProjectID, filePath, defaultBranch)
 		var content string
 		if err != nil {
 			// 如果无法获取内容，仍然创建文档记录
@@ -186,7 +198,7 @@ func (s *DocumentService) ScanProjectDocuments(projectID uuid.UUID, gitLabProjec
 
 		// 创建文档记录
 		document := &models.Document{
-			ProjectID:      projectID,
+			ProjectID:      &projectID,
 			Title:          strings.TrimSuffix(fileName, filepath.Ext(fileName)),
 			Description:    extractDescriptionFromContent(content, fileName),
 			FilePath:       filePath,
@@ -315,7 +327,7 @@ func (s *DocumentService) createDocumentFromGitLabFile(projectID uuid.UUID, gitL
 
 	syncTime := time.Now()
 	document := &models.Document{
-		ProjectID:      projectID,
+		ProjectID:      &projectID,
 		Title:          strings.TrimSuffix(fileName, filepath.Ext(fileName)),
 		Description:    extractDescriptionFromContent(fileContent.Content, fileName),
 		FilePath:       filePath,
@@ -466,7 +478,7 @@ func (s *DocumentService) SearchDocuments(keyword string, limit, offset int) ([]
 }
 
 // SubmitEditRequest 提交文档编辑请求（学生使用）
-func (s *DocumentService) SubmitEditRequest(documentID uuid.UUID, requesterID uuid.UUID, editData map[string]interface{}, reason string) (*models.DocumentEditRequest, error) {
+func (s *DocumentService) SubmitEditRequest(documentID uuid.UUID, requesterID int64, editData map[string]interface{}, reason string) (*models.DocumentEditRequest, error) {
 	// TODO: 重构用户权限检查以使用GitLab用户系统
 	// 暂时跳过权限检查，所有已登录用户都可以提交编辑请求
 
@@ -536,7 +548,7 @@ func (s *DocumentService) GetEditRequests(status string, reviewerID *uuid.UUID, 
 }
 
 // ReviewEditRequest 审核文档编辑请求
-func (s *DocumentService) ReviewEditRequest(requestID uuid.UUID, reviewerID uuid.UUID, approved bool, comments string) error {
+func (s *DocumentService) ReviewEditRequest(requestID uuid.UUID, reviewerID int64, approved bool, comments string) error {
 	// TODO: 重构审核者权限检查以使用GitLab用户系统
 	// 暂时跳过权限检查
 
@@ -805,9 +817,167 @@ func (s *DocumentService) SyncDocumentWithMinIO(documentID uuid.UUID, fileData [
 		return err
 	}
 
+	// 获取MinIO下载URL
+	downloadURL, err := s.MinIOService.GetDocumentURL(minioKey, 24*time.Hour)
+	if err != nil {
+		downloadURL = "" // 如果获取URL失败，设为空字符串
+	}
+
 	// 更新数据库记录
+	syncTime := time.Now()
 	return s.DB.Model(document).Updates(map[string]interface{}{
-		"file_path": minioKey,
-		"file_size": int64(len(fileData)),
+		"minio_path":     minioKey,
+		"minio_url":      downloadURL,
+		"file_size":      int64(len(fileData)),
+		"last_sync_time": &syncTime,
 	}).Error
+}
+
+// SyncProjectDocumentsToMinIO 同步课题文档到MinIO
+func (s *DocumentService) SyncProjectDocumentsToMinIO(projectID uuid.UUID, gitLabProjectID int64, accessToken string) error {
+	// 获取GitLab项目文件树
+	files, err := s.GitLabService.GetRepositoryTree(accessToken, gitLabProjectID, "", "master")
+	if err != nil {
+		return fmt.Errorf("获取GitLab文件树失败: %w", err)
+	}
+
+	var processedFiles int
+	var errors []string
+
+	for _, fileData := range files {
+		// 从map中提取文件信息
+		fileType, ok := fileData["type"].(string)
+		if !ok || fileType != "blob" {
+			continue // 只处理文件，跳过目录
+		}
+
+		fileName, ok := fileData["name"].(string)
+		if !ok {
+			continue
+		}
+
+		filePath, ok := fileData["path"].(string)
+		if !ok {
+			continue
+		}
+
+		// 检查文件扩展名，只处理支持的文档类型
+		docType := getFileType(fileName)
+		if docType == "other" {
+			continue
+		}
+
+		// 检查是否已经存在该文档
+		existingDoc, err := s.GetDocumentByPath(projectID, filePath)
+		if err == nil && existingDoc != nil {
+			// 文档已存在，检查是否需要更新
+			continue
+		}
+
+		// 获取文件内容
+		fileContent, err := s.GitLabService.GetFileContent(accessToken, gitLabProjectID, filePath, "master")
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("获取文件内容失败 %s: %v", filePath, err))
+			continue
+		}
+
+		// 解码文件内容
+		var fileBytes []byte
+		if fileContent.Encoding == "base64" {
+			// 如果是base64编码，需要解码
+			// 这里简化处理，实际应该使用base64解码
+			fileBytes = []byte(fileContent.Content)
+		} else {
+			fileBytes = []byte(fileContent.Content)
+		}
+
+		// 获取文件大小
+		fileSize := int64(len(fileBytes))
+
+		// 创建文档记录
+		document := &models.Document{
+			ProjectID:      &projectID,
+			Title:          strings.TrimSuffix(fileName, filepath.Ext(fileName)),
+			Description:    extractDescriptionFromContent(fileContent.Content, fileName),
+			FilePath:       filePath,
+			FileType:       models.DocumentType(docType),
+			Category:       categorizeDocument(filePath, docType),
+			Status:         models.DocumentStatusApproved,
+			FileSize:       fileSize,
+			GitLabFilePath: filePath,
+			GitLabID:       fmt.Sprintf("%d", gitLabProjectID),
+			AutoIndexed:    true,
+		}
+
+		// 先创建文档记录
+		if err := s.CreateDocument(document); err != nil {
+			errors = append(errors, fmt.Sprintf("创建文档记录失败 %s: %v", filePath, err))
+			continue
+		}
+
+		// 同步到MinIO
+		if err := s.SyncDocumentWithMinIO(document.ID, fileBytes); err != nil {
+			errors = append(errors, fmt.Sprintf("同步到MinIO失败 %s: %v", filePath, err))
+			// 删除已创建的文档记录
+			s.DeleteDocument(document.ID)
+			continue
+		}
+
+		processedFiles++
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("同步过程中出现错误: %v", errors)
+	}
+
+	return nil
+}
+
+// CreateStandaloneDocument 创建独立文档（不关联课题）
+func (s *DocumentService) CreateStandaloneDocument(title, description, category string, uploaderID int64, fileData []byte, fileType models.DocumentType) (*models.Document, error) {
+	// 创建文档记录
+	document := &models.Document{
+		Title:        title,
+		Description:  description,
+		Category:     category,
+		UploaderID:   uploaderID,
+		FileType:     fileType,
+		Status:       models.DocumentStatusApproved,
+		IsStandalone: true,
+		FileSize:     int64(len(fileData)),
+	}
+
+	// 先创建数据库记录
+	if err := s.CreateDocument(document); err != nil {
+		return nil, fmt.Errorf("创建文档记录失败: %w", err)
+	}
+
+	// 同步到MinIO
+	if err := s.SyncDocumentWithMinIO(document.ID, fileData); err != nil {
+		// 如果MinIO同步失败，删除数据库记录
+		s.DeleteDocument(document.ID)
+		return nil, fmt.Errorf("同步到MinIO失败: %w", err)
+	}
+
+	return document, nil
+}
+
+// GetPredefinedCategories 获取预定义的文档分类
+func (s *DocumentService) GetPredefinedCategories() []string {
+	return []string{
+		"documentation", // 文档
+		"tutorial",      // 教程
+		"assignment",    // 作业
+		"lecture",       // 讲义
+		"lab",           // 实验
+		"exam",          // 考试
+		"notes",         // 笔记
+		"pdf",           // PDF文档
+		"word",          // Word文档
+		"presentation",  // 演示文稿
+		"spreadsheet",   // 电子表格
+		"code",          // 代码
+		"text",          // 文本
+		"other",         // 其他
+	}
 }

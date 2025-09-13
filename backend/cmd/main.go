@@ -229,6 +229,13 @@ func main() {
 			documentsAuth.GET("/edit-requests", documentHandler.GetEditRequests)
 			documentsAuth.PUT("/edit-requests/:id/review", documentHandler.ReviewEditRequest)
 			documentsAuth.GET("/:id/edit-history", documentHandler.GetDocumentEditHistory)
+
+			// 新增的文档管理路由 - 需要认证
+			documentsAuth.POST("/projects/:project_id/sync-to-minio", documentHandler.SyncProjectDocumentsToMinIO)
+			documentsAuth.POST("/standalone", documentHandler.CreateStandaloneDocument)
+			documentsAuth.GET("/categories/predefined", documentHandler.GetPredefinedCategories)
+			documentsAuth.GET("/:id/download-url", documentHandler.GetDocumentDownloadURL)
+			documentsAuth.PUT("/:id/with-permission-check", documentHandler.UpdateDocumentWithPermissionCheck)
 		}
 	}
 

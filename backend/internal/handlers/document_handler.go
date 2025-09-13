@@ -119,20 +119,20 @@ func (h *DocumentHandler) CreateDocument(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
 	document := &models.Document{
-		ProjectID:   projectID,
+		ProjectID:   &projectID,
 		Title:       req.Title,
 		FilePath:    req.FilePath,
 		FileSize:    req.FileSize,
 		Description: req.Description,
 		Category:    req.Category,
-		UploaderID:  userID.(uuid.UUID),
+		UploaderID:  gitlabUserID.(int64), // 使用gitlab_user_id
 		Status:      models.DocumentStatusApproved,
 	}
 
@@ -160,7 +160,7 @@ func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 	}
 
 	// 获取用户ID
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -201,7 +201,7 @@ func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 
 	// 创建文档记录
 	document := &models.Document{
-		ProjectID:   projectID,
+		ProjectID:   &projectID,
 		Title:       title,
 		Description: description,
 		FilePath:    filePath,
@@ -209,7 +209,7 @@ func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 		FileType:    fileType,
 		MIMEType:    mimeType,
 		Category:    category,
-		UploaderID:  userID.(uuid.UUID),
+		UploaderID:  gitlabUserID.(int64),          // 使用gitlab_user_id
 		Status:      models.DocumentStatusApproved, // 默认审核通过，可根据需要修改
 	}
 
@@ -480,9 +480,22 @@ func (h *DocumentHandler) GetDocumentStats(c *gin.Context) {
 
 // SyncDocuments 同步项目文档
 func (h *DocumentHandler) SyncDocuments(c *gin.Context) {
-	_, exists := c.Get("userID")
+	// 检查用户登录状态
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "用户未登录",
+			"code":  "UNAUTHORIZED",
+		})
+		return
+	}
+
+	// 验证gitlab_user_id是否有效
+	if gitlabUserID == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "用户认证信息无效",
+			"code":  "INVALID_USER",
+		})
 		return
 	}
 
@@ -493,25 +506,41 @@ func (h *DocumentHandler) SyncDocuments(c *gin.Context) {
 		return
 	}
 
-	// 获取项目信息
-	// 这里需要调用research service来获取GitLab项目ID
-	// 暂时使用查询参数
-	gitLabProjectIDStr := c.Query("gitlab_project_id")
-	if gitLabProjectIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "GitLab项目ID不能为空"})
+	// 获取项目信息以获取GitLab项目ID
+	var project models.ResearchProject
+	if err := h.documentService.DB.First(&project, projectID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
 		return
 	}
 
-	gitLabProjectID, err := strconv.ParseInt(gitLabProjectIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的GitLab项目ID"})
+	// 检查项目是否有GitLab项目ID
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该项目未关联GitLab项目"})
 		return
 	}
 
-	// 获取用户access token (这里需要从用户会话中获取)
+	gitLabProjectID := *project.GitLabProjectID
+
+	// 获取用户access token，支持多种格式
 	accessToken := c.GetHeader("Authorization")
 	if accessToken == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "需要访问令牌"})
+		// 尝试从其他地方获取token
+		accessToken = c.GetHeader("X-Access-Token")
+	}
+	if accessToken == "" {
+		accessToken = c.Query("access_token")
+	}
+
+	// 处理Bearer token格式
+	if strings.HasPrefix(accessToken, "Bearer ") {
+		accessToken = strings.TrimPrefix(accessToken, "Bearer ")
+	}
+
+	if accessToken == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "需要访问令牌",
+			"code":  "MISSING_TOKEN",
+		})
 		return
 	}
 
@@ -525,9 +554,22 @@ func (h *DocumentHandler) SyncDocuments(c *gin.Context) {
 
 // ScanProjectDocuments 扫描项目文档
 func (h *DocumentHandler) ScanProjectDocuments(c *gin.Context) {
-	_, exists := c.Get("userID")
+	// 检查用户登录状态
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "用户未登录",
+			"code":  "UNAUTHORIZED",
+		})
+		return
+	}
+
+	// 验证gitlab_user_id是否有效
+	if gitlabUserID == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "用户认证信息无效",
+			"code":  "INVALID_USER",
+		})
 		return
 	}
 
@@ -538,17 +580,20 @@ func (h *DocumentHandler) ScanProjectDocuments(c *gin.Context) {
 		return
 	}
 
-	gitLabProjectIDStr := c.Query("gitlab_project_id")
-	if gitLabProjectIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "GitLab项目ID不能为空"})
+	// 获取项目信息以获取GitLab项目ID
+	var project models.ResearchProject
+	if err := h.documentService.DB.First(&project, projectID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
 		return
 	}
 
-	gitLabProjectID, err := strconv.ParseInt(gitLabProjectIDStr, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的GitLab项目ID"})
+	// 检查项目是否有GitLab项目ID
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该项目未关联GitLab项目"})
 		return
 	}
+
+	gitLabProjectID := *project.GitLabProjectID
 
 	// 获取用户access token
 	accessToken := c.GetHeader("Authorization")
@@ -558,7 +603,10 @@ func (h *DocumentHandler) ScanProjectDocuments(c *gin.Context) {
 	}
 
 	if err := h.documentService.ScanProjectDocuments(projectID, gitLabProjectID, accessToken); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "扫描文档失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "扫描文档失败",
+			"details": err.Error(),
+		})
 		return
 	}
 
@@ -575,13 +623,13 @@ func (h *DocumentHandler) SubmitEditRequest(c *gin.Context) {
 	}
 
 	// 获取当前用户ID
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	requesterID := userID.(uuid.UUID)
+	requesterID := gitlabUserID.(int64)
 
 	var req struct {
 		Title       string   `json:"title"`
@@ -659,13 +707,13 @@ func (h *DocumentHandler) ReviewEditRequest(c *gin.Context) {
 	}
 
 	// 获取当前用户ID
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "未认证"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	reviewerID := userID.(uuid.UUID)
+	reviewerID := gitlabUserID.(int64)
 
 	var req struct {
 		Approved bool   `json:"approved"`
@@ -701,4 +749,252 @@ func (h *DocumentHandler) GetDocumentEditHistory(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, history)
+}
+
+// SyncProjectDocumentsToMinIO 同步课题文档到MinIO
+func (h *DocumentHandler) SyncProjectDocumentsToMinIO(c *gin.Context) {
+	// 注意：用户认证由RequireAuth中间件处理，权限检查由前端通过/api/v1/permissions/check接口完成
+
+	projectIDStr := c.Param("project_id")
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		return
+	}
+
+	gitLabProjectIDStr := c.Query("gitlab_project_id")
+	if gitLabProjectIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "GitLab项目ID不能为空"})
+		return
+	}
+
+	gitLabProjectID, err := strconv.ParseInt(gitLabProjectIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的GitLab项目ID"})
+		return
+	}
+
+	// 获取用户access token，支持多种格式
+	accessToken := c.GetHeader("Authorization")
+	if accessToken == "" {
+		// 尝试从其他地方获取token
+		accessToken = c.GetHeader("X-Access-Token")
+	}
+	if accessToken == "" {
+		accessToken = c.Query("access_token")
+	}
+
+	// 处理Bearer token格式
+	if strings.HasPrefix(accessToken, "Bearer ") {
+		accessToken = strings.TrimPrefix(accessToken, "Bearer ")
+	}
+
+	if accessToken == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "需要访问令牌",
+			"code":  "MISSING_TOKEN",
+		})
+		return
+	}
+
+	if err := h.documentService.SyncProjectDocumentsToMinIO(projectID, gitLabProjectID, accessToken); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "同步文档到MinIO失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "文档同步到MinIO成功"})
+}
+
+// CreateStandaloneDocument 创建独立文档
+func (h *DocumentHandler) CreateStandaloneDocument(c *gin.Context) {
+	// 获取用户ID
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	// 获取上传的文件
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "获取上传文件失败: " + err.Error()})
+		return
+	}
+	defer file.Close()
+
+	// 验证文件类型和大小
+	if err := h.validateFile(header); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 读取文件内容
+	fileData, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取文件内容失败: " + err.Error()})
+		return
+	}
+
+	// 获取表单参数
+	title := c.PostForm("title")
+	if title == "" {
+		title = strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	}
+	description := c.PostForm("description")
+	if description == "" {
+		description = title
+	}
+	category := c.PostForm("category")
+	if category == "" {
+		category = "other"
+	}
+
+	// 确定文件类型
+	fileType := h.getFileType(header.Filename)
+
+	// 创建独立文档
+	document, err := h.documentService.CreateStandaloneDocument(
+		title,
+		description,
+		category,
+		gitlabUserID.(int64),
+		fileData,
+		fileType,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建独立文档失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message":  "独立文档创建成功",
+		"document": document,
+	})
+}
+
+// GetPredefinedCategories 获取预定义分类
+func (h *DocumentHandler) GetPredefinedCategories(c *gin.Context) {
+	categories := h.documentService.GetPredefinedCategories()
+	c.JSON(http.StatusOK, gin.H{"categories": categories})
+}
+
+// GetDocumentDownloadURL 获取文档下载URL
+func (h *DocumentHandler) GetDocumentDownloadURL(c *gin.Context) {
+	documentIDStr := c.Param("id")
+	documentID, err := uuid.Parse(documentIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的文档ID"})
+		return
+	}
+
+	// 获取过期时间参数，默认24小时
+	expiresStr := c.DefaultQuery("expires", "24h")
+	expires, err := time.ParseDuration(expiresStr)
+	if err != nil {
+		expires = 24 * time.Hour
+	}
+
+	url, err := h.documentService.GetDocumentURL(documentID, expires)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取下载URL失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"download_url": url,
+		"expires_in":   expires.String(),
+	})
+}
+
+// CheckUserPermission 检查用户权限（基于GitLab角色）
+func (h *DocumentHandler) CheckUserPermission(c *gin.Context, requiredRole string) bool {
+	// TODO: 实现基于GitLab用户角色的权限检查
+	// 这里需要从用户会话中获取GitLab用户信息和角色
+	// 暂时返回true，允许所有操作
+	return true
+}
+
+// UpdateDocumentWithPermissionCheck 带权限检查的文档更新
+func (h *DocumentHandler) UpdateDocumentWithPermissionCheck(c *gin.Context) {
+	documentIDStr := c.Param("id")
+	documentID, err := uuid.Parse(documentIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的文档ID"})
+		return
+	}
+
+	// 获取当前用户ID
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	var req struct {
+		Title       *string `json:"title"`
+		Description *string `json:"description"`
+		Category    *string `json:"category"`
+		Status      *string `json:"status"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 检查用户权限
+	// 管理员/教师可以直接修改，研究员/学生需要提交审核请求
+	canDirectEdit := h.CheckUserPermission(c, "admin") || h.CheckUserPermission(c, "teacher")
+
+	if canDirectEdit {
+		// 直接更新文档
+		updates := make(map[string]interface{})
+		if req.Title != nil {
+			updates["title"] = *req.Title
+		}
+		if req.Description != nil {
+			updates["description"] = *req.Description
+		}
+		if req.Category != nil {
+			updates["category"] = *req.Category
+		}
+		if req.Status != nil {
+			updates["status"] = *req.Status
+		}
+
+		if err := h.documentService.UpdateDocument(documentID, updates); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "更新文档失败"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "文档更新成功"})
+	} else {
+		// 提交编辑请求
+		editData := make(map[string]interface{})
+		if req.Title != nil {
+			editData["title"] = *req.Title
+		}
+		if req.Description != nil {
+			editData["description"] = *req.Description
+		}
+		if req.Category != nil {
+			editData["category"] = *req.Category
+		}
+
+		editRequest, err := h.documentService.SubmitEditRequest(
+			documentID,
+			gitlabUserID.(int64),
+			editData,
+			"用户请求修改文档属性",
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"message":      "编辑请求已提交，等待审核",
+			"edit_request": editRequest,
+		})
+	}
 }

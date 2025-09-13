@@ -445,12 +445,24 @@ func (s *GitLabService) GetProject(accessToken string, projectID int64) (*GitLab
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+	// 读取响应体用于错误诊断
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	if resp.StatusCode == 401 {
+		return nil, fmt.Errorf("GitLab访问令牌无效或已过期，请重新登录")
+	} else if resp.StatusCode == 403 {
+		return nil, fmt.Errorf("没有访问该项目的权限")
+	} else if resp.StatusCode == 404 {
+		return nil, fmt.Errorf("项目不存在")
+	} else if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitLab API错误 (%d): %s", resp.StatusCode, string(body))
 	}
 
 	var project GitLabProject
-	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
+	if err := json.Unmarshal(body, &project); err != nil {
 		return nil, err
 	}
 

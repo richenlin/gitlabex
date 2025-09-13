@@ -29,8 +29,8 @@ type Notification struct {
 	Type        NotificationType `gorm:"not null" json:"type"`
 	Title       string           `gorm:"not null" json:"title"`
 	Content     string           `gorm:"not null" json:"content"`
-	RecipientID uuid.UUID        `gorm:"not null" json:"recipient_id"`
-	SenderID    *uuid.UUID       `json:"sender_id,omitempty"`
+	RecipientID int64            `gorm:"not null" json:"recipient_id"` // 改为int64以匹配gitlab_user_id
+	SenderID    *int64           `json:"sender_id,omitempty"`          // 改为int64以匹配gitlab_user_id
 	ProjectID   *uuid.UUID       `json:"project_id,omitempty"`
 	TopicID     *uuid.UUID       `json:"topic_id,omitempty"`
 	HomeworkID  *uuid.UUID       `json:"homework_id,omitempty"`
@@ -52,7 +52,7 @@ type Announcement struct {
 	BaseModel
 	Title       string         `gorm:"not null" json:"title"`
 	Content     string         `gorm:"not null" json:"content"`
-	AuthorID    uuid.UUID      `gorm:"not null" json:"author_id"`
+	AuthorID    int64          `gorm:"not null" json:"author_id"`      // 改为int64以匹配gitlab_user_id
 	Priority    string         `gorm:"default:normal" json:"priority"` // low, normal, high, urgent
 	IsActive    bool           `gorm:"default:true" json:"is_active"`
 	ValidFrom   time.Time      `json:"valid_from"`

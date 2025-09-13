@@ -238,7 +238,7 @@ func (s *ActivityService) sortAndLimitActivities(activities []ActivityItem, limi
 }
 
 // GetUserActivities 获取特定用户的活动
-func (s *ActivityService) GetUserActivities(userID uuid.UUID, limit int) ([]ActivityItem, error) {
+func (s *ActivityService) GetUserActivities(userID int64, limit int) ([]ActivityItem, error) {
 	var activities []ActivityItem
 
 	// 获取用户的文档活动
@@ -269,7 +269,7 @@ func (s *ActivityService) GetUserActivities(userID uuid.UUID, limit int) ([]Acti
 }
 
 // getUserDocumentActivities 获取用户的文档活动
-func (s *ActivityService) getUserDocumentActivities(userID uuid.UUID, limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]ActivityItem, error) {
 	var documents []models.Document
 	err := s.db.Preload("Project").
 		Where("uploader_id = ? AND status = ?", userID, models.DocumentStatusApproved).
@@ -301,7 +301,7 @@ func (s *ActivityService) getUserDocumentActivities(userID uuid.UUID, limit int)
 }
 
 // getUserTopicActivities 获取用户的话题活动
-func (s *ActivityService) getUserTopicActivities(userID uuid.UUID, limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getUserTopicActivities(userID int64, limit int) ([]ActivityItem, error) {
 	var topics []models.Topic
 	err := s.db.Preload("Project").
 		Where("author_id = ? AND status = ?", userID, "active").
@@ -338,7 +338,7 @@ func (s *ActivityService) getUserTopicActivities(userID uuid.UUID, limit int) ([
 }
 
 // getUserHomeworkActivities 获取用户的作业活动
-func (s *ActivityService) getUserHomeworkActivities(userID uuid.UUID, limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]ActivityItem, error) {
 	var homeworks []models.Homework
 	err := s.db.Preload("Project").
 		Where("creator_id = ? AND status = ?", userID, models.HomeworkStatusPublished).

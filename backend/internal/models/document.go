@@ -40,8 +40,8 @@ type Document struct {
 	FileType       DocumentType   `gorm:"not null;default:other" json:"file_type"`
 	MIMEType       string         `gorm:"size:100" json:"mime_type"`
 	Status         DocumentStatus `gorm:"not null;default:pending" json:"status"`
-	UploaderID     uuid.UUID      `gorm:"not null" json:"uploader_id"`
-	ProjectID      uuid.UUID      `gorm:"not null" json:"project_id"`
+	UploaderID     int64          `gorm:"not null" json:"uploader_id"`           // 改为int64以匹配gitlab_user_id
+	ProjectID      *uuid.UUID     `gorm:"type:uuid" json:"project_id,omitempty"` // 改为可选，支持独立文档
 	Category       string         `gorm:"size:100" json:"category"`
 	Tags           pq.StringArray `gorm:"type:text[]" json:"tags"`
 	DownloadCount  int            `gorm:"default:0" json:"download_count"`
@@ -49,11 +49,14 @@ type Document struct {
 	GitLabBranch   string         `gorm:"size:100;default:main" json:"gitlab_branch,omitempty"`
 	GitLabID       string         `gorm:"size:100" json:"gitlab_id,omitempty"`
 	AutoIndexed    bool           `gorm:"default:false" json:"auto_indexed,omitempty"`
+	IsStandalone   bool           `gorm:"default:false" json:"is_standalone,omitempty"` // 标识独立文档
 	LastSyncTime   *time.Time     `gorm:"column:last_sync_time" json:"last_sync_time,omitempty"`
+	MinIOPath      string         `gorm:"size:500" json:"minio_path,omitempty"` // MinIO存储路径
+	MinIOURL       string         `gorm:"size:500" json:"minio_url,omitempty"`  // MinIO下载URL
 
 	// 关联关系
 	// 注意：Uploader关联已移除，上传者信息从GitLab API获取
-	Project ResearchProject  `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	Project *ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
 	Reviews []DocumentReview `gorm:"foreignKey:DocumentID" json:"reviews,omitempty"`
 }
 
@@ -61,7 +64,7 @@ type Document struct {
 type DocumentReview struct {
 	BaseModel
 	DocumentID uuid.UUID      `gorm:"not null" json:"document_id"`
-	ReviewerID uuid.UUID      `gorm:"not null" json:"reviewer_id"`
+	ReviewerID int64          `gorm:"not null" json:"reviewer_id"` // 改为int64以匹配gitlab_user_id
 	Status     DocumentStatus `gorm:"not null" json:"status"`
 	Comments   string         `gorm:"type:text" json:"comments"`
 	CreatedAt  time.Time      `gorm:"column:created_at" json:"created_at"`
@@ -76,14 +79,14 @@ type DocumentReview struct {
 type DocumentEditRequest struct {
 	BaseModel
 	DocumentID     uuid.UUID      `gorm:"not null" json:"document_id"`
-	RequesterID    uuid.UUID      `gorm:"not null" json:"requester_id"`
+	RequesterID    int64          `gorm:"not null" json:"requester_id"` // 改为int64以匹配gitlab_user_id
 	Title          string         `gorm:"size:200" json:"title,omitempty"`
 	Description    string         `gorm:"type:text" json:"description,omitempty"`
 	Category       string         `gorm:"size:100" json:"category,omitempty"`
 	Tags           pq.StringArray `gorm:"type:text[]" json:"tags,omitempty"`
 	Reason         string         `gorm:"type:text" json:"reason"` // 修改原因
 	Status         DocumentStatus `gorm:"not null;default:pending" json:"status"`
-	ReviewerID     *uuid.UUID     `gorm:"type:uuid" json:"reviewer_id,omitempty"`
+	ReviewerID     *int64         `gorm:"type:bigint" json:"reviewer_id,omitempty"` // 改为int64以匹配gitlab_user_id
 	ReviewComments string         `gorm:"type:text" json:"review_comments,omitempty"`
 	ReviewedAt     *time.Time     `json:"reviewed_at,omitempty"`
 
