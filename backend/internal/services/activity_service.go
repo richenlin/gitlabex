@@ -42,35 +42,40 @@ func (s *ActivityService) GetRecentActivities(limit int) ([]ActivityItem, error)
 	// 获取最近的项目创建活动
 	projectActivities, err := s.getRecentProjectActivities(limit / 5)
 	if err != nil {
-		return nil, err
+		fmt.Printf("DEBUG: Error getting project activities: %v\n", err)
+		// 不返回错误，继续获取其他类型的活动
 	}
 	activities = append(activities, projectActivities...)
 
 	// 获取最近的文档上传活动
 	documentActivities, err := s.getRecentDocumentActivities(limit / 5)
 	if err != nil {
-		return nil, err
+		fmt.Printf("DEBUG: Error getting document activities: %v\n", err)
+		// 不返回错误，继续获取其他类型的活动
 	}
 	activities = append(activities, documentActivities...)
 
 	// 获取最近的话题讨论活动
 	topicActivities, err := s.getRecentTopicActivities(limit / 5)
 	if err != nil {
-		return nil, err
+		fmt.Printf("DEBUG: Error getting topic activities: %v\n", err)
+		// 不返回错误，继续获取其他类型的活动
 	}
 	activities = append(activities, topicActivities...)
 
 	// 获取最近的作业发布活动
 	homeworkActivities, err := s.getRecentHomeworkActivities(limit / 5)
 	if err != nil {
-		return nil, err
+		fmt.Printf("DEBUG: Error getting homework activities: %v\n", err)
+		// 不返回错误，继续获取其他类型的活动
 	}
 	activities = append(activities, homeworkActivities...)
 
 	// 获取最近的评论活动
 	commentActivities, err := s.getRecentCommentActivities(limit / 5)
 	if err != nil {
-		return nil, err
+		fmt.Printf("DEBUG: Error getting comment activities: %v\n", err)
+		// 不返回错误，继续获取其他类型的活动
 	}
 	activities = append(activities, commentActivities...)
 
@@ -83,6 +88,8 @@ func (s *ActivityService) GetRecentActivities(limit int) ([]ActivityItem, error)
 
 // getRecentDocumentActivities 获取最近的文档活动
 func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem, error) {
+	fmt.Printf("DEBUG: Getting document activities with limit=%d\n", limit)
+
 	var documents []models.Document
 	err := s.db.Preload("Project").
 		Where("status = ?", models.DocumentStatusApproved).
@@ -91,11 +98,26 @@ func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem
 		Find(&documents).Error
 
 	if err != nil {
+		fmt.Printf("DEBUG: Error querying documents: %v\n", err)
 		return nil, err
 	}
 
+	fmt.Printf("DEBUG: Found %d documents\n", len(documents))
+
 	var activities []ActivityItem
 	for _, doc := range documents {
+		projectName := ""
+		// 安全地获取项目名称，如果Project关联失败则使用空字符串
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("DEBUG: Recovered from panic accessing doc.Project.Name: %v\n", r)
+			}
+		}()
+
+		if doc.Project.Name != "" {
+			projectName = doc.Project.Name
+		}
+
 		activity := ActivityItem{
 			ID:          doc.ID,
 			Type:        "document",
@@ -103,18 +125,21 @@ func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem
 			Description: doc.Title,
 			UserName:    "GitLab用户", // 用户信息需要从GitLab API获取
 			UserAvatar:  "",
-			ProjectName: doc.Project.Name,
+			ProjectName: projectName,
 			CreatedAt:   doc.CreatedAt,
 			URL:         "/documents/" + doc.ID.String(),
 		}
 		activities = append(activities, activity)
 	}
 
+	fmt.Printf("DEBUG: Returning %d document activities\n", len(activities))
 	return activities, nil
 }
 
 // getRecentTopicActivities 获取最近的话题活动
 func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, error) {
+	fmt.Printf("DEBUG: Getting topic activities with limit=%d\n", limit)
+
 	var topics []models.Topic
 	err := s.db.Preload("Project").
 		Where("status = ?", "active").
@@ -123,12 +148,21 @@ func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, e
 		Find(&topics).Error
 
 	if err != nil {
+		fmt.Printf("DEBUG: Error querying topics: %v\n", err)
 		return nil, err
 	}
+
+	fmt.Printf("DEBUG: Found %d topics\n", len(topics))
 
 	var activities []ActivityItem
 	for _, topic := range topics {
 		projectName := ""
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("DEBUG: Recovered from panic accessing topic.Project.Name: %v\n", r)
+			}
+		}()
+
 		if topic.Project.Name != "" {
 			projectName = topic.Project.Name
 		}
@@ -147,11 +181,14 @@ func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, e
 		activities = append(activities, activity)
 	}
 
+	fmt.Printf("DEBUG: Returning %d topic activities\n", len(activities))
 	return activities, nil
 }
 
 // getRecentHomeworkActivities 获取最近的作业活动
 func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem, error) {
+	fmt.Printf("DEBUG: Getting homework activities with limit=%d\n", limit)
+
 	var homeworks []models.Homework
 	err := s.db.Preload("Project").
 		Where("status = ?", models.HomeworkStatusPublished).
@@ -160,11 +197,25 @@ func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem
 		Find(&homeworks).Error
 
 	if err != nil {
+		fmt.Printf("DEBUG: Error querying homeworks: %v\n", err)
 		return nil, err
 	}
 
+	fmt.Printf("DEBUG: Found %d homeworks\n", len(homeworks))
+
 	var activities []ActivityItem
 	for _, homework := range homeworks {
+		projectName := ""
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("DEBUG: Recovered from panic accessing homework.Project.Name: %v\n", r)
+			}
+		}()
+
+		if homework.Project.Name != "" {
+			projectName = homework.Project.Name
+		}
+
 		activity := ActivityItem{
 			ID:          homework.ID,
 			Type:        "homework",
@@ -172,18 +223,21 @@ func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem
 			Description: homework.Title,
 			UserName:    "GitLab用户", // 用户信息需要从GitLab API获取
 			UserAvatar:  "",
-			ProjectName: homework.Project.Name,
+			ProjectName: projectName,
 			CreatedAt:   homework.CreatedAt,
 			URL:         "/homeworks/" + homework.ID.String(),
 		}
 		activities = append(activities, activity)
 	}
 
+	fmt.Printf("DEBUG: Returning %d homework activities\n", len(activities))
 	return activities, nil
 }
 
 // getRecentCommentActivities 获取最近的评论活动
 func (s *ActivityService) getRecentCommentActivities(limit int) ([]ActivityItem, error) {
+	fmt.Printf("DEBUG: Getting comment activities with limit=%d\n", limit)
+
 	var comments []models.Comment
 	err := s.db.Preload("Topic").Preload("Topic.Project").
 		Order("created_at DESC").
@@ -191,30 +245,46 @@ func (s *ActivityService) getRecentCommentActivities(limit int) ([]ActivityItem,
 		Find(&comments).Error
 
 	if err != nil {
+		fmt.Printf("DEBUG: Error querying comments: %v\n", err)
 		return nil, err
 	}
+
+	fmt.Printf("DEBUG: Found %d comments\n", len(comments))
 
 	var activities []ActivityItem
 	for _, comment := range comments {
 		projectName := ""
+		topicTitle := ""
+		topicID := ""
+
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("DEBUG: Recovered from panic accessing comment.Topic: %v\n", r)
+			}
+		}()
+
 		if comment.Topic.Project.Name != "" {
 			projectName = comment.Topic.Project.Name
 		}
+
+		topicTitle = comment.Topic.Title
+		topicID = comment.Topic.ID.String()
 
 		activity := ActivityItem{
 			ID:          comment.ID,
 			Type:        "comment",
 			Title:       "评论了话题",
-			Description: comment.Topic.Title,
+			Description: topicTitle,
 			UserName:    "GitLab用户", // 用户信息需要从GitLab API获取
 			UserAvatar:  "",
 			ProjectName: projectName,
 			CreatedAt:   comment.CreatedAt,
-			URL:         "/topics/" + comment.Topic.ID.String(),
+			URL:         "/topics/" + topicID,
 		}
 		activities = append(activities, activity)
 	}
 
+	fmt.Printf("DEBUG: Returning %d comment activities\n", len(activities))
 	return activities, nil
 }
 
@@ -283,6 +353,17 @@ func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]
 
 	var activities []ActivityItem
 	for _, doc := range documents {
+		projectName := ""
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("DEBUG: Recovered from panic accessing doc.Project.Name: %v\n", r)
+			}
+		}()
+
+		if doc.Project.Name != "" {
+			projectName = doc.Project.Name
+		}
+
 		activity := ActivityItem{
 			ID:          doc.ID,
 			Type:        "document",
@@ -290,7 +371,7 @@ func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]
 			Description: doc.Title,
 			UserName:    "GitLab用户", // 用户信息需要从GitLab API获取
 			UserAvatar:  "",
-			ProjectName: doc.Project.Name,
+			ProjectName: projectName,
 			CreatedAt:   doc.CreatedAt,
 			URL:         "/documents/" + doc.ID.String(),
 		}
@@ -304,7 +385,7 @@ func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]
 func (s *ActivityService) getUserTopicActivities(userID int64, limit int) ([]ActivityItem, error) {
 	var topics []models.Topic
 	err := s.db.Preload("Project").
-		Where("author_id = ? AND status = ?", userID, "active").
+		Where("author_id = ? AND status = ?", fmt.Sprintf("%d", userID), "active").
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&topics).Error
@@ -316,6 +397,12 @@ func (s *ActivityService) getUserTopicActivities(userID int64, limit int) ([]Act
 	var activities []ActivityItem
 	for _, topic := range topics {
 		projectName := ""
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("DEBUG: Recovered from panic accessing topic.Project.Name: %v\n", r)
+			}
+		}()
+
 		if topic.Project.Name != "" {
 			projectName = topic.Project.Name
 		}
@@ -352,6 +439,17 @@ func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]
 
 	var activities []ActivityItem
 	for _, homework := range homeworks {
+		projectName := ""
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("DEBUG: Recovered from panic accessing homework.Project.Name: %v\n", r)
+			}
+		}()
+
+		if homework.Project.Name != "" {
+			projectName = homework.Project.Name
+		}
+
 		activity := ActivityItem{
 			ID:          homework.ID,
 			Type:        "homework",
@@ -359,7 +457,7 @@ func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]
 			Description: homework.Title,
 			UserName:    "GitLab用户", // 用户信息需要从GitLab API获取
 			UserAvatar:  "",
-			ProjectName: homework.Project.Name,
+			ProjectName: projectName,
 			CreatedAt:   homework.CreatedAt,
 			URL:         "/homeworks/" + homework.ID.String(),
 		}
@@ -371,6 +469,8 @@ func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]
 
 // getRecentProjectActivities 获取最近的项目创建活动
 func (s *ActivityService) getRecentProjectActivities(limit int) ([]ActivityItem, error) {
+	fmt.Printf("DEBUG: Getting project activities with limit=%d\n", limit)
+
 	var projects []models.ResearchProject
 	err := s.db.Where("is_public = ?", true).
 		Order("created_at DESC").
@@ -378,6 +478,7 @@ func (s *ActivityService) getRecentProjectActivities(limit int) ([]ActivityItem,
 		Find(&projects).Error
 
 	if err != nil {
+		fmt.Printf("DEBUG: Error querying projects: %v\n", err)
 		return nil, err
 	}
 
@@ -400,5 +501,6 @@ func (s *ActivityService) getRecentProjectActivities(limit int) ([]ActivityItem,
 		activities = append(activities, activity)
 	}
 
+	fmt.Printf("DEBUG: Returning %d project activities\n", len(activities))
 	return activities, nil
 }
