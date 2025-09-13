@@ -21,15 +21,6 @@
         <!-- 实时通知面板 -->
         <NotificationPanel v-if="userStore.isLoggedIn" />
         
-        <!-- 系统公告按钮 -->
-        <el-button 
-          text 
-          class="announcement-btn"
-          @click="showAnnouncements = true"
-        >
-          <el-icon><InfoFilled /></el-icon>
-        </el-button>
-        
         <!-- 登录用户显示用户信息 -->
         <el-dropdown v-if="userStore.isLoggedIn" @command="handleUserAction">
           <div class="user-info">
@@ -38,6 +29,7 @@
           </div>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item v-if="userStore.isAdmin" command="user-management">用户管理</el-dropdown-item>
               <el-dropdown-item command="profile">个人资料</el-dropdown-item>
               <el-dropdown-item command="settings">设置</el-dropdown-item>
               <el-dropdown-item command="notifications">通知</el-dropdown-item>
@@ -59,20 +51,6 @@
     </div>
   </header>
 
-  <!-- 公告弹窗 -->
-  <el-dialog
-    v-model="showAnnouncements"
-    title="系统公告"
-    width="600px"
-  >
-    <div class="announcements-list">
-      <div v-for="announcement in announcements" :key="announcement.id" class="announcement-item">
-        <h4>{{ announcement.title }}</h4>
-        <p>{{ announcement.content }}</p>
-        <span class="announcement-time">{{ announcement.createdAt }}</span>
-      </div>
-    </div>
-  </el-dialog>
 </template>
 
 <script setup lang="ts">
@@ -91,8 +69,6 @@ const navItems = [
   { path: '/topics', label: '话题' },
   { path: '/documents', label: '文档' }
 ]
-
-const showAnnouncements = ref(false)
 
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
@@ -113,14 +89,18 @@ const announcements = [
 
 const handleUserAction = (command: string) => {
   switch (command) {
+    case 'user-management':
+      router.push('/admin/users')
+      break
     case 'profile':
-      router.push('/user/profile')
+      router.push('/profile')
       break
     case 'settings':
-      router.push('/user/settings')
+      router.push('/settings')
       break
     case 'notifications':
-      router.push('/user/notifications')
+      // 通知功能暂时禁用，因为Notifications.vue已被删除
+      ElMessage.info('通知功能正在开发中')
       break
     case 'logout':
       userStore.logout()

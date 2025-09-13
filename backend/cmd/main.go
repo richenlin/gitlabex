@@ -57,7 +57,7 @@ func main() {
 		log.Fatalf("Failed to initialize MinIO service: %v", err)
 	}
 
-	userService := services.NewUserService(gitlabService, cfg)
+	userService := services.NewUserService(db, gitlabService, cfg)
 	researchService := services.NewResearchService(db, gitlabService)
 	documentService := services.NewDocumentService(db, gitlabService, minioService)
 	homeworkService := services.NewHomeworkService(db, gitlabService)
@@ -123,8 +123,24 @@ func main() {
 	{
 		users.GET("/me", userHandler.GetCurrentUser)
 		users.PUT("/me", userHandler.UpdateCurrentUser)
+		users.GET("/me/stats", userHandler.GetUserPersonalStats)
 		users.GET("", userHandler.GetUsers)
 		users.GET("/:id", userHandler.GetUserByID)
+	}
+
+	// 管理员用户管理路由
+	adminUsers := api.Group("/admin/users")
+	adminUserHandler := handlers.NewAdminUserHandler(userService)
+	adminUsers.Use(middleware.RequireAuth(cfg))
+	{
+		adminUsers.GET("", adminUserHandler.GetUsers)                              // 获取用户列表
+		adminUsers.POST("", adminUserHandler.CreateUser)                           // 创建用户
+		adminUsers.GET("/:id", adminUserHandler.GetUserDetails)                    // 获取用户详情
+		adminUsers.PUT("/:id", adminUserHandler.UpdateUser)                        // 更新用户信息
+		adminUsers.DELETE("/:id", adminUserHandler.DeleteUser)                     // 删除用户
+		adminUsers.PUT("/:id/roles", adminUserHandler.UpdateUserRoles)             // 更新用户角色
+		adminUsers.GET("/:id/project-roles", adminUserHandler.GetUserProjectRoles) // 获取用户项目角色
+		adminUsers.GET("/stats", adminUserHandler.GetUserStats)                    // 获取用户统计
 	}
 
 	// 权限检查相关路由

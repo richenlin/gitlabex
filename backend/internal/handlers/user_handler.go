@@ -121,3 +121,23 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 
 	c.JSON(http.StatusOK, user)
 }
+
+// GetUserPersonalStats 获取用户个人统计信息
+func (h *UserHandler) GetUserPersonalStats(c *gin.Context) {
+	userID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	stats, err := h.userService.GetUserPersonalStats(userID.(int64))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取用户统计失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}

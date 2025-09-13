@@ -396,6 +396,133 @@ func (s *GitLabService) GetUser(accessToken string) (*GitLabAPIUser, error) {
 	return &user, nil
 }
 
+// GetAllUsers 获取所有用户列表 (管理员专用)
+func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*GitLabAPIUser, error) {
+	url := fmt.Sprintf("%s/api/v4/users?page=%d&per_page=%d", s.Config.GitLabURL, page, perPage)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+	}
+
+	var users []*GitLabAPIUser
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// CreateUser 创建用户 (管理员专用)
+func (s *GitLabService) CreateUser(accessToken string, userData *GitLabCreateUserData) (*GitLabAPIUser, error) {
+	url := fmt.Sprintf("%s/api/v4/users", s.Config.GitLabURL)
+
+	jsonData, err := json.Marshal(userData)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var user GitLabAPIUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// UpdateUser 更新用户信息 (管理员专用)
+func (s *GitLabService) UpdateUser(accessToken string, userID int64, userData *GitLabUpdateUserData) (*GitLabAPIUser, error) {
+	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLabURL, userID)
+
+	jsonData, err := json.Marshal(userData)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	var user GitLabAPIUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// DeleteUser 删除用户 (管理员专用)
+func (s *GitLabService) DeleteUser(accessToken string, userID int64) error {
+	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLabURL, userID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
 // GetProjects 获取用户的项目列表
 func (s *GitLabService) GetProjects(accessToken string, page, perPage int) ([]*GitLabProject, error) {
 	url := fmt.Sprintf("%s/api/v4/projects?owned=true&page=%d&per_page=%d&order_by=last_activity_at",
@@ -1541,4 +1668,22 @@ func (s *GitLabService) FindUserAwardEmoji(accessToken string, projectID, issueI
 	}
 
 	return nil, nil // 未找到
+}
+
+// GitLabCreateUserData GitLab创建用户数据结构
+type GitLabCreateUserData struct {
+	Email            string `json:"email"`
+	Username         string `json:"username"`
+	Name             string `json:"name"`
+	Password         string `json:"password"`
+	Admin            bool   `json:"admin,omitempty"`
+	SkipConfirmation bool   `json:"skip_confirmation,omitempty"`
+}
+
+// GitLabUpdateUserData GitLab更新用户数据结构
+type GitLabUpdateUserData struct {
+	Email    string `json:"email,omitempty"`
+	Username string `json:"username,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Admin    *bool  `json:"admin,omitempty"`
 }

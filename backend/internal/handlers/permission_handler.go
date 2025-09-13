@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"gitlabex/internal/services"
+	"gitlabex/internal/types"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -20,13 +21,6 @@ func NewPermissionHandler(gitlabService *services.GitLabService, researchService
 		gitlabService:   gitlabService,
 		researchService: researchService,
 	}
-}
-
-// PermissionRequest 权限检查请求
-type PermissionRequest struct {
-	Action     string `json:"action" binding:"required"`   // 操作类型：create, read, update, delete
-	Resource   string `json:"resource" binding:"required"` // 资源类型：project, topic, homework, document
-	ResourceID string `json:"resource_id,omitempty"`       // 资源ID（可选）
 }
 
 // PermissionResponse 权限检查响应
@@ -59,7 +53,7 @@ func (h *PermissionHandler) CheckPermission(c *gin.Context) {
 		return
 	}
 
-	var req PermissionRequest
+	var req types.PermissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

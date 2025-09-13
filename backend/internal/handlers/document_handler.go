@@ -60,6 +60,9 @@ func (h *DocumentHandler) GetDocuments(c *gin.Context) {
 	if status := c.Query("status"); status != "" {
 		filters["status"] = status
 	}
+	if uploaderID := c.Query("uploader_id"); uploaderID != "" {
+		filters["uploader_id"] = uploaderID
+	}
 
 	documents, total, err := h.documentService.GetDocuments(limit, offset, filters)
 	if err != nil {

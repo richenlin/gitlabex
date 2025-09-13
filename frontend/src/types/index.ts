@@ -5,6 +5,9 @@ export interface User {
   email: string
   name: string
   avatar_url?: string
+  bio?: string        // 个人简介
+  location?: string   // 所在地
+  website_url?: string // 个人网站
   is_admin: boolean   // GitLab管理员权限
   gitlab_role?: GitLabRole  // 在项目中的角色
   role?: string       // 用户角色

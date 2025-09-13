@@ -182,14 +182,15 @@
     <el-dialog
       v-model="showEditProfile"
       title="编辑个人资料"
-      width="500px"
+      width="600px"
       :before-close="handleEditClose"
     >
+      
       <el-form
         ref="editFormRef"
         :model="editForm"
         :rules="editFormRules"
-        label-width="80px"
+        label-width="100px"
       >
         <el-form-item label="头像" prop="avatar_url">
           <div class="avatar-upload">
@@ -208,8 +209,36 @@
             </div>
           </div>
         </el-form-item>
+        
         <el-form-item label="姓名" prop="name">
           <el-input v-model="editForm.name" placeholder="请输入姓名" />
+        </el-form-item>
+        
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="editForm.username" placeholder="请输入用户名" />
+        </el-form-item>
+        
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="editForm.email" placeholder="请输入邮箱" />
+        </el-form-item>
+        
+        <el-form-item label="个人简介" prop="bio">
+          <el-input
+            v-model="editForm.bio"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入个人简介"
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+        
+        <el-form-item label="所在地" prop="location">
+          <el-input v-model="editForm.location" placeholder="请输入所在地" />
+        </el-form-item>
+        
+        <el-form-item label="个人网站" prop="website_url">
+          <el-input v-model="editForm.website_url" placeholder="请输入个人网站URL" />
         </el-form-item>
       </el-form>
       
@@ -279,13 +308,33 @@ const documentsLoading = ref(false)
 const editFormRef = ref()
 const editForm = ref({
   name: '',
-  avatar_url: ''
+  username: '',
+  email: '',
+  avatar_url: '',
+  bio: '',
+  location: '',
+  website_url: ''
 })
 
 const editFormRules = {
   name: [
     { required: true, message: '请输入姓名', trigger: 'blur' },
     { min: 2, max: 50, message: '姓名长度应在 2 到 50 个字符', trigger: 'blur' }
+  ],
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 2, max: 30, message: '用户名长度应在 2 到 30 个字符', trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_-]+$/, message: '用户名只能包含字母、数字、下划线和连字符', trigger: 'blur' }
+  ],
+  email: [
+    { required: true, message: '请输入邮箱', trigger: 'blur' },
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
+  ],
+  bio: [
+    { max: 500, message: '个人简介不能超过 500 个字符', trigger: 'blur' }
+  ],
+  website_url: [
+    { type: 'url', message: '请输入正确的URL格式', trigger: 'blur' }
   ]
 }
 
@@ -303,8 +352,13 @@ const fetchUserInfo = async () => {
     // 更新编辑表单
     if (userInfo.value) {
       editForm.value = {
-        name: userInfo.value.name,
-        avatar_url: userInfo.value.avatar_url || ''
+        name: userInfo.value.name || '',
+        username: userInfo.value.username || '',
+        email: userInfo.value.email || '',
+        avatar_url: userInfo.value.avatar_url || '',
+        bio: userInfo.value.bio || '',
+        location: userInfo.value.location || '',
+        website_url: userInfo.value.website_url || ''
       }
     }
     
@@ -329,24 +383,29 @@ const fetchUserInfo = async () => {
 
 const fetchStats = async () => {
   try {
-    // 并行获取统计数据
-    const [projectsRes, topicsRes, documentsRes] = await Promise.allSettled([
-      researchService.getProjects({ ownerId: userInfo.value?.id.toString() }),
-      topicService.getTopics({ authorId: userInfo.value?.id.toString() }),
-      documentService.getDocuments({ })
-    ])
-
-    // 由于响应拦截器已经返回了data，所以value就是实际数据
-    stats.value.projectsCount = projectsRes.status === 'fulfilled' ? 
-      ((projectsRes.value as any)?.data?.total || (projectsRes.value as any)?.total || (projectsRes.value as any)?.length || 0) : 0
-    stats.value.topicsCount = topicsRes.status === 'fulfilled' ? 
-      ((topicsRes.value as any)?.data?.total || (topicsRes.value as any)?.total || (topicsRes.value as any)?.length || 0) : 0
-    stats.value.documentsCount = documentsRes.status === 'fulfilled' ? 
-      ((documentsRes.value as any)?.data?.total || (documentsRes.value as any)?.total || (documentsRes.value as any)?.length || 0) : 0
-      
+    console.log('获取用户统计数据...')
+    const response = await authService.getUserStats()
+    console.log('统计API响应:', response)
+    
+    // 由于响应拦截器已经返回了data，所以response就是统计数据
+    const data = response?.data || response
+    stats.value = {
+      projectsCount: data.projects_count || 0,
+      topicsCount: data.topics_count || 0,
+      documentsCount: data.documents_count || 0,
+      submissionsCount: data.submissions_count || 0
+    }
+    
     console.log('统计数据:', stats.value)
   } catch (error) {
     console.error('获取统计数据失败:', error)
+    // 如果统计API失败，使用默认值
+    stats.value = {
+      projectsCount: 0,
+      topicsCount: 0,
+      documentsCount: 0,
+      submissionsCount: 0
+    }
   }
 }
 
@@ -397,17 +456,20 @@ const fetchMyTopics = async () => {
 }
 
 const fetchMyDocuments = async () => {
+  if (!userInfo.value?.id) return
+  
   documentsLoading.value = true
   try {
-    console.log('获取我的文档')
-    const response = await documentService.getDocuments({ pageSize: 10 })
+    console.log('获取我的文档，用户ID:', userInfo.value.id)
+    const response = await documentService.getDocuments({ 
+      uploaderId: userInfo.value.id.toString(),
+      pageSize: 10 
+    })
     console.log('文档API响应:', response)
     
-    // 过滤出当前用户上传的文档
     // 由于响应拦截器已经返回了data，所以response就是实际数据
     const data = response?.data || response
-    const allDocs = data?.documents || data || []
-    myDocuments.value = allDocs.filter((doc: Document) => doc.uploader_id === userInfo.value?.id.toString())
+    myDocuments.value = data?.documents || data || []
     console.log('我的文档:', myDocuments.value)
   } catch (error) {
     console.error('获取我的文档失败:', error)
@@ -442,7 +504,12 @@ const handleSaveProfile = async () => {
     // 更新本地用户信息
     if (userInfo.value) {
       userInfo.value.name = editForm.value.name
+      userInfo.value.username = editForm.value.username
+      userInfo.value.email = editForm.value.email
       userInfo.value.avatar_url = editForm.value.avatar_url
+      userInfo.value.bio = editForm.value.bio
+      userInfo.value.location = editForm.value.location
+      userInfo.value.website_url = editForm.value.website_url
     }
     
     // 更新store中的用户信息
@@ -463,8 +530,13 @@ const handleEditClose = () => {
   // 重置表单
   if (userInfo.value) {
     editForm.value = {
-      name: userInfo.value.name,
-      avatar_url: userInfo.value.avatar_url || ''
+      name: userInfo.value.name || '',
+      username: userInfo.value.username || '',
+      email: userInfo.value.email || '',
+      avatar_url: userInfo.value.avatar_url || '',
+      bio: userInfo.value.bio || '',
+      location: userInfo.value.location || '',
+      website_url: userInfo.value.website_url || ''
     }
   }
 }
@@ -481,6 +553,7 @@ const goToTopic = (id: string) => {
 const goToDocument = (id: string) => {
   router.push(`/documents/${id}`)
 }
+
 
 // 标签页切换处理
 const handleTabChange = (tabName: string) => {
@@ -589,8 +662,13 @@ onMounted(async () => {
   if (userStore.user) {
     userInfo.value = userStore.user
     editForm.value = {
-      name: userStore.user.name,
-      avatar_url: userStore.user.avatar_url || ''
+      name: userStore.user.name || '',
+      username: userStore.user.username || '',
+      email: userStore.user.email || '',
+      avatar_url: userStore.user.avatar_url || '',
+      bio: userStore.user.bio || '',
+      location: userStore.user.location || '',
+      website_url: userStore.user.website_url || ''
     }
   }
 

@@ -199,7 +199,7 @@ type UpdateUserRequest struct {
 	Username   string `json:"username"`
 	Email      string `json:"email"`
 	Name       string `json:"name"`
-	Role       string `json:"role,omitempty,oneof=admin teacher assistant student"`
+	Role       string `json:"role,omitempty"`
 	IsActive   *bool  `json:"is_active,omitempty"`
 	AvatarURL  string `json:"avatar_url,omitempty"`
 	Department string `json:"department,omitempty"`

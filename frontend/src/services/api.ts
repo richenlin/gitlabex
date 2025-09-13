@@ -141,6 +141,9 @@ export const authService = {
   updateProfile: (data: Partial<User>) =>
     api.put('/users/me', data),
   
+  getUserStats: () =>
+    api.get('/users/me/stats'),
+  
   refreshToken: () =>
     api.post('/auth/refresh')
 }
@@ -246,6 +249,7 @@ export const documentService = {
     category?: string
     search?: string
     status?: string
+    uploaderId?: string
   }) =>
     api.get('/documents', { params }),
   

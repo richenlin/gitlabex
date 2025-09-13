@@ -156,16 +156,16 @@ const router = createRouter({
       meta: { title: '设置', requiresAuth: true }
     },
     {
-      path: '/notifications',
-      name: 'notifications',
-      component: () => import('@/views/user/Notifications.vue'),
-      meta: { title: '通知', requiresAuth: true }
-    },
-    {
       path: '/admin',
       name: 'admin',
       component: () => import('@/views/admin/Dashboard.vue'),
       meta: { title: '管理后台', roles: [UserRole.ADMIN] }
+    },
+    {
+      path: '/admin/users',
+      name: 'user-management',
+      component: () => import('@/views/admin/UserManagement.vue'),
+      meta: { title: '用户管理', roles: [UserRole.ADMIN] }
     }
   ]
 })
