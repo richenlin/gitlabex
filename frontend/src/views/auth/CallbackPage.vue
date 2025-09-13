@@ -53,10 +53,11 @@ const handleOAuthCallback = async () => {
     // 发送授权码到后端进行验证和登录
     const response = await authService.gitLabCallback(code, state)
     
-    if (response.token && response.user) {
+    const data = response.data || response
+    if (data.token && data.user) {
       // 保存用户信息和令牌
-      userStore.setUser(response.user)
-      userStore.setToken(response.token)
+      userStore.setUser(data.user)
+      userStore.setToken(data.token)
       
       ElMessage.success('登录成功，欢迎回来！')
       

@@ -337,7 +337,7 @@ const fetchMyScenes = async () => {
   
   try {
     const response: any = await researchService.getProjects({
-      ownerId: userStore.user?.id
+      ownerId: userStore.user?.id.toString()
     })
     
     // 处理响应数据结构（axios拦截器已经返回response.data）

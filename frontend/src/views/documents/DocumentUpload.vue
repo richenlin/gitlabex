@@ -120,7 +120,8 @@ const uploadRules = {
 const fetchProjects = async () => {
   try {
     const response = await researchService.getProjects()
-    projects.value = response.projects || response.items || response || []
+    const data = response.data || response
+    projects.value = data.projects || data.items || data || []
   } catch (error) {
     console.error('获取课题列表失败:', error)
     ElMessage.error('获取课题列表失败')

@@ -29,20 +29,18 @@ const (
 // Homework 作业模型
 type Homework struct {
 	BaseModel
-	Title         string         `gorm:"not null;size:200" json:"title"`
-	Description   string         `gorm:"type:text" json:"description"`
-	ProjectID     uuid.UUID      `gorm:"not null" json:"project_id"`
-	CreatorID     int64          `gorm:"not null" json:"creator_id"` // GitLab用户ID
-	Status        HomeworkStatus `gorm:"not null;default:draft" json:"status"`
-	DueDate       *time.Time     `json:"due_date,omitempty"`
-	MaxGrade      int            `gorm:"default:100" json:"max_grade"`
-	MinGrade      int            `gorm:"default:0" json:"min_grade"`
-	Instructions  string         `gorm:"type:text" json:"instructions"`
-	TemplateFiles pq.StringArray `gorm:"type:text[]" json:"template_files"`
-	Requirements  pq.StringArray `gorm:"type:text[]" json:"requirements"`
-	Tags          pq.StringArray `gorm:"type:text[]" json:"tags"`
-	GitLabBranch  string         `gorm:"size:100;default:main" json:"gitlab_branch,omitempty"`
-	GitLabPath    string         `gorm:"size:500" json:"gitlab_path,omitempty"`
+	Title        string         `gorm:"not null;size:200" json:"title"`
+	Description  string         `gorm:"type:text" json:"description"`
+	Content      string         `gorm:"type:text" json:"content"` // 作业内容，存储在数据库中
+	ProjectID    uuid.UUID      `gorm:"not null" json:"project_id"`
+	CreatorID    int64          `gorm:"not null" json:"creator_id"` // GitLab用户ID
+	Status       HomeworkStatus `gorm:"not null;default:draft" json:"status"`
+	DueDate      *time.Time     `json:"due_date,omitempty"`
+	MaxGrade     int            `gorm:"default:100" json:"max_grade"`
+	MinGrade     int            `gorm:"default:0" json:"min_grade"`
+	Instructions string         `gorm:"type:text" json:"instructions"`
+	Requirements pq.StringArray `gorm:"type:text[]" json:"requirements"`
+	Tags         pq.StringArray `gorm:"type:text[]" json:"tags"`
 
 	// 关联关系
 	Project ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
@@ -54,17 +52,16 @@ type Homework struct {
 type Submission struct {
 	BaseModel
 	HomeworkID      uuid.UUID        `gorm:"not null" json:"homework_id"`
-	StudentID       uuid.UUID        `gorm:"not null" json:"student_id"`
+	StudentID       int64            `gorm:"not null" json:"student_id"` // GitLab用户ID
 	Status          SubmissionStatus `gorm:"not null;default:pending" json:"status"`
-	Content         string           `gorm:"type:text" json:"content"`
-	FilePath        string           `gorm:"size:500" json:"file_path"`
+	Content         string           `gorm:"type:text" json:"content"` // 提交内容说明
 	GitLabCommitSHA string           `gorm:"size:40" json:"gitlab_commit_sha,omitempty"`
-	GitLabBranch    string           `gorm:"size:100" json:"gitlab_branch,omitempty"`
+	GitLabBranch    string           `gorm:"size:100" json:"gitlab_branch,omitempty"` // 学生提交的分支名
 	SubmittedAt     *time.Time       `json:"submitted_at,omitempty"`
 	Grade           *int             `json:"grade,omitempty"`
-	Feedback        string           `gorm:"type:text" json:"feedback"`
+	Feedback        string           `gorm:"type:text" json:"feedback"` // 老师评语
 	GradedAt        *time.Time       `json:"graded_at,omitempty"`
-	GradedBy        *uuid.UUID       `json:"graded_by,omitempty"`
+	GradedBy        *int64           `json:"graded_by,omitempty"` // 批改者GitLab用户ID
 
 	// 关联关系
 	Homework Homework `gorm:"foreignKey:HomeworkID" json:"homework,omitempty"`

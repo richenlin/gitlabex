@@ -74,7 +74,8 @@ const handleGitLabLogin = async () => {
     
     // 调用后端API获取GitLab授权URL
     const response = await authService.getGitLabAuthUrl()
-    const authUrl = response.auth_url
+    const data = response.data || response
+    const authUrl = data.auth_url
     
     if (authUrl) {
       // 跳转到GitLab授权页面

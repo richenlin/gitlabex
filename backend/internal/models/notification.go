@@ -70,7 +70,7 @@ type AssignmentTemplate struct {
 	Description string         `json:"description"`
 	DueDate     *time.Time     `json:"due_date"`
 	MaxGrade    int            `gorm:"default:100" json:"max_grade"`
-	CreatorID   uuid.UUID      `gorm:"not null" json:"creator_id"`
+	CreatorID   int64          `gorm:"not null" json:"creator_id"` // GitLab用户ID
 	IsPublic    bool           `gorm:"default:false" json:"is_public"`
 	Tags        pq.StringArray `gorm:"type:text[]" json:"tags"`
 

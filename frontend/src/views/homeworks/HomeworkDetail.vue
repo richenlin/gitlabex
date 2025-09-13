@@ -18,7 +18,7 @@
             <div class="homework-meta">
               <span>创建时间: {{ formatDate(homework.created_at) }}</span>
               <span>创建者: {{ homework.author?.name }}</span>
-              <span>截止日期: {{ formatDate(homework.deadline) }}</span>
+              <span>截止日期: {{ homework.deadline ? formatDate(homework.deadline) : '无限制' }}</span>
               <el-tag :type="getStatusTagType(homework.status)" size="small">
                 {{ getHomeworkStatusText(homework.status) }}
               </el-tag>
@@ -66,7 +66,7 @@
                 <div class="submission-details">
                   <div class="detail-item">
                     <span class="label">提交时间:</span>
-                    <span class="value">{{ formatDate(mySubmission.submitted_at) }}</span>
+                    <span class="value">{{ mySubmission.submitted_at ? formatDate(mySubmission.submitted_at) : '-' }}</span>
                   </div>
                   <div class="detail-item" v-if="mySubmission.grade !== null">
                     <span class="label">得分:</span>
@@ -277,7 +277,7 @@
       <div v-if="currentSubmission" class="grade-content">
         <div class="student-info">
           <h4>学生: {{ currentSubmission.student?.name }}</h4>
-          <p>提交时间: {{ formatDate(currentSubmission.submitted_at) }}</p>
+          <p>提交时间: {{ currentSubmission.submitted_at ? formatDate(currentSubmission.submitted_at) : '-' }}</p>
         </div>
         
         <div class="submission-content">
@@ -365,12 +365,18 @@ const canManage = ref(false)
 const canGrade = ref(false)
 const canSubmit = ref(false)
 
+// 用户角色
+const isStudent = ref(false)
+const isTeacher = ref(false)
+
 // 检查权限
 const checkPermissions = async () => {
   if (!userStore.isLoggedIn || !homework.value) {
     canManage.value = false
     canGrade.value = false
     canSubmit.value = false
+    isStudent.value = false
+    isTeacher.value = false
     return
   }
 
@@ -384,11 +390,17 @@ const checkPermissions = async () => {
     canManage.value = managePermission
     canGrade.value = gradePermission
     canSubmit.value = submitPermission
+    
+    // 设置用户角色
+    isTeacher.value = userStore.isAdmin || canGrade.value || canManage.value
+    isStudent.value = !isTeacher.value && canSubmit.value
   } catch (error) {
     console.error('权限检查失败:', error)
     canManage.value = false
     canGrade.value = false
     canSubmit.value = false
+    isStudent.value = false
+    isTeacher.value = false
   }
 }
 
@@ -458,7 +470,7 @@ const fetchHomework = async () => {
   loading.value = true
   try {
     const response = await homeworkService.getHomework(homeworkId.value)
-    homework.value = response
+    homework.value = response.data || response
     
     // 获取作业信息后检查权限
     await checkPermissions()
@@ -484,7 +496,7 @@ const fetchMySubmission = async () => {
   
   try {
     const response = await homeworkService.getMySubmission(homeworkId.value)
-    mySubmission.value = response
+    mySubmission.value = response.data || response
   } catch (error) {
     console.error('获取我的提交失败:', error)
   }
@@ -496,7 +508,8 @@ const fetchSubmissions = async () => {
   submissionsLoading.value = true
   try {
     const response = await homeworkService.getSubmissions(homeworkId.value)
-    submissions.value = Array.isArray(response) ? response : (response.submissions || [])
+    const data = response.data || response
+    submissions.value = Array.isArray(data) ? data : (data.submissions || [])
   } catch (error) {
     console.error('获取提交列表失败:', error)
   } finally {
@@ -585,7 +598,18 @@ const saveGrade = async () => {
 }
 
 const editHomework = () => {
-  router.push(`/homework/${homeworkId.value}/edit`)
+  // 跳转到作业编辑页面（数据库存储模式）
+  if (homework.value?.id) {
+    router.push(`/homeworks/${homework.value.id}/edit`)
+  } else {
+    ElMessage.error('无法获取作业信息')
+  }
+}
+
+const showGradeDialog = () => {
+  // 显示批改对话框，但这个功能应该针对具体的提交
+  // 跳转到所有提交列表页面
+  router.push(`/homeworks/${homeworkId.value}/submissions`)
 }
 
 const exportGrades = () => {

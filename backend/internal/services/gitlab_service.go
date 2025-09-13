@@ -54,6 +54,137 @@ func (s *GitLabService) makeRequest(ctx context.Context, method, url, accessToke
 	return s.HTTPClient.Do(req)
 }
 
+// ProtectBranchRequest 保护分支请求
+type ProtectBranchRequest struct {
+	Name                      string `json:"name"`
+	PushAccessLevel           int    `json:"push_access_level"`      // 30=Developer, 40=Maintainer, 60=Admin
+	MergeAccessLevel          int    `json:"merge_access_level"`     // 30=Developer, 40=Maintainer, 60=Admin
+	UnprotectAccessLevel      int    `json:"unprotect_access_level"` // 40=Maintainer, 60=Admin
+	AllowForcePush            bool   `json:"allow_force_push"`
+	CodeOwnerApprovalRequired bool   `json:"code_owner_approval_required"`
+}
+
+// ProtectedBranch 受保护的分支信息
+type ProtectedBranch struct {
+	ID                        int64         `json:"id"`
+	Name                      string        `json:"name"`
+	PushAccessLevels          []AccessLevel `json:"push_access_levels"`
+	MergeAccessLevels         []AccessLevel `json:"merge_access_levels"`
+	UnprotectAccessLevels     []AccessLevel `json:"unprotect_access_levels"`
+	AllowForcePush            bool          `json:"allow_force_push"`
+	CodeOwnerApprovalRequired bool          `json:"code_owner_approval_required"`
+}
+
+type AccessLevel struct {
+	AccessLevel            int64  `json:"access_level"`
+	AccessLevelDescription string `json:"access_level_description"`
+}
+
+// ProtectBranch 保护分支
+func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *ProtectBranchRequest) (*ProtectedBranch, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches", s.Config.GitLabURL, projectID)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("序列化请求失败: %v", err)
+	}
+
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// GitLab在分支已经受保护时会返回409状态码
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("保护分支失败，状态码: %d, 响应: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// 如果分支已经受保护，尝试获取现有的保护规则
+	if resp.StatusCode == http.StatusConflict {
+		return s.GetProtectedBranch(accessToken, projectID, req.Name)
+	}
+
+	var protectedBranch ProtectedBranch
+	if err := json.NewDecoder(resp.Body).Decode(&protectedBranch); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	return &protectedBranch, nil
+}
+
+// GetProtectedBranch 获取受保护分支信息
+func (s *GitLabService) GetProtectedBranch(accessToken string, projectID int64, branchName string) (*ProtectedBranch, error) {
+	encodedBranch := url.PathEscape(branchName)
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches/%s", s.Config.GitLabURL, projectID, encodedBranch)
+
+	req, err := http.NewRequest("GET", apiUrl, nil)
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("发送请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("获取受保护分支失败，状态码: %d", resp.StatusCode)
+	}
+
+	var protectedBranch ProtectedBranch
+	if err := json.NewDecoder(resp.Body).Decode(&protectedBranch); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	return &protectedBranch, nil
+}
+
+// SetupProjectBranchProtection 为新创建的课题项目设置分支保护
+func (s *GitLabService) SetupProjectBranchProtection(accessToken string, projectID int64) error {
+	// 保护主分支，只允许维护者和管理员推送
+	mainBranchProtection := &ProtectBranchRequest{
+		Name:                      "main",
+		PushAccessLevel:           40, // 40 = Maintainer level
+		MergeAccessLevel:          40, // 40 = Maintainer level
+		UnprotectAccessLevel:      40, // 40 = Maintainer level
+		AllowForcePush:            false,
+		CodeOwnerApprovalRequired: false,
+	}
+
+	_, err := s.ProtectBranch(accessToken, projectID, mainBranchProtection)
+	if err != nil {
+		// 如果main分支不存在，尝试保护master分支
+		masterBranchProtection := &ProtectBranchRequest{
+			Name:                      "master",
+			PushAccessLevel:           40, // 40 = Maintainer level
+			MergeAccessLevel:          40, // 40 = Maintainer level
+			UnprotectAccessLevel:      40, // 40 = Maintainer level
+			AllowForcePush:            false,
+			CodeOwnerApprovalRequired: false,
+		}
+
+		_, masterErr := s.ProtectBranch(accessToken, projectID, masterBranchProtection)
+		if masterErr != nil {
+			return fmt.Errorf("保护主分支失败，main分支错误: %v, master分支错误: %v", err, masterErr)
+		}
+	}
+
+	return nil
+}
+
 // GitLabUser GitLab用户信息 - 使用models包中的定义
 // 这里保留一个简化的结构用于API响应解析
 type GitLabAPIUser struct {

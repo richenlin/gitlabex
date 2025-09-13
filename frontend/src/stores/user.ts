@@ -47,6 +47,20 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  const checkProjectPermissionDetailed = async (projectId: string) => {
+    if (!isLoggedIn.value) {
+      return { permissions: {}, roles: [], access_level: 0 }
+    }
+
+    try {
+      const response: any = await permissionService.checkProjectPermissionDetailed(projectId)
+      return response
+    } catch (error) {
+      console.error('详细权限检查失败:', error)
+      return { permissions: {}, roles: [], access_level: 0 }
+    }
+  }
+
   const getUserPermissions = async (projectId?: string) => {
     if (!isLoggedIn.value) {
       return {}
@@ -216,6 +230,7 @@ export const useUserStore = defineStore('user', () => {
     hasAnyRole,
     checkPermission,
     checkProjectPermission,
+    checkProjectPermissionDetailed,
     getUserPermissions,
     login,
     setToken,

@@ -4,6 +4,7 @@ import (
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -188,8 +189,28 @@ func (h *HomeworkHandler) SubmitHomework(c *gin.Context) {
 		return
 	}
 
+	// 获取作业信息，检查截止日期
+	homework, err := h.homeworkService.GetHomeworkByID(homeworkID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "作业不存在"})
+		return
+	}
+
+	// 检查作业状态
+	if homework.Status != "published" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "作业未发布，无法提交"})
+		return
+	}
+
+	// 检查是否已过截止日期
+	if homework.DueDate != nil && time.Now().After(*homework.DueDate) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "作业已过截止日期，无法提交"})
+		return
+	}
+
 	var req struct {
 		BranchName string `json:"branch_name" binding:"required"`
+		Content    string `json:"content"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -197,7 +218,7 @@ func (h *HomeworkHandler) SubmitHomework(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -205,8 +226,9 @@ func (h *HomeworkHandler) SubmitHomework(c *gin.Context) {
 
 	submission := &models.Submission{
 		HomeworkID:   homeworkID,
-		StudentID:    userID.(uuid.UUID),
+		StudentID:    userID.(int64),
 		GitLabBranch: req.BranchName,
+		Content:      req.Content,
 	}
 
 	if err := h.homeworkService.SubmitHomework(submission); err != nil {
@@ -254,13 +276,13 @@ func (h *HomeworkHandler) GradeHomework(c *gin.Context) {
 		return
 	}
 
-	graderID, exists := c.Get("userID")
+	graderID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	if err := h.homeworkService.GradeHomework(submissionID, req.Grade, req.Feedback, graderID.(uuid.UUID)); err != nil {
+	if err := h.homeworkService.GradeHomework(submissionID, req.Grade, req.Feedback, graderID.(int64)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "评分失败"})
 		return
 	}
@@ -270,13 +292,13 @@ func (h *HomeworkHandler) GradeHomework(c *gin.Context) {
 
 // GetUserSubmissions 获取用户的作业提交
 func (h *HomeworkHandler) GetUserSubmissions(c *gin.Context) {
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	submissions, err := h.homeworkService.GetUserSubmissions(userID.(uuid.UUID))
+	submissions, err := h.homeworkService.GetUserSubmissions(userID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取提交失败"})
 		return
@@ -294,13 +316,13 @@ func (h *HomeworkHandler) GetMySubmission(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	submission, err := h.homeworkService.GetUserSubmissionForHomework(homeworkID, userID.(uuid.UUID))
+	submission, err := h.homeworkService.GetUserSubmissionForHomework(homeworkID, userID.(int64))
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "尚未提交作业"})
@@ -404,13 +426,13 @@ func (h *HomeworkHandler) GetPendingReviews(c *gin.Context) {
 		return
 	}
 
-	graderID, exists := c.Get("userID")
+	graderID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	submissions, err := h.homeworkService.GetPendingReviews(projectID, graderID.(uuid.UUID))
+	submissions, err := h.homeworkService.GetPendingReviews(projectID, graderID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取待评分作业失败"})
 		return
@@ -429,7 +451,7 @@ func (h *HomeworkHandler) GetStudentProgress(c *gin.Context) {
 		return
 	}
 
-	userID, err := uuid.Parse(userIDStr)
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
 		return
@@ -536,14 +558,14 @@ func (h *HomeworkHandler) RestoreHomework(c *gin.Context) {
 func (h *HomeworkHandler) GetAssignmentTemplates(c *gin.Context) {
 	isPublic := c.Query("is_public") == "true"
 
-	var creatorID uuid.UUID
+	var creatorID int64
 	if !isPublic {
-		userID, exists := c.Get("userID")
+		userID, exists := c.Get("gitlab_user_id")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 			return
 		}
-		creatorID = userID.(uuid.UUID)
+		creatorID = userID.(int64)
 	}
 
 	templates, err := h.homeworkService.GetAssignmentTemplates(isPublic, creatorID)
@@ -571,7 +593,7 @@ func (h *HomeworkHandler) CreateAssignmentTemplate(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("userID")
+	userID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -582,7 +604,7 @@ func (h *HomeworkHandler) CreateAssignmentTemplate(c *gin.Context) {
 		Description: req.Description,
 		DueDate:     &req.DueDate,
 		MaxGrade:    req.MaxGrade,
-		CreatorID:   userID.(uuid.UUID),
+		CreatorID:   userID.(int64),
 		IsPublic:    req.IsPublic,
 		Tags:        req.Tags,
 	}
@@ -806,13 +828,13 @@ func (h *HomeworkHandler) CreateStudentBranch(c *gin.Context) {
 		return
 	}
 
-	studentID, exists := c.Get("userID")
+	studentID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	if err := h.homeworkService.CreateStudentBranch(homeworkID, studentID.(uuid.UUID)); err != nil {
+	if err := h.homeworkService.CreateStudentBranch(homeworkID, studentID.(int64)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -853,7 +875,7 @@ func (h *HomeworkHandler) SubmitHomeworkToBranch(c *gin.Context) {
 		return
 	}
 
-	studentID, exists := c.Get("userID")
+	studentID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -871,7 +893,7 @@ func (h *HomeworkHandler) SubmitHomeworkToBranch(c *gin.Context) {
 
 	submission, err := h.homeworkService.SubmitHomeworkToBranch(
 		homeworkID,
-		studentID.(uuid.UUID),
+		studentID.(int64),
 		req.Content,
 		req.Files,
 	)
@@ -892,17 +914,37 @@ func (h *HomeworkHandler) GetStudentBranchInfo(c *gin.Context) {
 		return
 	}
 
-	studentID, exists := c.Get("userID")
+	studentID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	branchInfo, err := h.homeworkService.GetStudentBranchInfo(homeworkID, studentID.(uuid.UUID))
+	branchInfo, err := h.homeworkService.GetStudentBranchInfo(homeworkID, studentID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, branchInfo)
+}
+
+// GetSubmissionViewURL 获取学生作业提交的GitLab查看URL
+func (h *HomeworkHandler) GetSubmissionViewURL(c *gin.Context) {
+	submissionIDStr := c.Param("submissionId")
+	submissionID, err := uuid.Parse(submissionIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的提交ID"})
+		return
+	}
+
+	viewURL, err := h.homeworkService.GetSubmissionViewURL(submissionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"view_url": viewURL,
+	})
 }

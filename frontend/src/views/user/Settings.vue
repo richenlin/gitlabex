@@ -150,7 +150,7 @@
                 <h4>登录历史</h4>
                 <p>查看最近的登录活动</p>
                 <el-text type="info" size="small">
-                  上次登录: {{ formatDate(userInfo?.last_login_at) }}
+                  上次登录: {{ userInfo?.last_login_at ? formatDate(userInfo.last_login_at) : '从未登录' }}
                 </el-text>
               </div>
               <div class="security-actions">
@@ -306,7 +306,7 @@
             {{ formatDate(userInfo?.created_at) }}
           </el-descriptions-item>
           <el-descriptions-item label="过期时间">
-            {{ formatDate(userInfo?.token_expiry) || '永不过期' }}
+            {{ userInfo?.token_expiry ? formatDate(userInfo.token_expiry) : '永不过期' }}
           </el-descriptions-item>
           <el-descriptions-item label="权限范围">
             <el-tag size="small" style="margin-right: 5px;">read_api</el-tag>
@@ -400,7 +400,7 @@ const preferences = ref({
 const fetchUserInfo = async () => {
   try {
     const response = await authService.getCurrentUser()
-    userInfo.value = response
+    userInfo.value = response.data || response
     
     // 更新表单数据
     if (userInfo.value) {
@@ -409,7 +409,7 @@ const fetchUserInfo = async () => {
         email: userInfo.value.email,
         name: userInfo.value.name,
         avatar_url: userInfo.value.avatar_url || '',
-        role: userInfo.value.role
+        role: userInfo.value.role || userInfo.value.gitlab_role || ''
       }
     }
   } catch (error) {
@@ -462,7 +462,7 @@ const handleResetProfile = () => {
       email: userInfo.value.email,
       name: userInfo.value.name,
       avatar_url: userInfo.value.avatar_url || '',
-      role: userInfo.value.role
+      role: userInfo.value.role || userInfo.value.gitlab_role || ''
     }
   }
 }

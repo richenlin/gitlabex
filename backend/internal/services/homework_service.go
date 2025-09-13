@@ -26,7 +26,20 @@ func NewHomeworkService(db *gorm.DB, gitlabService *GitLabService) *HomeworkServ
 
 // CreateHomework 创建作业
 func (s *HomeworkService) CreateHomework(homework *models.Homework) error {
-	return s.DB.Create(homework).Error
+	// 在数据库中创建作业记录，作业内容存储在Content字段中
+	if err := s.DB.Create(homework).Error; err != nil {
+		return fmt.Errorf("创建作业记录失败: %v", err)
+	}
+
+	return nil
+}
+
+// formatDueDate 格式化截止日期
+func formatDueDate(dueDate *time.Time) string {
+	if dueDate == nil {
+		return "无限制"
+	}
+	return dueDate.Format("2006-01-02 15:04:05")
 }
 
 // GetHomeworkByID 根据ID获取作业
@@ -105,15 +118,14 @@ func (s *HomeworkService) SubmitHomework(submission *models.Submission) error {
 // GetSubmissions 获取作业的所有提交
 func (s *HomeworkService) GetSubmissions(homeworkID uuid.UUID) ([]models.Submission, error) {
 	var submissions []models.Submission
-	err := s.DB.Preload("Student").Preload("Grader").
-		Where("homework_id = ?", homeworkID).
+	err := s.DB.Where("homework_id = ?", homeworkID).
 		Order("submitted_at DESC").
 		Find(&submissions).Error
 	return submissions, err
 }
 
 // GetUserSubmissions 获取用户的作业提交
-func (s *HomeworkService) GetUserSubmissions(userID uuid.UUID) ([]models.Submission, error) {
+func (s *HomeworkService) GetUserSubmissions(userID int64) ([]models.Submission, error) {
 	var submissions []models.Submission
 	err := s.DB.Preload("Homework").Preload("Homework.Project").
 		Where("student_id = ?", userID).
@@ -123,9 +135,9 @@ func (s *HomeworkService) GetUserSubmissions(userID uuid.UUID) ([]models.Submiss
 }
 
 // GetUserSubmissionForHomework 获取用户对特定作业的提交
-func (s *HomeworkService) GetUserSubmissionForHomework(homeworkID uuid.UUID, userID uuid.UUID) (*models.Submission, error) {
+func (s *HomeworkService) GetUserSubmissionForHomework(homeworkID uuid.UUID, userID int64) (*models.Submission, error) {
 	var submission models.Submission
-	err := s.DB.Preload("Homework").Preload("Student").
+	err := s.DB.Preload("Homework").
 		Where("homework_id = ? AND student_id = ?", homeworkID, userID).
 		First(&submission).Error
 	if err != nil {
@@ -135,7 +147,7 @@ func (s *HomeworkService) GetUserSubmissionForHomework(homeworkID uuid.UUID, use
 }
 
 // GradeHomework 评分作业
-func (s *HomeworkService) GradeHomework(submissionID uuid.UUID, grade int, feedback string, graderID uuid.UUID) error {
+func (s *HomeworkService) GradeHomework(submissionID uuid.UUID, grade int, feedback string, graderID int64) error {
 	return s.DB.Transaction(func(tx *gorm.DB) error {
 		// 更新提交
 		err := tx.Model(&models.Submission{}).
@@ -143,7 +155,7 @@ func (s *HomeworkService) GradeHomework(submissionID uuid.UUID, grade int, feedb
 			Updates(map[string]interface{}{
 				"grade":     grade,
 				"feedback":  feedback,
-				"grader_id": graderID,
+				"graded_by": graderID,
 				"graded_at": time.Now(),
 				"status":    "graded",
 			}).Error
@@ -168,7 +180,7 @@ func (s *HomeworkService) GradeHomework(submissionID uuid.UUID, grade int, feedb
 // GetSubmissionByID 根据ID获取提交
 func (s *HomeworkService) GetSubmissionByID(id uuid.UUID) (*models.Submission, error) {
 	var submission models.Submission
-	err := s.DB.Preload("Homework").Preload("Student").Preload("Grader").
+	err := s.DB.Preload("Homework").
 		First(&submission, "id = ?", id).Error
 	if err != nil {
 		return nil, err
@@ -177,7 +189,7 @@ func (s *HomeworkService) GetSubmissionByID(id uuid.UUID) (*models.Submission, e
 }
 
 // GetSubmissionByUserAndHomework 根据用户和作业获取提交
-func (s *HomeworkService) GetSubmissionByUserAndHomework(userID, homeworkID uuid.UUID) (*models.Submission, error) {
+func (s *HomeworkService) GetSubmissionByUserAndHomework(userID int64, homeworkID uuid.UUID) (*models.Submission, error) {
 	var submission models.Submission
 	err := s.DB.Where("student_id = ? AND homework_id = ?", userID, homeworkID).First(&submission).Error
 	if err != nil {
@@ -235,9 +247,9 @@ func (s *HomeworkService) GetHomeworkStats(projectID uuid.UUID) (map[string]inte
 }
 
 // GetPendingReviews 获取待评分的作业
-func (s *HomeworkService) GetPendingReviews(projectID uuid.UUID, graderID uuid.UUID) ([]models.Submission, error) {
+func (s *HomeworkService) GetPendingReviews(projectID uuid.UUID, graderID int64) ([]models.Submission, error) {
 	var submissions []models.Submission
-	err := s.DB.Preload("Homework").Preload("Student").
+	err := s.DB.Preload("Homework").
 		Joins("JOIN homeworks ON submissions.homework_id = homeworks.id").
 		Where("homeworks.project_id = ? AND submissions.status = ? AND submissions.grade IS NULL",
 			projectID, "submitted").
@@ -247,7 +259,7 @@ func (s *HomeworkService) GetPendingReviews(projectID uuid.UUID, graderID uuid.U
 }
 
 // AutoGradeSubmissions 自动评分（用于测试或批量评分）
-func (s *HomeworkService) AutoGradeSubmissions(homeworkID uuid.UUID, defaultGrade int, feedback string, graderID uuid.UUID) error {
+func (s *HomeworkService) AutoGradeSubmissions(homeworkID uuid.UUID, defaultGrade int, feedback string, graderID int64) error {
 	return s.DB.Transaction(func(tx *gorm.DB) error {
 		var submissions []models.Submission
 		err := tx.Where("homework_id = ? AND grade IS NULL", homeworkID).Find(&submissions).Error
@@ -340,7 +352,7 @@ func (s *HomeworkService) GetGradeDistribution(homeworkID uuid.UUID) (map[string
 }
 
 // CloneSubmission 克隆作业提交（用于创建新分支）
-func (s *HomeworkService) CloneSubmission(originalSubmissionID uuid.UUID, newBranchName string, newStudentID uuid.UUID) (*models.Submission, error) {
+func (s *HomeworkService) CloneSubmission(originalSubmissionID uuid.UUID, newBranchName string, newStudentID int64) (*models.Submission, error) {
 	var original models.Submission
 	err := s.DB.First(&original, "id = ?", originalSubmissionID).Error
 	if err != nil {
@@ -384,7 +396,7 @@ func (s *HomeworkService) ExportGrades(homeworkID uuid.UUID) ([]map[string]inter
 func (s *HomeworkService) ImportGrades(homeworkID uuid.UUID, grades []map[string]interface{}) error {
 	return s.DB.Transaction(func(tx *gorm.DB) error {
 		for _, gradeData := range grades {
-			studentID, ok := gradeData["student_id"].(uuid.UUID)
+			studentID, ok := gradeData["student_id"].(int64)
 			if !ok {
 				continue
 			}
@@ -395,6 +407,7 @@ func (s *HomeworkService) ImportGrades(homeworkID uuid.UUID, grades []map[string
 			}
 
 			feedback, _ := gradeData["feedback"].(string)
+			graderID, _ := gradeData["grader_id"].(int64)
 
 			var submission models.Submission
 			err := tx.Where("homework_id = ? AND student_id = ?", homeworkID, studentID).First(&submission).Error
@@ -403,7 +416,7 @@ func (s *HomeworkService) ImportGrades(homeworkID uuid.UUID, grades []map[string
 			}
 
 			// 更新成绩
-			err = s.GradeHomework(submission.ID, grade, feedback, studentID)
+			err = s.GradeHomework(submission.ID, grade, feedback, graderID)
 			if err != nil {
 				return err
 			}
@@ -456,7 +469,7 @@ func (s *HomeworkService) RestoreHomework(homeworkID uuid.UUID) error {
 }
 
 // GetStudentProgress 获取学生进度
-func (s *HomeworkService) GetStudentProgress(userID uuid.UUID, projectID uuid.UUID) (map[string]interface{}, error) {
+func (s *HomeworkService) GetStudentProgress(userID int64, projectID uuid.UUID) (map[string]interface{}, error) {
 	progress := make(map[string]interface{})
 
 	var totalHomeworks int64
@@ -550,7 +563,7 @@ func (s *HomeworkService) UseAssignmentTemplate(templateID uuid.UUID, projectID 
 // AssignmentTemplate 作业模板（已移至models包）
 
 // GetAssignmentTemplates 获取作业模板
-func (s *HomeworkService) GetAssignmentTemplates(isPublic bool, creatorID uuid.UUID) ([]models.AssignmentTemplate, error) {
+func (s *HomeworkService) GetAssignmentTemplates(isPublic bool, creatorID int64) ([]models.AssignmentTemplate, error) {
 	var templates []models.AssignmentTemplate
 
 	query := s.DB.Model(&models.AssignmentTemplate{})
@@ -594,7 +607,7 @@ func (s *HomeworkService) ValidateGrade(homeworkID uuid.UUID, grade int) error {
 func (s *HomeworkService) GetOverdueSubmissions() ([]models.Submission, error) {
 	var submissions []models.Submission
 
-	err := s.DB.Preload("Homework").Preload("Student").
+	err := s.DB.Preload("Homework").
 		Joins("JOIN homeworks ON submissions.homework_id = homeworks.id").
 		Where("homeworks.due_date IS NOT NULL AND submissions.submitted_at > homeworks.due_date").
 		Order("submitted_at DESC").
@@ -604,7 +617,7 @@ func (s *HomeworkService) GetOverdueSubmissions() ([]models.Submission, error) {
 }
 
 // SendReminder 发送作业提醒
-func (s *HomeworkService) SendReminder(homeworkID uuid.UUID, userIDs []uuid.UUID) error {
+func (s *HomeworkService) SendReminder(homeworkID uuid.UUID, userIDs []int64) error {
 	// 这里应该集成通知服务
 	// 目前返回空实现
 	return nil
@@ -627,7 +640,7 @@ func (s *HomeworkService) ArchiveOldHomework(daysOld int) error {
 }
 
 // CreateStudentBranch 为学生创建个人作业分支
-func (s *HomeworkService) CreateStudentBranch(homeworkID uuid.UUID, studentID uuid.UUID) error {
+func (s *HomeworkService) CreateStudentBranch(homeworkID uuid.UUID, studentID int64) error {
 	// 获取作业信息
 	var homework models.Homework
 	if err := s.DB.Preload("Project").First(&homework, homeworkID).Error; err != nil {
@@ -643,8 +656,8 @@ func (s *HomeworkService) CreateStudentBranch(homeworkID uuid.UUID, studentID uu
 	}
 
 	// TODO: 重构分支创建以使用GitLab用户系统
-	// 暂时跳过分支创建
-	branchName := fmt.Sprintf("homework-%s-student-%s", homework.ID.String()[:8], studentID.String()[:8])
+	// 暂时跳过分支创建，分支名称将在提交时生成
+	// branchName := fmt.Sprintf("homework-%s-student-%d", homework.ID.String()[:8], studentID)
 
 	// TODO: 实现GitLab分支创建
 	// _, err := s.GitLabService.CreateBranch(...)
@@ -652,11 +665,7 @@ func (s *HomeworkService) CreateStudentBranch(homeworkID uuid.UUID, studentID uu
 	//     return fmt.Errorf("创建GitLab分支失败: %v", err)
 	// }
 
-	// 更新作业记录中的分支信息
-	if homework.GitLabBranch == "" {
-		homework.GitLabBranch = branchName
-		s.DB.Save(&homework)
-	}
+	// 分支信息现在存储在Submission记录中，不再存储在Homework中
 
 	return nil
 }
@@ -706,8 +715,62 @@ func (s *HomeworkService) GetHomeworkBranches(homeworkID uuid.UUID, accessToken 
 	return homeworkBranches, nil
 }
 
+// GetSubmissionViewURL 获取学生作业提交的GitLab查看URL
+func (s *HomeworkService) GetSubmissionViewURL(submissionID uuid.UUID) (string, error) {
+	// 获取提交信息
+	var submission models.Submission
+	if err := s.DB.Preload("Homework").Preload("Homework.Project").First(&submission, "id = ?", submissionID).Error; err != nil {
+		return "", fmt.Errorf("获取提交信息失败: %v", err)
+	}
+
+	// 检查项目是否有GitLab项目ID和URL
+	if submission.Homework.Project.GitLabProjectID == nil || submission.Homework.Project.GitLabURL == "" {
+		return "", fmt.Errorf("项目没有关联GitLab仓库信息")
+	}
+
+	// 从配置中获取GitLab URL
+	gitlabBaseURL := s.GitLabService.Config.GitLabURL
+	if gitlabBaseURL == "" {
+		return "", fmt.Errorf("GitLab URL未配置")
+	}
+
+	// 从GitLabURL中提取项目路径 (例如: http://localhost:8081/root/project-name -> root/project-name)
+	projectPath := ""
+	if submission.Homework.Project.GitLabURL != "" {
+		// 从完整URL中提取项目路径
+		gitlabURL := submission.Homework.Project.GitLabURL
+		if idx := strings.LastIndex(gitlabURL, "/"); idx != -1 {
+			if idx2 := strings.LastIndex(gitlabURL[:idx], "/"); idx2 != -1 {
+				projectPath = gitlabURL[idx2+1:]
+			}
+		}
+	}
+
+	// 如果无法从URL提取路径，使用项目ID
+	if projectPath == "" {
+		projectPath = fmt.Sprintf("%d", *submission.Homework.Project.GitLabProjectID)
+	}
+
+	// 构建IDE模式的查看URL
+	var branchURL string
+	if submission.GitLabBranch != "" {
+		// 如果有具体的分支名，构建IDE查看URL
+		branchURL = fmt.Sprintf("%s/-/ide/project/%s/edit/%s",
+			gitlabBaseURL,
+			projectPath,
+			submission.GitLabBranch)
+	} else {
+		// 如果没有分支名，使用默认分支
+		branchURL = fmt.Sprintf("%s/-/ide/project/%s/edit/main",
+			gitlabBaseURL,
+			projectPath)
+	}
+
+	return branchURL, nil
+}
+
 // SubmitHomeworkToBranch 提交作业到个人分支
-func (s *HomeworkService) SubmitHomeworkToBranch(homeworkID uuid.UUID, studentID uuid.UUID, content string, files []string) (*models.Submission, error) {
+func (s *HomeworkService) SubmitHomeworkToBranch(homeworkID uuid.UUID, studentID int64, content string, files []string) (*models.Submission, error) {
 	// 首先尝试创建分支（如果不存在）
 	if err := s.CreateStudentBranch(homeworkID, studentID); err != nil {
 		// 分支可能已存在，继续执行
@@ -721,7 +784,7 @@ func (s *HomeworkService) SubmitHomeworkToBranch(homeworkID uuid.UUID, studentID
 
 	// TODO: 重构学生信息获取以使用GitLab用户系统
 	// 暂时使用学生ID生成分支名称
-	branchName := fmt.Sprintf("homework-%s-student-%s", homework.ID.String()[:8], studentID.String()[:8])
+	branchName := fmt.Sprintf("homework-%s-student-%d", homework.ID.String()[:8], studentID)
 
 	// 创建提交记录
 	submission := &models.Submission{
@@ -738,13 +801,13 @@ func (s *HomeworkService) SubmitHomeworkToBranch(homeworkID uuid.UUID, studentID
 	}
 
 	// 预加载关联数据
-	s.DB.Preload("Homework").Preload("Student").First(submission, submission.ID)
+	s.DB.Preload("Homework").First(submission, submission.ID)
 
 	return submission, nil
 }
 
 // GetStudentBranchInfo 获取学生分支信息
-func (s *HomeworkService) GetStudentBranchInfo(homeworkID uuid.UUID, studentID uuid.UUID) (map[string]interface{}, error) {
+func (s *HomeworkService) GetStudentBranchInfo(homeworkID uuid.UUID, studentID int64) (map[string]interface{}, error) {
 	// 获取作业信息
 	var homework models.Homework
 	if err := s.DB.Preload("Project").First(&homework, homeworkID).Error; err != nil {
@@ -754,7 +817,7 @@ func (s *HomeworkService) GetStudentBranchInfo(homeworkID uuid.UUID, studentID u
 	// 获取学生信息
 	// TODO: 重构学生信息获取以使用GitLab用户系统
 	// 暂时使用学生ID生成分支名称
-	branchName := fmt.Sprintf("homework-%s-student-%s", homework.ID.String()[:8], studentID.String()[:8])
+	branchName := fmt.Sprintf("homework-%s-student-%d", homework.ID.String()[:8], studentID)
 
 	if homework.Project.GitLabProjectID == nil {
 		return nil, fmt.Errorf("项目没有关联GitLab项目")

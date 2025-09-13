@@ -7,6 +7,11 @@ export interface User {
   avatar_url?: string
   is_admin: boolean   // GitLab管理员权限
   gitlab_role?: GitLabRole  // 在项目中的角色
+  role?: string       // 用户角色
+  edu_role?: string   // 教育角色
+  last_login_at?: string // 最后登录时间
+  token_expiry?: string  // Token过期时间
+  is_active?: boolean    // 是否活跃
   created_at: string
   updated_at?: string
 }
@@ -169,7 +174,8 @@ export interface Homework {
   project: ResearchProject
   creator_id: string
   author: User
-  deadline: string
+  deadline?: string
+  due_date?: string  // 别名，用于兼容后端
   max_grade: number
   status: 'draft' | 'published' | 'closed'
   gitlab_branch?: string
@@ -242,6 +248,6 @@ export interface PaginatedResponse<T> {
 export interface RouteMeta {
   title?: string
   requiresAuth?: boolean
-  roles?: UserRole[]
+  roles?: UserRole[] | string[]
   layout?: string
 }

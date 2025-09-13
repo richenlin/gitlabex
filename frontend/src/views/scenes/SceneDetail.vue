@@ -232,10 +232,10 @@
                   :key="homework.id"
                   class="homework-item"
                 >
-                  <div class="homework-info">
+                  <div class="homework-info" @click="viewHomework(homework.id)" style="cursor: pointer;">
                     <h4 class="homework-title">{{ homework.title }}</h4>
                     <div class="homework-meta">
-                      <span>截止日期: {{ formatDate(homework.deadline) }}</span>
+                      <span>截止日期: {{ getHomeworkDueDate(homework) }}</span>
                       <span>状态: {{ getHomeworkStatusText(homework.status) }}</span>
                       <span>已提交人数: {{ homework.submissions?.length || 0 }}/{{ members.length }}</span>
                     </div>
@@ -253,16 +253,42 @@
                     >
                       提交作业
                     </el-button>
-                    <el-button 
-                      size="small" 
-                      @click="gradeHomework(homework.id)"
-                      v-if="canGradeHomework"
-                    >
-                      批改作业
-                    </el-button>
+                    <el-dropdown trigger="click" v-if="canGradeHomework">
+                      <el-button size="small">
+                        批改作业<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item @click="viewAllSubmissions(homework.id)">
+                            查看所有提交
+                          </el-dropdown-item>
+                          <el-dropdown-item 
+                            v-for="submission in getSubmissionsForHomework(homework.id)" 
+                            :key="submission.id"
+                            @click="gradeSubmission(submission.id)"
+                          >
+                            批改 {{ submission.student?.name || '学生' }} 的提交
+                          </el-dropdown-item>
+                          <el-dropdown-item v-if="getSubmissionsForHomework(homework.id).length === 0" disabled>
+                            暂无提交
+                          </el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
                   </div>
                 </div>
               </div>
+
+              <!-- 作业分页 -->
+              <el-pagination
+                v-if="homeworkTotal > homeworkPageSize"
+                v-model:current-page="homeworkCurrentPage"
+                :total="homeworkTotal"
+                :page-size="homeworkPageSize"
+                layout="prev, pager, next"
+                @current-change="fetchHomeworks"
+                style="margin-top: 20px; justify-content: center;"
+              />
             </div>
           </el-tab-pane>
         </el-tabs>
@@ -573,7 +599,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { researchService, gitlabService, topicService, homeworkService } from '@/services/api'
 import type { ResearchProject, GitLabProjectMember, Topic, Homework } from '@/types'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
   Folder, 
   Document, 
@@ -616,6 +642,11 @@ const topicFilter = ref('all')
 const topicsCurrentPage = ref(1)
 const topicsPageSize = ref(10)
 const topicsTotal = ref(0)
+
+// 作业分页相关
+const homeworkCurrentPage = ref(1)
+const homeworkPageSize = ref(10)
+const homeworkTotal = ref(0)
 
 // 对话框状态
 const membersDialogVisible = ref(false)
@@ -672,6 +703,11 @@ const canCreateTopic = ref(false)
 const canCreateHomework = ref(false)
 const canGradeHomework = ref(false)
 
+// 用户角色状态（由后端权限检查接口返回）
+const isStudent = ref(false)
+const isTeacher = ref(false)
+const userRoles = ref<string[]>([])
+
 // 检查权限的方法
 const checkPermissions = async () => {
   if (!userStore.isLoggedIn || !project.value) {
@@ -684,7 +720,7 @@ const checkPermissions = async () => {
   }
 
   try {
-    // 并行检查多个权限
+    // 并行检查多个权限，使用原有的权限检查方式
     const [managePermission, editPermission, topicPermission, homeworkPermission, gradePermission] = await Promise.all([
       userStore.checkProjectPermission(projectId.value, 'manage'),
       userStore.checkPermission('update', 'project', projectId.value),
@@ -698,6 +734,22 @@ const checkPermissions = async () => {
     canCreateTopic.value = topicPermission
     canCreateHomework.value = homeworkPermission
     canGradeHomework.value = gradePermission
+    
+    // 同时获取详细的角色信息用于UI显示
+    try {
+      const detailedResponse = await (userStore as any).checkProjectPermissionDetailed(projectId.value)
+      const roles = detailedResponse.roles || []
+      userRoles.value = roles
+      isStudent.value = roles.includes('student') || roles.includes('developer') || roles.includes('reporter')
+      isTeacher.value = roles.includes('teacher') || roles.includes('maintainer') || roles.includes('owner') || userStore.isAdmin
+    } catch (detailError) {
+      console.log('获取详细角色信息失败，使用基本角色判断:', detailError)
+      // 如果获取详细信息失败，使用基本的角色判断
+      isStudent.value = !userStore.isAdmin && !canManage.value
+      isTeacher.value = userStore.isAdmin || canManage.value || canGradeHomework.value
+      userRoles.value = []
+    }
+    
   } catch (error) {
     console.error('权限检查失败:', error)
     // 权限检查失败时，默认为无权限
@@ -706,6 +758,9 @@ const checkPermissions = async () => {
     canCreateTopic.value = false
     canCreateHomework.value = false
     canGradeHomework.value = false
+    isStudent.value = false
+    isTeacher.value = false
+    userRoles.value = []
   }
 }
 
@@ -791,9 +846,12 @@ const fetchHomeworks = async () => {
   homeworkLoading.value = true
   try {
     const response: any = await homeworkService.getHomeworks({
-      projectId: projectId.value
+      projectId: projectId.value,
+      page: homeworkCurrentPage.value,
+      pageSize: homeworkPageSize.value
     })
     homeworks.value = Array.isArray(response) ? response : (response.homeworks || [])
+    homeworkTotal.value = response.pagination?.total || response.total || homeworks.value.length
   } catch (error) {
     console.error('获取作业列表失败:', error)
   } finally {
@@ -934,21 +992,62 @@ const viewTopic = (topicId: string) => {
 }
 
 const viewHomework = (homeworkId: string) => {
-  router.push(`/homework/${homeworkId}`)
+  router.push(`/homeworks/${homeworkId}`)
 }
 
 const submitHomework = (homeworkId: string) => {
-  router.push(`/homework/${homeworkId}/submit`)
+  router.push(`/homeworks/${homeworkId}/submit`)
 }
 
 const gradeHomework = (homeworkId: string) => {
-  router.push(`/homework/${homeworkId}/grade`)
+  // 这个方法保留用于兼容性，但推荐使用具体的提交批改
+  router.push(`/homeworks/${homeworkId}/grade`)
+}
+
+// 新增方法：查看所有提交
+const viewAllSubmissions = (homeworkId: string) => {
+  router.push(`/homeworks/${homeworkId}/submissions`)
+}
+
+// 新增方法：批改具体的提交
+const gradeSubmission = (submissionId: string) => {
+  router.push(`/homeworks/submissions/${submissionId}/grade`)
+}
+
+// 新增方法：获取特定作业的提交列表
+const getSubmissionsForHomework = (homeworkId: string) => {
+  // 从homeworks数组中找到对应作业的提交
+  const homework = homeworks.value.find(h => h.id === homeworkId)
+  return homework?.submissions?.filter(s => s.status !== 'pending') || []
+}
+
+// 获取当前用户对某个作业的提交状态
+const getMySubmissionStatus = (homework: Homework) => {
+  if (!userStore.user?.id) return null
+  const userId = userStore.user.id.toString()
+  return homework.submissions?.find(s => s.student_id === userId)
+}
+
+// 获取作业截止日期的显示文本
+const getHomeworkDueDate = (homework: Homework) => {
+  const dueDate = homework.deadline || homework.due_date
+  return dueDate ? formatDate(dueDate) : '无限制'
 }
 
 const canSubmitHomework = (homework: Homework) => {
-  // 简化检查：只要用户登录且作业已发布就可以提交
-  // 具体权限由后端API验证
-  return userStore.isLoggedIn && homework.status === 'published'
+  if (!userStore.isLoggedIn || homework.status !== 'published') {
+    return false
+  }
+  
+  // 检查是否已过截止日期
+  const dueDate = homework.deadline || homework.due_date
+  if (dueDate && new Date(dueDate) < new Date()) {
+    return false
+  }
+  
+  // 检查是否已经提交过
+  const mySubmission = getMySubmissionStatus(homework)
+  return !mySubmission || mySubmission.status === 'pending'
 }
 
 const editProject = () => {
@@ -1733,6 +1832,14 @@ watch(() => route.params.id, () => {
   flex: 1;
 }
 
+.homework-info:hover {
+  background-color: var(--background-light);
+  border-radius: 6px;
+  padding: 8px;
+  margin: -8px;
+  transition: all 0.2s ease;
+}
+
 .homework-title {
   margin: 0 0 8px 0;
   font-size: 16px;
@@ -1837,6 +1944,161 @@ watch(() => route.params.id, () => {
   color: white;
 }
 
+/* 作业样式 */
+.homework-content {
+  padding: 20px;
+}
+
+.homework-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.homework-header h3 {
+  margin: 0;
+  color: var(--text-color);
+}
+
+.homework-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.homework-item {
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+  transition: all 0.3s ease;
+}
+
+.homework-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--primary-color);
+}
+
+.homework-item .homework-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  padding: 0;
+}
+
+.homework-title-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.homework-title {
+  margin: 0;
+  color: var(--primary-color);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.homework-content {
+  margin-top: 16px;
+}
+
+.homework-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--light-text);
+}
+
+.meta-item .el-icon {
+  font-size: 16px;
+  color: var(--primary-color);
+}
+
+.homework-description {
+  margin: 12px 0;
+  padding: 12px;
+  background-color: var(--background-light);
+  border-radius: 6px;
+  border-left: 4px solid var(--primary-color);
+}
+
+.homework-description p {
+  margin: 0;
+  color: var(--text-color);
+  line-height: 1.6;
+}
+
+.homework-progress {
+  margin: 16px 0;
+  padding: 12px;
+  background-color: var(--background-light);
+  border-radius: 6px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.my-submission-status {
+  margin: 16px 0;
+  padding: 12px;
+  background-color: var(--success-light, #f0f9ff);
+  border: 1px solid var(--success-color, #10b981);
+  border-radius: 6px;
+}
+
+.submission-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--success-color, #10b981);
+  font-weight: 500;
+}
+
+.submission-info .grade {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.homework-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+/* 表单样式 */
+.form-tip {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--light-text);
+}
+
+.danger-item {
+  color: var(--danger-color) !important;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .scene-detail {
@@ -1885,6 +2147,15 @@ watch(() => route.params.id, () => {
   
   .homework-actions {
     justify-content: flex-end;
+  }
+  
+  .homework-meta {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .meta-item {
+    font-size: 12px;
   }
   
   .member-item {

@@ -13,15 +13,15 @@
           <p class="username">@{{ userInfo?.username }}</p>
           <p class="email">{{ userInfo?.email }}</p>
           <div class="user-badges">
-            <el-tag :type="getRoleColor(userInfo?.role)" size="large">
-              {{ getRoleText(userInfo?.role) }}
+            <el-tag :type="getRoleColor(userInfo?.role || userInfo?.gitlab_role)" size="large">
+              {{ getRoleText(userInfo?.role || userInfo?.gitlab_role) }}
             </el-tag>
             <el-tag type="info" size="small" v-if="userInfo?.edu_role">
-              教育等级: {{ getEduRoleText(userInfo?.edu_role) }}
+              教育等级: {{ userInfo?.edu_role ? getEduRoleText(Number(userInfo.edu_role)) : '未设置' }}
             </el-tag>
           </div>
           <div class="user-stats">
-            <el-statistic title="上次登录" :value="formatDate(userInfo?.last_login_at)" />
+            <el-statistic title="上次登录" :value="userInfo?.last_login_at ? formatDate(userInfo.last_login_at) : '从未登录'" />
             <el-statistic title="注册时间" :value="formatDate(userInfo?.created_at)" />
             <el-statistic title="活跃状态" :value="userInfo?.is_active ? '活跃' : '非活跃'" />
           </div>
@@ -133,8 +133,8 @@
                   <h4>{{ topic.title }}</h4>
                   <p>{{ topic.content.substring(0, 100) }}...</p>
                   <div class="resource-meta">
-                    <el-tag size="small" :type="topic.status === 'open' ? 'success' : 'info'">
-                      {{ topic.status === 'open' ? '开放' : '已关闭' }}
+                    <el-tag size="small" :type="topic.status === 'opened' ? 'success' : 'info'">
+                      {{ topic.status === 'opened' ? '开放' : '已关闭' }}
                     </el-tag>
                     <span class="meta-item">{{ topic.likes_count }} 点赞</span>
                     <span class="meta-item">{{ topic.comments_count }} 评论</span>
@@ -298,7 +298,7 @@ const fetchUserInfo = async () => {
     console.log('API响应:', response)
     
     // 由于响应拦截器已经返回了data，所以response就是用户数据
-    userInfo.value = response
+    userInfo.value = response.data || response
     
     // 更新编辑表单
     if (userInfo.value) {
@@ -331,18 +331,18 @@ const fetchStats = async () => {
   try {
     // 并行获取统计数据
     const [projectsRes, topicsRes, documentsRes] = await Promise.allSettled([
-      researchService.getProjects({ ownerId: userInfo.value?.id }),
-      topicService.getTopics({ authorId: userInfo.value?.id }),
+      researchService.getProjects({ ownerId: userInfo.value?.id.toString() }),
+      topicService.getTopics({ authorId: userInfo.value?.id.toString() }),
       documentService.getDocuments({ })
     ])
 
     // 由于响应拦截器已经返回了data，所以value就是实际数据
     stats.value.projectsCount = projectsRes.status === 'fulfilled' ? 
-      (projectsRes.value?.total || projectsRes.value?.length || 0) : 0
+      ((projectsRes.value as any)?.data?.total || (projectsRes.value as any)?.total || (projectsRes.value as any)?.length || 0) : 0
     stats.value.topicsCount = topicsRes.status === 'fulfilled' ? 
-      (topicsRes.value?.total || topicsRes.value?.length || 0) : 0
+      ((topicsRes.value as any)?.data?.total || (topicsRes.value as any)?.total || (topicsRes.value as any)?.length || 0) : 0
     stats.value.documentsCount = documentsRes.status === 'fulfilled' ? 
-      (documentsRes.value?.total || documentsRes.value?.length || 0) : 0
+      ((documentsRes.value as any)?.data?.total || (documentsRes.value as any)?.total || (documentsRes.value as any)?.length || 0) : 0
       
     console.log('统计数据:', stats.value)
   } catch (error) {
@@ -357,13 +357,14 @@ const fetchMyProjects = async () => {
   try {
     console.log('获取我的课题，用户ID:', userInfo.value.id)
     const response = await researchService.getProjects({ 
-      ownerId: userInfo.value.id,
+      ownerId: userInfo.value.id.toString(),
       pageSize: 10 
     })
     console.log('课题API响应:', response)
     
     // 由于响应拦截器已经返回了data，所以response就是实际数据
-    myProjects.value = response?.projects || response || []
+    const data = response?.data || response
+    myProjects.value = data?.projects || data || []
     console.log('我的课题:', myProjects.value)
   } catch (error) {
     console.error('获取我的课题失败:', error)
@@ -379,13 +380,14 @@ const fetchMyTopics = async () => {
   try {
     console.log('获取我的话题，用户ID:', userInfo.value.id)
     const response = await topicService.getTopics({ 
-      authorId: userInfo.value.id,
+      authorId: userInfo.value.id.toString(),
       pageSize: 10 
     })
     console.log('话题API响应:', response)
     
     // 由于响应拦截器已经返回了data，所以response就是实际数据
-    myTopics.value = response?.topics || response || []
+    const data = response?.data || response
+    myTopics.value = data?.topics || data || []
     console.log('我的话题:', myTopics.value)
   } catch (error) {
     console.error('获取我的话题失败:', error)
@@ -403,8 +405,9 @@ const fetchMyDocuments = async () => {
     
     // 过滤出当前用户上传的文档
     // 由于响应拦截器已经返回了data，所以response就是实际数据
-    const allDocs = response?.documents || response || []
-    myDocuments.value = allDocs.filter((doc: Document) => doc.uploader_id === userInfo.value?.id)
+    const data = response?.data || response
+    const allDocs = data?.documents || data || []
+    myDocuments.value = allDocs.filter((doc: Document) => doc.uploader_id === userInfo.value?.id.toString())
     console.log('我的文档:', myDocuments.value)
   } catch (error) {
     console.error('获取我的文档失败:', error)

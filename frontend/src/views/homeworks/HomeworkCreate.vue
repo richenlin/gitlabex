@@ -6,7 +6,7 @@
           <el-icon><ArrowLeft /></el-icon>
           返回
         </el-button>
-        <h1>创建作业</h1>
+        <h1>{{ isEditMode ? '编辑作业' : '创建作业' }}</h1>
       </div>
 
       <el-card title="作业信息">
@@ -29,9 +29,20 @@
             <el-input
               v-model="createForm.description"
               type="textarea"
-              :rows="6"
-              placeholder="请输入作业描述和要求..."
-              maxlength="2000"
+              :rows="4"
+              placeholder="请输入作业描述..."
+              maxlength="1000"
+              show-word-limit
+            />
+          </el-form-item>
+          
+          <el-form-item label="作业内容" prop="content">
+            <el-input
+              v-model="createForm.content"
+              type="textarea"
+              :rows="8"
+              placeholder="请输入详细的作业内容、要求和提交说明..."
+              maxlength="5000"
               show-word-limit
             />
           </el-form-item>
@@ -147,7 +158,7 @@
             @click="publishHomework"
             :loading="publishing"
           >
-            发布作业
+            {{ isEditMode ? '更新作业' : '发布作业' }}
           </el-button>
         </div>
       </el-card>
@@ -156,8 +167,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { homeworkService, researchService } from '@/services/api'
 import type { ResearchProject } from '@/types'
@@ -165,7 +176,12 @@ import { ElMessage, type FormInstance } from 'element-plus'
 import { ArrowLeft, Close } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
+
+// 检测是否为编辑模式
+const isEditMode = computed(() => !!route.params.id)
+const homeworkId = computed(() => route.params.id as string)
 
 // 响应式数据
 const projects = ref<ResearchProject[]>([])
@@ -178,6 +194,7 @@ const createFormRef = ref<FormInstance>()
 const createForm = ref({
   title: '',
   description: '',
+  content: '',
   project_id: '',
   due_date: '',
   max_grade: 100,
@@ -189,16 +206,44 @@ const createForm = ref({
 const createRules = {
   title: [{ required: true, message: '请输入作业标题', trigger: 'blur' }],
   description: [{ required: true, message: '请输入作业描述', trigger: 'blur' }],
+  content: [{ required: true, message: '请输入作业内容', trigger: 'blur' }],
   project_id: [{ required: true, message: '请选择课题', trigger: 'change' }],
   due_date: [{ required: true, message: '请选择截止时间', trigger: 'change' }],
   max_grade: [{ required: true, message: '请设置满分', trigger: 'blur' }]
 }
 
 // 方法
+const fetchHomeworkData = async () => {
+  if (!homeworkId.value) return
+  
+  try {
+    const response = await homeworkService.getHomework(homeworkId.value)
+    const homework = response.data || response
+    
+    // 填充表单数据
+    createForm.value = {
+      title: homework.title || '',
+      description: homework.description || '',
+      content: homework.content || '',
+      project_id: homework.project_id || '',
+      due_date: homework.due_date || homework.deadline || '',
+      max_grade: homework.max_grade || 100,
+      instructions: homework.instructions || '',
+      requirements: homework.requirements || [],
+      tags: homework.tags || []
+    }
+  } catch (error) {
+    console.error('获取作业数据失败:', error)
+    ElMessage.error('获取作业数据失败')
+    router.go(-1)
+  }
+}
+
 const fetchProjects = async () => {
   try {
     const response = await researchService.getProjects()
-    projects.value = response.projects || []
+    const data = response.data || response
+    projects.value = data.projects || data || []
   } catch (error) {
     ElMessage.error('获取课题列表失败')
   }
@@ -263,15 +308,25 @@ const publishHomework = async () => {
     await createFormRef.value.validate()
     publishing.value = true
     
-    await homeworkService.createHomework({
+    const homeworkData = {
       ...createForm.value,
-      status: 'published'
-    })
-    
-    ElMessage.success('作业发布成功')
-    router.push('/homeworks')
+      status: 'published' as const
+    }
+
+    if (isEditMode.value) {
+      // 编辑模式：更新作业
+      await homeworkService.updateHomework(homeworkId.value, homeworkData)
+      ElMessage.success('作业更新成功')
+      router.push(`/homeworks/${homeworkId.value}`)
+    } else {
+      // 创建模式：创建新作业
+      await homeworkService.createHomework(homeworkData)
+      ElMessage.success('作业发布成功')
+      router.push('/homeworks')
+    }
   } catch (error) {
-    ElMessage.error('发布作业失败')
+    console.error(isEditMode.value ? '更新作业失败' : '发布作业失败', error)
+    ElMessage.error(isEditMode.value ? '更新作业失败' : '发布作业失败')
   } finally {
     publishing.value = false
   }
@@ -280,6 +335,9 @@ const publishHomework = async () => {
 // 生命周期
 onMounted(() => {
   fetchProjects()
+  if (isEditMode.value) {
+    fetchHomeworkData()
+  }
 })
 </script>
 

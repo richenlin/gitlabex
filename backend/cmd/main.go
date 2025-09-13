@@ -322,6 +322,9 @@ func main() {
 		homework.GET("/:id/branches", homeworkHandler.GetHomeworkBranches)
 		homework.POST("/:id/submit-to-branch", homeworkHandler.SubmitHomeworkToBranch)
 		homework.GET("/:id/branch-info", homeworkHandler.GetStudentBranchInfo)
+
+		// 获取作业提交的查看URL
+		homework.GET("/submissions/:submissionId/view-url", homeworkHandler.GetSubmissionViewURL)
 	}
 
 	// 作业模板相关路由

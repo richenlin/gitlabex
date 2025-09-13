@@ -67,7 +67,7 @@ export function useNotifications() {
       }
     })
 
-    wsService.connect(userStore.user.id)
+    wsService.connect(userStore.user.id.toString())
   }
 
   // 断开连接

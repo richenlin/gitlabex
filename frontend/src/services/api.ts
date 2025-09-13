@@ -322,6 +322,9 @@ export const homeworkService = {
   getSubmissions: (homeworkId: string) =>
     api.get(`/homework/${homeworkId}/submissions`),
   
+  gradeHomework: (submissionId: string, data: { grade: number; feedback: string }) =>
+    api.post(`/homework/submissions/${submissionId}/grade`, data),
+  
   submitHomework: (data: {
     homework_id: string
     content?: string
@@ -339,6 +342,9 @@ export const homeworkService = {
   
   getStudentBranchInfo: (homeworkId: string) =>
     api.get(`/homework/${homeworkId}/branch-info`),
+  
+  getSubmissionViewURL: (submissionId: string) =>
+    api.get(`/homework/submissions/${submissionId}/view-url`),
   
   gradeSubmission: (submissionId: string, grade: number, feedback?: string) =>
     api.put(`/submissions/${submissionId}/grade`, { grade, feedback }),
@@ -440,6 +446,11 @@ export const permissionService = {
   checkProjectPermission: (projectId: string, action?: string) =>
     api.get(`/permissions/projects/${projectId}`, { 
       params: action ? { action } : undefined 
+    }),
+  
+  checkProjectPermissionDetailed: (projectId: string) =>
+    api.get(`/permissions/projects/${projectId}`, { 
+      params: { detailed: 'true' }
     }),
   
   getUserPermissions: (projectId?: string) =>

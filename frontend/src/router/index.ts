@@ -114,6 +114,12 @@ const router = createRouter({
       meta: { title: '作业详情', requiresAuth: true }
     },
     {
+      path: '/homeworks/:id/edit',
+      name: 'homework-edit',
+      component: () => import('@/views/homeworks/HomeworkCreate.vue'),
+      meta: { title: '编辑作业', roles: [UserRole.TEACHER, UserRole.ASSISTANT] }
+    },
+    {
       path: '/homeworks/:id/submit',
       name: 'homework-submit',
       component: () => import('@/views/homeworks/HomeworkSubmit.vue'),
@@ -124,6 +130,18 @@ const router = createRouter({
       name: 'homework-grade',
       component: () => import('@/views/homeworks/HomeworkGrade.vue'),
       meta: { title: '批改作业', roles: [UserRole.TEACHER, UserRole.ASSISTANT] }
+    },
+    {
+      path: '/homeworks/:id/submissions',
+      name: 'homework-submissions',
+      component: () => import('@/views/homeworks/HomeworkSubmissions.vue'),
+      meta: { title: '作业提交列表', roles: [UserRole.TEACHER, UserRole.ASSISTANT] }
+    },
+    {
+      path: '/homeworks/submissions/:id/grade',
+      name: 'submission-grade',
+      component: () => import('@/views/homeworks/HomeworkGrade.vue'),
+      meta: { title: '批改提交', roles: [UserRole.TEACHER, UserRole.ASSISTANT] }
     },
     {
       path: '/profile',
@@ -171,7 +189,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // 检查是否需要登录 - 默认不需要登录，除非明确设置为true或有角色要求
-  const requiresAuth = to.meta.requiresAuth === true || (to.meta.roles && to.meta.roles?.length > 0)
+  const requiresAuth = to.meta.requiresAuth === true || (to.meta.roles && Array.isArray(to.meta.roles) && to.meta.roles.length > 0)
   
   if (requiresAuth && !userStore.isLoggedIn) {
     ElMessage.warning('请先登录')

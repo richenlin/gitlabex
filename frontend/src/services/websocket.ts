@@ -21,7 +21,7 @@ export class WebSocketService {
   private token: string
   private options: WebSocketOptions
   private reconnectAttempts = 0
-  private reconnectTimer: NodeJS.Timeout | null = null
+  private reconnectTimer: number | null = null
   private isConnecting = false
   private shouldReconnect = true
 
@@ -121,7 +121,7 @@ export class WebSocketService {
     }, this.options.reconnectInterval || 5000)
   }
 
-  private heartbeatTimer: NodeJS.Timeout | null = null
+  private heartbeatTimer: number | null = null
 
   private startHeartbeat(): void {
     this.stopHeartbeat()

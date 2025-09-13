@@ -190,8 +190,9 @@ const fetchNotifications = async () => {
       pageSize: pageSize.value,
       isRead: statusFilter.value === 'read' ? true : statusFilter.value === 'unread' ? false : undefined
     })
-    notifications.value = response.notifications || []
-    total.value = response.pagination?.total || 0
+    const data = response.data || response
+    notifications.value = data.notifications || data || []
+    total.value = data.pagination?.total || data.total || 0
   } catch (error) {
     console.error('获取通知失败:', error)
     ElMessage.error('获取通知失败')
@@ -203,7 +204,8 @@ const fetchNotifications = async () => {
 const fetchAnnouncements = async () => {
   try {
     const response = await notificationService.getAnnouncements()
-    announcements.value = (response || []).slice(0, 5)
+    const data = response.data || response
+    announcements.value = (Array.isArray(data) ? data : []).slice(0, 5)
   } catch (error) {
     console.error('获取公告失败:', error)
   }

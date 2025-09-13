@@ -233,7 +233,7 @@ const editProject = (id: string) => {
 const canEdit = (project: ResearchProject) => {
   // 暂时简化：管理员或项目创建者可以编辑
   // TODO: 根据GitLab项目权限进行更精确的权限检查
-  return userStore.isAdmin || project.creator_id === userStore.user?.id?.toString()
+  return userStore.isAdmin || project.creator_id.toString() === userStore.user?.id?.toString()
 }
 
 const showCreateDialog = () => {

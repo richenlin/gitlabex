@@ -35,6 +35,15 @@ type PermissionResponse struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
+// ProjectPermissionResponse 项目权限检查响应（扩展版，兼容旧版本）
+type ProjectPermissionResponse struct {
+	Allowed     bool            `json:"allowed"`          // 兼容旧版本
+	Permissions map[string]bool `json:"permissions"`      // 详细权限映射
+	Roles       []string        `json:"roles"`            // 用户角色列表
+	AccessLevel int             `json:"access_level"`     // GitLab访问级别
+	Reason      string          `json:"reason,omitempty"` // 权限检查说明
+}
+
 // CheckPermission 统一权限检查接口
 func (h *PermissionHandler) CheckPermission(c *gin.Context) {
 	// 获取用户信息
@@ -72,14 +81,11 @@ func (h *PermissionHandler) CheckPermission(c *gin.Context) {
 	})
 }
 
-// CheckProjectPermission 检查项目权限
+// CheckProjectPermission 检查项目权限（兼容旧版本和新版本）
 func (h *PermissionHandler) CheckProjectPermission(c *gin.Context) {
 	projectID := c.Param("id")
-	action := c.Query("action") // create, read, update, delete, manage
-
-	if action == "" {
-		action = "read" // 默认为读取权限
-	}
+	action := c.Query("action")               // 兼容旧版本的action参数
+	detailed := c.Query("detailed") == "true" // 新参数，用于请求详细信息
 
 	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
@@ -93,19 +99,148 @@ func (h *PermissionHandler) CheckProjectPermission(c *gin.Context) {
 		return
 	}
 
-	allowed, reason := h.checkResourcePermission(
-		accessToken.(string),
-		gitlabUserID.(int64),
-		"project",
-		action,
-		projectID,
-		c,
-	)
+	isAdmin, _ := c.Get("is_admin")
+	userIsAdmin := isAdmin != nil && isAdmin.(bool)
 
-	c.JSON(http.StatusOK, PermissionResponse{
-		Allowed: allowed,
-		Reason:  reason,
+	// 如果是旧版本调用（有action参数且不要求详细信息），返回简单格式
+	if action != "" && !detailed {
+		allowed, reason := h.checkResourcePermission(
+			accessToken.(string),
+			gitlabUserID.(int64),
+			"project",
+			action,
+			projectID,
+			c,
+		)
+
+		c.JSON(http.StatusOK, PermissionResponse{
+			Allowed: allowed,
+			Reason:  reason,
+		})
+		return
+	}
+
+	// 解析项目ID
+	projectUUID, err := uuid.Parse(projectID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		return
+	}
+
+	// 获取项目信息
+	project, err := h.researchService.GetResearchProjectByID(projectUUID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
+		return
+	}
+
+	// 初始化权限和角色
+	permissions := map[string]bool{
+		"read":            false,
+		"edit":            false,
+		"manage":          false,
+		"create_topic":    false,
+		"create_homework": false,
+		"grade_homework":  false,
+	}
+	roles := []string{}
+	accessLevel := 0
+
+	// 管理员拥有所有权限
+	if userIsAdmin {
+		permissions["read"] = true
+		permissions["edit"] = true
+		permissions["manage"] = true
+		permissions["create_topic"] = true
+		permissions["create_homework"] = true
+		permissions["grade_homework"] = true
+		roles = append(roles, "admin")
+		accessLevel = 50 // Owner level
+	} else {
+		// 检查项目创建者权限
+		if project.CreatorID == gitlabUserID.(int64) {
+			permissions["read"] = true
+			permissions["edit"] = true
+			permissions["manage"] = true
+			permissions["create_topic"] = true
+			permissions["create_homework"] = true
+			permissions["grade_homework"] = true
+			roles = append(roles, "owner", "teacher")
+			accessLevel = 50
+		} else if project.IsPublic {
+			// 公开项目的基本权限
+			permissions["read"] = true
+			permissions["create_topic"] = true
+			roles = append(roles, "guest")
+			accessLevel = 10
+		}
+
+		// 检查GitLab项目权限
+		if project.GitLabProjectID != nil {
+			gitlabAccessLevel, err := h.gitlabService.GetUserProjectAccessLevel(accessToken.(string), *project.GitLabProjectID)
+			if err == nil {
+				accessLevel = gitlabAccessLevel
+
+				// 根据GitLab访问级别设置权限和角色
+				if gitlabAccessLevel >= 10 { // Guest
+					permissions["read"] = true
+					if !contains(roles, "guest") {
+						roles = append(roles, "guest")
+					}
+				}
+				if gitlabAccessLevel >= 20 { // Reporter
+					permissions["create_topic"] = true
+					if !contains(roles, "reporter") {
+						roles = append(roles, "reporter", "student")
+					}
+				}
+				if gitlabAccessLevel >= 30 { // Developer
+					if !contains(roles, "developer") {
+						roles = append(roles, "developer", "student")
+					}
+				}
+				if gitlabAccessLevel >= 40 { // Maintainer
+					permissions["edit"] = true
+					permissions["manage"] = true
+					permissions["create_homework"] = true
+					permissions["grade_homework"] = true
+					if !contains(roles, "maintainer") {
+						roles = append(roles, "maintainer", "teacher")
+					}
+				}
+				if gitlabAccessLevel >= 50 { // Owner
+					permissions["edit"] = true
+					permissions["manage"] = true
+					permissions["create_homework"] = true
+					permissions["grade_homework"] = true
+					if !contains(roles, "owner") {
+						roles = append(roles, "owner", "teacher")
+					}
+				}
+			}
+		}
+	}
+
+	// 计算总体权限状态（用于兼容性）
+	allowed := permissions["read"] || permissions["edit"] || permissions["manage"]
+
+	c.JSON(http.StatusOK, ProjectPermissionResponse{
+		Allowed:     allowed,
+		Permissions: permissions,
+		Roles:       roles,
+		AccessLevel: accessLevel,
+		Reason:      "权限检查完成",
 	})
+}
+
+// contains 辅助函数，检查字符串切片是否包含指定字符串
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }
 
 // GetUserPermissions 获取用户权限列表

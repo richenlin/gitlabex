@@ -141,7 +141,7 @@
             </div>
             <div class="meta-item">
               <el-icon><Calendar /></el-icon>
-              <span>截止时间：{{ formatDate(homework.deadline) }}</span>
+              <span>截止时间：{{ homework.deadline ? formatDate(homework.deadline) : '无限制' }}</span>
             </div>
             <div class="meta-item" v-if="homework.project">
               <el-icon><Folder /></el-icon>
@@ -425,7 +425,7 @@ const deleteHomework = async (id: string) => {
 const canEdit = (homework: Homework) => {
   // 简化检查：教师权限 + 创建者检查，具体权限由后端验证
   return isTeacher.value && (
-    userStore.hasRole('admin') || homework.creator_id === userStore.user?.id
+    userStore.hasRole('admin') || homework.creator_id === userStore.user?.id.toString()
   )
 }
 
@@ -523,10 +523,11 @@ const getStatusText = (status: string) => {
 }
 
 const isOverdue = (homework: Homework) => {
-  return new Date() > new Date(homework.deadline)
+  return homework.deadline ? new Date() > new Date(homework.deadline) : false
 }
 
 const isDueSoon = (homework: Homework) => {
+  if (!homework.deadline) return false
   const deadline = new Date(homework.deadline)
   const now = new Date()
   const timeDiff = deadline.getTime() - now.getTime()

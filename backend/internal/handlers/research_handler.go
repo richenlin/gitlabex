@@ -238,6 +238,12 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
+	// 设置分支保护，防止学生随意修改主分支
+	if err := h.gitlabService.SetupProjectBranchProtection(accessToken.(string), gitlabProject.ID); err != nil {
+		// 分支保护失败不应该阻止项目创建，只记录错误
+		fmt.Printf("警告：为项目 %d 设置分支保护失败: %v\n", gitlabProject.ID, err)
+	}
+
 	// 处理开始日期，如果没有提供则使用当前时间
 	startDate := time.Now()
 	if req.StartDate != nil {

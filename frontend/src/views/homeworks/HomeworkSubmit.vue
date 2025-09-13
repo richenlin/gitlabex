@@ -23,7 +23,7 @@
           <div class="homework-meta">
             <div class="meta-item">
               <el-icon><Calendar /></el-icon>
-              <span>截止时间：{{ formatDate(homework.due_date) }}</span>
+              <span>截止时间：{{ homework.due_date ? formatDate(homework.due_date) : '无限制' }}</span>
             </div>
             <div class="meta-item">
               <el-icon><Star /></el-icon>
@@ -121,7 +121,7 @@ const fetchHomework = async () => {
   loading.value = true
   try {
     const response = await homeworkService.getHomeworkById(homeworkId.value)
-    homework.value = response
+    homework.value = response.data || response
   } catch (error) {
     ElMessage.error('获取作业详情失败')
     router.go(-1)
