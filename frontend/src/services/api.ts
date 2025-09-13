@@ -46,42 +46,72 @@ api.interceptors.request.use(
   }
 )
 
+// 获取错误消息的辅助函数
+const getErrorMessage = (error: AxiosError<any>): string => {
+  // 优先使用后端返回的错误消息
+  if (error.response?.data) {
+    // 尝试不同的错误消息字段
+    return error.response.data.message || 
+           error.response.data.error || 
+           error.response.data.msg ||
+           error.response.data.detail ||
+           `请求失败 (${error.response.status})`
+  }
+  
+  // 网络错误或其他错误
+  if (error.message) {
+    return error.message
+  }
+  
+  return '请求失败'
+}
+
 // 响应拦截器
 api.interceptors.response.use(
   (response: AxiosResponse<any>) => {
     return response.data
   },
   (error: AxiosError<ApiResponse<any>>) => {
-    const message = error.response?.data?.message || '请求失败'
+    const message = getErrorMessage(error)
     
     if (error.response?.status === 401) {
       const userStore = useUserStore()
       const url = error.config?.url || ''
       
       // 只有在用户已登录的情况下才自动退出登录
-      // 这样可以避免在访问公开端点时误退出登录
       if (userStore.isLoggedIn) {
         // 如果是GitLab相关的API调用失败，可能是GitLab token问题，不要自动退出登录
         if (url.includes('/gitlab/')) {
           console.warn('GitLab API authentication failed, but keeping user logged in:', url)
-          // 不退出登录，只记录警告
+          // 不退出登录，只记录警告，但显示具体错误信息
+          ElMessage.error(message)
         } else {
           // 其他API的401错误，说明JWT token真的过期了，需要退出登录
           userStore.logout()
           ElMessage.error('登录已过期，请重新登录')
         }
+      } else {
+        // 用户未登录时，显示具体的认证错误信息
+        ElMessage.error(message)
       }
     } else if (error.response?.status === 403) {
-      ElMessage.error('权限不足')
+      // 显示后端返回的具体权限错误信息
+      ElMessage.error(message)
     } else if (error.response?.status === 404) {
-      // 404错误通常表示资源不存在，不需要显示错误提示
-      console.warn('Resource not found:', error.config?.url)
+      // 404错误记录日志，但不自动显示提示（由组件决定是否显示）
+      console.warn('Resource not found:', error.config?.url, message)
+    } else if (error.response?.status === 400) {
+      // 400错误通常是参数错误，显示具体错误信息
+      ElMessage.error(message)
     } else if (error.response && error.response.status >= 500) {
-      // 只有服务器错误才显示错误提示
+      // 服务器错误显示具体错误信息
+      ElMessage.error(message)
+    } else if (error.response) {
+      // 其他HTTP错误，显示具体错误信息
       ElMessage.error(message)
     } else {
-      // 其他客户端错误，记录日志但不显示提示
-      console.warn('API request failed:', error.response?.status, message)
+      // 网络错误等
+      ElMessage.error(message)
     }
     
     return Promise.reject(error)
@@ -388,6 +418,26 @@ export const gitlabService = {
     assigneeId?: number
   }) =>
     api.post(`/gitlab/projects/${projectId}/issues`, data)
+}
+
+// 权限相关 API
+export const permissionService = {
+  checkPermission: (data: {
+    action: string
+    resource: string
+    resource_id?: string
+  }) =>
+    api.post('/permissions/check', data),
+  
+  checkProjectPermission: (projectId: string, action?: string) =>
+    api.get(`/permissions/projects/${projectId}`, { 
+      params: action ? { action } : undefined 
+    }),
+  
+  getUserPermissions: (projectId?: string) =>
+    api.get('/permissions/user', { 
+      params: projectId ? { project_id: projectId } : undefined 
+    })
 }
 
 // 活动相关 API

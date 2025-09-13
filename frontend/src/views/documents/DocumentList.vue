@@ -434,6 +434,7 @@ const deleteDocument = async (id: string) => {
 }
 
 const canDelete = (doc: Document) => {
+  // 简化检查：管理员或上传者，具体权限由后端验证
   return userStore.hasRole('admin') || doc.upload_user?.id === userStore.user?.id
 }
 

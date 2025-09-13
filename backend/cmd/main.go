@@ -79,6 +79,7 @@ func main() {
 	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWTSecret)
 	websocketHandler := handlers.NewWebSocketHandler(websocketService)
 	activityHandler := handlers.NewActivityHandler(activityService)
+	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService)
 	// documentSyncHandler 已移除，文档扫描现在通过webhook自动触发
 
 	// 创建Gin路由器
@@ -129,6 +130,15 @@ func main() {
 		users.PUT("/me", userHandler.UpdateCurrentUser)
 		users.GET("", userHandler.GetUsers)
 		users.GET("/:id", userHandler.GetUserByID)
+	}
+
+	// 权限检查相关路由
+	permissions := api.Group("/permissions")
+	permissions.Use(middleware.RequireAuth(cfg))
+	{
+		permissions.POST("/check", permissionHandler.CheckPermission)              // 通用权限检查
+		permissions.GET("/projects/:id", permissionHandler.CheckProjectPermission) // 项目权限检查
+		permissions.GET("/user", permissionHandler.GetUserPermissions)             // 获取用户权限列表
 	}
 
 	// 研究课题相关路由

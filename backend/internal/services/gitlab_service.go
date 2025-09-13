@@ -136,7 +136,7 @@ type GitLabMergeRequest struct {
 // CreateProjectRequest 创建项目请求
 type CreateProjectRequest struct {
 	Name                 string `json:"name"`
-	Path                 string `json:"path,omitempty"`
+	Path                 string `json:"path"` // 必需字段，项目路径
 	Description          string `json:"description,omitempty"`
 	Visibility           string `json:"visibility,omitempty"` // private, internal, public
 	InitializeWithReadme bool   `json:"initialize_with_readme,omitempty"`
@@ -291,7 +291,8 @@ func (s *GitLabService) CreateProject(accessToken string, req *CreateProjectRequ
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(bodyBytes))
 	}
 
 	var project GitLabProject

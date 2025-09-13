@@ -247,6 +247,7 @@ import { useUserStore } from '@/stores/user'
 import { researchService, topicService, activityService } from '@/services/api'
 import type { Scene, Topic, ActivityItem } from '@/types'
 import { ElMessage } from 'element-plus'
+import { handleApiError, showSuccess } from '@/utils/errorHandler'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -278,10 +279,24 @@ const createRules = {
   description: [{ required: true, message: '请输入课题描述', trigger: 'blur' }]
 }
 
-// 计算属性
-const canCreateScene = computed(() => {
-  return userStore.isLoggedIn && (userStore.hasRole('teacher') || userStore.hasRole('admin'))
-})
+// 权限相关状态
+const canCreateScene = ref(false)
+
+// 检查权限
+const checkPermissions = async () => {
+  if (!userStore.isLoggedIn) {
+    canCreateScene.value = false
+    return
+  }
+
+  try {
+    const canCreate = await userStore.checkPermission('create', 'project')
+    canCreateScene.value = canCreate
+  } catch (error) {
+    console.error('权限检查失败:', error)
+    canCreateScene.value = false
+  }
+}
 
 // 方法
 const fetchScenes = async (page = 1) => {
@@ -308,7 +323,7 @@ const fetchScenes = async (page = 1) => {
     console.error('获取课题列表失败:', error)
     // 只在非404错误时显示错误提示
     if (error.response?.status !== 404) {
-      ElMessage.error('获取课题列表失败')
+      handleApiError(error, '获取课题列表')
     }
     scenes.value = []
     total.value = 0
@@ -422,7 +437,7 @@ const confirmCreate = async () => {
     fetchScenes()
     fetchMyScenes()
   } catch (error) {
-    ElMessage.error('课题创建失败')
+    handleApiError(error, '课题创建')
   } finally {
     creating.value = false
   }
@@ -470,7 +485,8 @@ const viewActivity = (activity: ActivityItem) => {
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
+  await checkPermissions()
   fetchScenes()
   fetchMyScenes()
   fetchHotTopics()

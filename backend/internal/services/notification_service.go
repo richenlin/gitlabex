@@ -57,7 +57,7 @@ func (s *NotificationService) GetAnnouncementsWithPagination(announcements *[]mo
 	s.db.Model(&models.Announcement{}).Count(total)
 
 	// 获取分页数据
-	return s.db.Preload("Author").
+	return s.db.Where("1=1").
 		Where("is_active = true AND valid_from <= ? AND (valid_to IS NULL OR valid_to >= ?)", time.Now(), time.Now()).
 		Order("created_at DESC").
 		Limit(limit).Offset(offset).
@@ -67,7 +67,7 @@ func (s *NotificationService) GetAnnouncementsWithPagination(announcements *[]mo
 // GetAnnouncementByID 根据ID获取公告
 func (s *NotificationService) GetAnnouncementByID(id uuid.UUID) (*models.Announcement, error) {
 	var announcement models.Announcement
-	err := s.db.Preload("Author").First(&announcement, "id = ?", id).Error
+	err := s.db.Where("1=1").First(&announcement, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +107,8 @@ func (s *NotificationService) MarkAsRead(notificationID uuid.UUID, userID uuid.U
 	return s.db.Model(&models.Notification{}).
 		Where("id = ? AND recipient_id = ?", notificationID, userID).
 		Updates(map[string]interface{}{
-			"is_read":  true,
-			"read_at":  now,
+			"is_read": true,
+			"read_at": now,
 		}).Error
 }
 
@@ -118,17 +118,17 @@ func (s *NotificationService) MarkAllAsRead(userID uuid.UUID) error {
 	return s.db.Model(&models.Notification{}).
 		Where("recipient_id = ? AND is_read = false", userID).
 		Updates(map[string]interface{}{
-			"is_read":  true,
-			"read_at":  now,
+			"is_read": true,
+			"read_at": now,
 		}).Error
 }
 
 // CreateProjectNotification 创建课题相关通知
-func (s *NotificationService) CreateProjectNotification(projectID uuid.UUID, projectTitle string, 
+func (s *NotificationService) CreateProjectNotification(projectID uuid.UUID, projectTitle string,
 	notificationType models.NotificationType, userIDs []uuid.UUID, senderID uuid.UUID) error {
-	
+
 	var title, content string
-	
+
 	switch notificationType {
 	case models.NotificationTypeProjectCreate:
 		title = "新课题创建"
@@ -144,7 +144,7 @@ func (s *NotificationService) CreateProjectNotification(projectID uuid.UUID, pro
 		if userID == senderID {
 			continue // 不给自己发通知
 		}
-		
+
 		notification := &models.Notification{
 			Type:        notificationType,
 			Title:       title,
@@ -154,21 +154,21 @@ func (s *NotificationService) CreateProjectNotification(projectID uuid.UUID, pro
 			ProjectID:   &projectID,
 			ActionURL:   fmt.Sprintf("/research/%s", projectID),
 		}
-		
+
 		if err := s.CreateNotification(notification); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
 // CreateTopicNotification 创建话题相关通知
-func (s *NotificationService) CreateTopicNotification(topicID uuid.UUID, topicTitle string, 
+func (s *NotificationService) CreateTopicNotification(topicID uuid.UUID, topicTitle string,
 	notificationType models.NotificationType, userIDs []uuid.UUID, senderID uuid.UUID) error {
-	
+
 	var title, content string
-	
+
 	switch notificationType {
 	case models.NotificationTypeTopicCreate:
 		title = "新话题创建"
@@ -184,7 +184,7 @@ func (s *NotificationService) CreateTopicNotification(topicID uuid.UUID, topicTi
 		if userID == senderID {
 			continue
 		}
-		
+
 		notification := &models.Notification{
 			Type:        notificationType,
 			Title:       title,
@@ -194,21 +194,21 @@ func (s *NotificationService) CreateTopicNotification(topicID uuid.UUID, topicTi
 			TopicID:     &topicID,
 			ActionURL:   fmt.Sprintf("/topics/%s", topicID),
 		}
-		
+
 		if err := s.CreateNotification(notification); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
 // CreateHomeworkNotification 创建作业相关通知
-func (s *NotificationService) CreateHomeworkNotification(homeworkID uuid.UUID, homeworkTitle string, 
+func (s *NotificationService) CreateHomeworkNotification(homeworkID uuid.UUID, homeworkTitle string,
 	notificationType models.NotificationType, userIDs []uuid.UUID, senderID uuid.UUID) error {
-	
+
 	var title, content string
-	
+
 	switch notificationType {
 	case models.NotificationTypeHomeworkCreate:
 		title = "新作业发布"
@@ -227,7 +227,7 @@ func (s *NotificationService) CreateHomeworkNotification(homeworkID uuid.UUID, h
 		if userID == senderID {
 			continue
 		}
-		
+
 		notification := &models.Notification{
 			Type:        notificationType,
 			Title:       title,
@@ -237,11 +237,11 @@ func (s *NotificationService) CreateHomeworkNotification(homeworkID uuid.UUID, h
 			HomeworkID:  &homeworkID,
 			ActionURL:   fmt.Sprintf("/homework/%s", homeworkID),
 		}
-		
+
 		if err := s.CreateNotification(notification); err != nil {
 			return err
 		}
 	}
-	
+
 	return nil
 }

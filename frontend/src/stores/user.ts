@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { User, EducationRole } from '@/types'
+import type { User, GitLabRole } from '@/types'
 import { UserRole } from '@/types'
-import { authService } from '@/services/api'
+import { authService, permissionService } from '@/services/api'
 
 export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
@@ -12,23 +12,72 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => !!token.value && !!user.value)
   const username = computed(() => user.value?.username || '')
   const avatar = computed(() => user.value?.avatar_url)
-  const userRole = computed(() => user.value?.role || UserRole.GUEST)
+  const isAdmin = computed(() => user.value?.is_admin || false)
 
-  const hasRole = (role: UserRole | string) => {
-    // 支持字符串和枚举值的角色检查
-    if (typeof role === 'string') {
-      return userRole.value === role || 
-             (role === 'admin' && userRole.value === UserRole.ADMIN) ||
-             (role === 'teacher' && userRole.value === UserRole.TEACHER) ||
-             (role === 'assistant' && userRole.value === UserRole.ASSISTANT) ||
-             (role === 'student' && userRole.value === UserRole.STUDENT)
+  // 权限检查方法 - 现在通过后端API进行
+  const checkPermission = async (action: string, resource: string, resourceId?: string) => {
+    if (!isLoggedIn.value) {
+      return false
     }
-    // 对于枚举值的比较，只能用于特定的枚举值
-    return false // 暂时返回false，实际应该基于业务逻辑判断
+
+    try {
+      const response: any = await permissionService.checkPermission({
+        action,
+        resource,
+        resource_id: resourceId
+      })
+      return response.allowed || false
+    } catch (error) {
+      console.error('权限检查失败:', error)
+      return false
+    }
+  }
+
+  const checkProjectPermission = async (projectId: string, action = 'read') => {
+    if (!isLoggedIn.value) {
+      return false
+    }
+
+    try {
+      const response: any = await permissionService.checkProjectPermission(projectId, action)
+      return response.allowed || false
+    } catch (error) {
+      console.error('项目权限检查失败:', error)
+      return false
+    }
+  }
+
+  const getUserPermissions = async (projectId?: string) => {
+    if (!isLoggedIn.value) {
+      return {}
+    }
+
+    try {
+      const response: any = await permissionService.getUserPermissions(projectId)
+      return response.permissions || {}
+    } catch (error) {
+      console.error('获取用户权限失败:', error)
+      return {}
+    }
+  }
+
+  // 保留简化的本地角色检查，仅用于基本的UI显示逻辑
+  // 实际权限验证应该使用上面的API方法
+  const hasRole = (role: UserRole | string) => {
+    if (!user.value) return false
+    
+    // 只保留最基本的管理员检查，其他权限都通过API验证
+    if (role === 'admin' || role === UserRole.ADMIN) {
+      return user.value.is_admin || false
+    }
+    
+    // 其他角色检查应该使用checkPermission方法
+    console.warn('hasRole方法已弃用，请使用checkPermission方法进行权限验证')
+    return true // 暂时返回true，避免UI显示问题
   }
 
   const hasAnyRole = (...roles: UserRole[]) => {
-    return roles.some(role => userRole.value >= role)
+    return roles.some(role => hasRole(role))
   }
 
   const login = async (username: string, password: string) => {
@@ -162,9 +211,12 @@ export const useUserStore = defineStore('user', () => {
     isLoggedIn,
     username,
     avatar,
-    userRole,
+    isAdmin,
     hasRole,
     hasAnyRole,
+    checkPermission,
+    checkProjectPermission,
+    getUserPermissions,
     login,
     setToken,
     setUser,

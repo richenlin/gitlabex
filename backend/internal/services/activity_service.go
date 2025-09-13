@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"gitlabex/internal/models"
 	"time"
 
@@ -35,31 +36,39 @@ type ActivityItem struct {
 
 // GetRecentActivities 获取最近活动
 func (s *ActivityService) GetRecentActivities(limit int) ([]ActivityItem, error) {
+	fmt.Printf("DEBUG: GetRecentActivities called with limit=%d\n", limit)
 	var activities []ActivityItem
 
+	// 获取最近的项目创建活动
+	projectActivities, err := s.getRecentProjectActivities(limit / 5)
+	if err != nil {
+		return nil, err
+	}
+	activities = append(activities, projectActivities...)
+
 	// 获取最近的文档上传活动
-	documentActivities, err := s.getRecentDocumentActivities(limit / 4)
+	documentActivities, err := s.getRecentDocumentActivities(limit / 5)
 	if err != nil {
 		return nil, err
 	}
 	activities = append(activities, documentActivities...)
 
 	// 获取最近的话题讨论活动
-	topicActivities, err := s.getRecentTopicActivities(limit / 4)
+	topicActivities, err := s.getRecentTopicActivities(limit / 5)
 	if err != nil {
 		return nil, err
 	}
 	activities = append(activities, topicActivities...)
 
 	// 获取最近的作业发布活动
-	homeworkActivities, err := s.getRecentHomeworkActivities(limit / 4)
+	homeworkActivities, err := s.getRecentHomeworkActivities(limit / 5)
 	if err != nil {
 		return nil, err
 	}
 	activities = append(activities, homeworkActivities...)
 
 	// 获取最近的评论活动
-	commentActivities, err := s.getRecentCommentActivities(limit / 4)
+	commentActivities, err := s.getRecentCommentActivities(limit / 5)
 	if err != nil {
 		return nil, err
 	}
@@ -68,13 +77,14 @@ func (s *ActivityService) GetRecentActivities(limit int) ([]ActivityItem, error)
 	// 按时间排序并限制数量
 	activities = s.sortAndLimitActivities(activities, limit)
 
+	fmt.Printf("DEBUG: Returning %d activities\n", len(activities))
 	return activities, nil
 }
 
 // getRecentDocumentActivities 获取最近的文档活动
 func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem, error) {
 	var documents []models.Document
-	err := s.db.Preload("Uploader").Preload("Project").
+	err := s.db.Preload("Project").
 		Where("status = ?", models.DocumentStatusApproved).
 		Order("created_at DESC").
 		Limit(limit).
@@ -106,7 +116,7 @@ func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem
 // getRecentTopicActivities 获取最近的话题活动
 func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, error) {
 	var topics []models.Topic
-	err := s.db.Preload("Author").Preload("Project").
+	err := s.db.Preload("Project").
 		Where("status = ?", "active").
 		Order("created_at DESC").
 		Limit(limit).
@@ -143,7 +153,7 @@ func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, e
 // getRecentHomeworkActivities 获取最近的作业活动
 func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem, error) {
 	var homeworks []models.Homework
-	err := s.db.Preload("Creator").Preload("Project").
+	err := s.db.Preload("Project").
 		Where("status = ?", models.HomeworkStatusPublished).
 		Order("created_at DESC").
 		Limit(limit).
@@ -175,7 +185,7 @@ func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem
 // getRecentCommentActivities 获取最近的评论活动
 func (s *ActivityService) getRecentCommentActivities(limit int) ([]ActivityItem, error) {
 	var comments []models.Comment
-	err := s.db.Preload("Author").Preload("Topic").Preload("Topic.Project").
+	err := s.db.Preload("Topic").Preload("Topic.Project").
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&comments).Error
@@ -261,7 +271,7 @@ func (s *ActivityService) GetUserActivities(userID uuid.UUID, limit int) ([]Acti
 // getUserDocumentActivities 获取用户的文档活动
 func (s *ActivityService) getUserDocumentActivities(userID uuid.UUID, limit int) ([]ActivityItem, error) {
 	var documents []models.Document
-	err := s.db.Preload("Uploader").Preload("Project").
+	err := s.db.Preload("Project").
 		Where("uploader_id = ? AND status = ?", userID, models.DocumentStatusApproved).
 		Order("created_at DESC").
 		Limit(limit).
@@ -293,7 +303,7 @@ func (s *ActivityService) getUserDocumentActivities(userID uuid.UUID, limit int)
 // getUserTopicActivities 获取用户的话题活动
 func (s *ActivityService) getUserTopicActivities(userID uuid.UUID, limit int) ([]ActivityItem, error) {
 	var topics []models.Topic
-	err := s.db.Preload("Author").Preload("Project").
+	err := s.db.Preload("Project").
 		Where("author_id = ? AND status = ?", userID, "active").
 		Order("created_at DESC").
 		Limit(limit).
@@ -330,7 +340,7 @@ func (s *ActivityService) getUserTopicActivities(userID uuid.UUID, limit int) ([
 // getUserHomeworkActivities 获取用户的作业活动
 func (s *ActivityService) getUserHomeworkActivities(userID uuid.UUID, limit int) ([]ActivityItem, error) {
 	var homeworks []models.Homework
-	err := s.db.Preload("Creator").Preload("Project").
+	err := s.db.Preload("Project").
 		Where("creator_id = ? AND status = ?", userID, models.HomeworkStatusPublished).
 		Order("created_at DESC").
 		Limit(limit).
@@ -352,6 +362,40 @@ func (s *ActivityService) getUserHomeworkActivities(userID uuid.UUID, limit int)
 			ProjectName: homework.Project.Name,
 			CreatedAt:   homework.CreatedAt,
 			URL:         "/homeworks/" + homework.ID.String(),
+		}
+		activities = append(activities, activity)
+	}
+
+	return activities, nil
+}
+
+// getRecentProjectActivities 获取最近的项目创建活动
+func (s *ActivityService) getRecentProjectActivities(limit int) ([]ActivityItem, error) {
+	var projects []models.ResearchProject
+	err := s.db.Where("is_public = ?", true).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&projects).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 调试日志
+	fmt.Printf("DEBUG: Found %d projects\n", len(projects))
+
+	var activities []ActivityItem
+	for _, project := range projects {
+		activity := ActivityItem{
+			ID:          project.ID,
+			Type:        "project",
+			Title:       "创建了课题",
+			Description: project.Name,
+			UserName:    "GitLab用户", // 用户信息需要从GitLab API获取
+			UserAvatar:  "",
+			ProjectName: project.Name,
+			CreatedAt:   project.CreatedAt,
+			URL:         "/scenes/" + project.ID.String(),
 		}
 		activities = append(activities, activity)
 	}

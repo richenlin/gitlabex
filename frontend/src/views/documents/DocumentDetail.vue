@@ -348,6 +348,7 @@ const editRules = {
 const documentId = computed(() => route.params.id as string)
 
 const canEdit = computed(() => {
+  // 简化检查：管理员、教师或上传者，具体权限由后端验证
   return userStore.hasRole('admin') || 
          userStore.hasRole('teacher') || 
          document.value?.uploader_id === userStore.user?.id
@@ -366,6 +367,7 @@ const canPreview = computed(() => {
 })
 
 const canViewHistory = computed(() => {
+  // 简化检查：管理员或教师，具体权限由后端验证
   return userStore.hasRole('admin') || userStore.hasRole('teacher')
 })
 
@@ -412,7 +414,7 @@ const fetchRelatedDocuments = async () => {
       category: document.value?.category,
       pageSize: 5
     })
-    const docs = response.documents || []
+    const docs = (response as any).documents || []
     relatedDocuments.value = docs.filter((doc: Document) => doc.id !== documentId.value)
   } catch (error) {
     console.error('获取相关文档失败:', error)

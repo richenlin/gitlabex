@@ -171,7 +171,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // 检查是否需要登录 - 默认不需要登录，除非明确设置为true或有角色要求
-  const requiresAuth = to.meta.requiresAuth === true || (to.meta.roles && to.meta.roles.length > 0)
+  const requiresAuth = to.meta.requiresAuth === true || (to.meta.roles && to.meta.roles?.length > 0)
   
   if (requiresAuth && !userStore.isLoggedIn) {
     ElMessage.warning('请先登录')
@@ -182,7 +182,7 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // 检查角色权限
+  // 检查角色权限 - 简化版本，具体权限由页面组件通过API验证
   if (to.meta.roles && Array.isArray(to.meta.roles) && to.meta.roles.length > 0) {
     if (!userStore.isLoggedIn) {
       ElMessage.error('请先登录')
@@ -190,12 +190,16 @@ router.beforeEach(async (to, from, next) => {
       return
     }
     
-    const hasRole = to.meta.roles.some((role: any) => userStore.hasRole(role))
-    if (!hasRole) {
-      ElMessage.error('权限不足')
+    // 对于需要特殊权限的路由，只检查管理员权限
+    // 其他权限检查将在页面组件中通过API进行
+    const requiresAdmin = to.meta.roles.includes(UserRole.ADMIN)
+    if (requiresAdmin && !userStore.hasRole('admin')) {
+      ElMessage.error('需要管理员权限')
       next({ name: 'home' })
       return
     }
+    
+    // 其他角色权限检查交给页面组件处理
   }
 
   // 设置页面标题

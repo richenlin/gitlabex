@@ -10,15 +10,16 @@ import (
 // ResearchProject 研究课题模型
 type ResearchProject struct {
 	BaseModel
-	Name            string     `gorm:"not null;size:200" json:"name"`
-	Description     string     `gorm:"type:text" json:"description"`
-	Status          string     `gorm:"not null;default:active" json:"status"` // active, archived, completed
-	CreatorID       int64      `gorm:"not null" json:"creator_id"`            // GitLab用户ID
-	GitLabProjectID *int64     `gorm:"uniqueIndex" json:"gitlab_project_id,omitempty"`
-	GitLabURL       string     `gorm:"size:500" json:"gitlab_url,omitempty"`
-	StartDate       time.Time  `json:"start_date"`
-	EndDate         *time.Time `json:"end_date,omitempty"`
-	IsPublic        bool       `gorm:"default:true" json:"is_public"`
+	Name            string         `gorm:"not null;size:200" json:"name"`
+	Description     string         `gorm:"type:text" json:"description"`
+	Status          string         `gorm:"not null;default:active" json:"status"` // active, archived, completed
+	CreatorID       int64          `gorm:"not null" json:"creator_id"`            // GitLab用户ID
+	GitLabProjectID *int64         `gorm:"uniqueIndex" json:"gitlab_project_id,omitempty"`
+	GitLabURL       string         `gorm:"size:500" json:"gitlab_url,omitempty"`
+	StartDate       time.Time      `json:"start_date"`
+	EndDate         *time.Time     `json:"end_date,omitempty"`
+	IsPublic        bool           `gorm:"default:true" json:"is_public"`
+	Tags            pq.StringArray `gorm:"type:text[]" json:"tags"`
 
 	// 注意：Creator关联已移除，创建者信息从GitLab API获取
 	Topics    []Topic    `gorm:"foreignKey:ProjectID" json:"topics,omitempty"`

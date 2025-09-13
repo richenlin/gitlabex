@@ -1,25 +1,32 @@
-// 用户相关类型
+// GitLab用户相关类型
 export interface User {
-  id: string
+  id: number          // GitLab用户ID
   username: string
   email: string
   name: string
   avatar_url?: string
-  role: UserRole
-  edu_role: EducationRole
-  gitlab_id: number
-  is_active: boolean
-  last_login_at?: string
+  is_admin: boolean   // GitLab管理员权限
+  gitlab_role?: GitLabRole  // 在项目中的角色
   created_at: string
-  updated_at: string
+  updated_at?: string
 }
 
+// GitLab角色枚举（对应GitLab访问级别）
+export enum GitLabRole {
+  GUEST = 'guest',           // 10 - 访客
+  REPORTER = 'reporter',     // 20 - 学生
+  DEVELOPER = 'developer',   // 30 - 研究员
+  MAINTAINER = 'maintainer', // 40 - 教师
+  OWNER = 'owner'           // 50 - 管理员
+}
+
+// 为了向后兼容，保留旧的枚举但映射到GitLab角色
 export enum UserRole {
   GUEST = 'guest',
-  STUDENT = 'student', 
-  ASSISTANT = 'assistant',
-  TEACHER = 'teacher',
-  ADMIN = 'admin'
+  STUDENT = 'reporter',     // 映射到GitLab Reporter
+  ASSISTANT = 'developer',  // 映射到GitLab Developer
+  TEACHER = 'maintainer',   // 映射到GitLab Maintainer
+  ADMIN = 'owner'          // 映射到GitLab Owner
 }
 
 export enum EducationRole {
@@ -40,8 +47,8 @@ export interface ResearchProject {
   gitlab_url?: string
   gitlab_ssh_url?: string
   gitlab_namespace?: string
-  creator_id: string
-  creator: User
+  creator_id: number  // 修改为number类型，与User.id保持一致
+  creator?: User       // 可选，因为有时候可能不包含创建者详细信息
   status: 'active' | 'archived' | 'suspended'
   auto_index_enabled: boolean
   last_sync_time?: string

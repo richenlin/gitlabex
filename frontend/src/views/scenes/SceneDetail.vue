@@ -372,6 +372,7 @@ import {
   Plus,
   Delete
 } from '@element-plus/icons-vue'
+import { handleApiError, showSuccess } from '@/utils/errorHandler'
 
 const route = useRoute()
 const router = useRouter()
@@ -427,29 +428,50 @@ const pathParts = computed(() => {
   return currentPath.value ? currentPath.value.split('/') : ['']
 })
 
-const canManage = computed(() => {
-  return userStore.hasRole('admin') || 
-         userStore.hasRole('teacher') || 
-         project.value?.creator_id === userStore.user?.id
-})
+const canManage = ref(false)
+const canEdit = ref(false)
+const canCreateTopic = ref(false)
+const canCreateHomework = ref(false)
+const canGradeHomework = ref(false)
 
-const canEdit = computed(() => {
-  return userStore.hasRole('admin') || 
-         userStore.hasRole('teacher') || 
-         userStore.hasRole('assistant')
-})
+// 检查权限的方法
+const checkPermissions = async () => {
+  if (!userStore.isLoggedIn || !project.value) {
+    canManage.value = false
+    canEdit.value = false
+    canCreateTopic.value = false
+    canCreateHomework.value = false
+    canGradeHomework.value = false
+    return
+  }
 
-const canCreateTopic = computed(() => {
-  return userStore.isLoggedIn
-})
+  try {
+    // 并行检查多个权限
+    const [managePermission, editPermission, topicPermission, homeworkPermission, gradePermission] = await Promise.all([
+      userStore.checkProjectPermission(projectId.value, 'manage'),
+      userStore.checkPermission('update', 'project', projectId.value),
+      userStore.checkPermission('create', 'topic'),
+      userStore.checkPermission('create', 'homework'),
+      userStore.checkPermission('grade', 'homework')
+    ])
 
-const canCreateHomework = computed(() => {
-  return userStore.hasRole('admin') || userStore.hasRole('teacher')
-})
+    canManage.value = managePermission
+    canEdit.value = editPermission
+    canCreateTopic.value = topicPermission
+    canCreateHomework.value = homeworkPermission
+    canGradeHomework.value = gradePermission
+  } catch (error) {
+    console.error('权限检查失败:', error)
+    // 权限检查失败时，默认为无权限
+    canManage.value = false
+    canEdit.value = false
+    canCreateTopic.value = false
+    canCreateHomework.value = false
+    canGradeHomework.value = false
+  }
+}
 
-const canGradeHomework = computed(() => {
-  return userStore.hasRole('admin') || userStore.hasRole('teacher')
-})
+// 权限相关的计算属性已移至上面的响应式变量和checkPermissions方法
 
 // 方法
 const fetchProject = async () => {
@@ -458,13 +480,16 @@ const fetchProject = async () => {
     const response: any = await researchService.getProject(projectId.value)
     project.value = response
     
+    // 项目加载完成后检查权限
+    await checkPermissions()
+    
     // 项目加载完成后再加载文件列表
     if (project.value?.gitlab_project_id) {
       fetchFiles()
     }
   } catch (error) {
     console.error('获取课题详情失败:', error)
-    ElMessage.error('获取课题详情失败')
+    handleApiError(error, '获取课题详情')
   } finally {
     loading.value = false
   }
@@ -496,7 +521,7 @@ const fetchFiles = async (path = '') => {
     console.error('获取文件列表失败:', error)
     // 如果是GitLab相关的认证错误，不显示错误提示，避免干扰用户体验
     if (error.response?.status !== 401) {
-      ElMessage.error('获取文件列表失败')
+      handleApiError(error, '获取文件列表')
     }
   } finally {
     filesLoading.value = false
@@ -571,7 +596,7 @@ const loadFileContent = async (file: any) => {
     fileContent.value = response?.content || ''
   } catch (error) {
     console.error('获取文件内容失败:', error)
-    ElMessage.error('获取文件内容失败')
+    handleApiError(error, '获取文件内容')
   }
 }
 
@@ -625,12 +650,12 @@ const createTopic = async () => {
       content: topicForm.value.content,
       labels: topicForm.value.labels
     })
-    ElMessage.success('话题创建成功')
+    showSuccess('话题创建成功')
     createTopicDialogVisible.value = false
     fetchTopics()
   } catch (error) {
     console.error('创建话题失败:', error)
-    ElMessage.error('创建话题失败')
+    handleApiError(error, '创建话题')
   } finally {
     creatingTopic.value = false
   }
@@ -646,12 +671,12 @@ const createHomework = async () => {
       deadline: homeworkForm.value.deadline,
       max_grade: homeworkForm.value.max_grade
     })
-    ElMessage.success('作业创建成功')
+    showSuccess('作业创建成功')
     createHomeworkDialogVisible.value = false
     fetchHomeworks()
   } catch (error) {
     console.error('创建作业失败:', error)
-    ElMessage.error('创建作业失败')
+    handleApiError(error, '创建作业')
   } finally {
     creatingHomework.value = false
   }
@@ -674,7 +699,9 @@ const gradeHomework = (homeworkId: string) => {
 }
 
 const canSubmitHomework = (homework: Homework) => {
-  return userStore.hasRole('student') && homework.status === 'published'
+  // 简化检查：只要用户登录且作业已发布就可以提交
+  // 具体权限由后端API验证
+  return userStore.isLoggedIn && homework.status === 'published'
 }
 
 const editProject = () => {

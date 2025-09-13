@@ -310,10 +310,24 @@ const createRules = {
   max_grade: [{ required: true, message: '请设置满分', trigger: 'blur' }]
 }
 
-// 计算属性
-const isTeacher = computed(() => {
-  return userStore.hasRole('teacher') || userStore.hasRole('admin')
-})
+// 权限相关状态
+const isTeacher = ref(false)
+
+// 检查权限
+const checkPermissions = async () => {
+  if (!userStore.isLoggedIn) {
+    isTeacher.value = false
+    return
+  }
+
+  try {
+    const canCreateHomework = await userStore.checkPermission('create', 'homework')
+    isTeacher.value = canCreateHomework
+  } catch (error) {
+    console.error('权限检查失败:', error)
+    isTeacher.value = false
+  }
+}
 
 const canCreateHomework = computed(() => {
   return isTeacher.value
@@ -409,6 +423,7 @@ const deleteHomework = async (id: string) => {
 }
 
 const canEdit = (homework: Homework) => {
+  // 简化检查：教师权限 + 创建者检查，具体权限由后端验证
   return isTeacher.value && (
     userStore.hasRole('admin') || homework.creator_id === userStore.user?.id
   )

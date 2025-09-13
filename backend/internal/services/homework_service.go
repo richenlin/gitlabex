@@ -32,7 +32,7 @@ func (s *HomeworkService) CreateHomework(homework *models.Homework) error {
 // GetHomeworkByID 根据ID获取作业
 func (s *HomeworkService) GetHomeworkByID(id uuid.UUID) (*models.Homework, error) {
 	var homework models.Homework
-	err := s.DB.Preload("Project").Preload("Creator").First(&homework, "id = ?", id).Error
+	err := s.DB.Preload("Project").First(&homework, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (s *HomeworkService) GetHomeworkByID(id uuid.UUID) (*models.Homework, error
 // GetHomeworkByProject 获取项目下的所有作业
 func (s *HomeworkService) GetHomeworkByProject(projectID uuid.UUID) ([]models.Homework, error) {
 	var homeworks []models.Homework
-	err := s.DB.Preload("Project").Preload("Creator").
+	err := s.DB.Preload("Project").
 		Where("project_id = ?", projectID).
 		Order("created_at DESC").
 		Find(&homeworks).Error
@@ -561,7 +561,7 @@ func (s *HomeworkService) GetAssignmentTemplates(isPublic bool, creatorID uuid.U
 		query = query.Where("creator_id = ?", creatorID)
 	}
 
-	err := query.Preload("Creator").Order("created_at DESC").Find(&templates).Error
+	err := query.Order("created_at DESC").Find(&templates).Error
 	return templates, err
 }
 

@@ -177,7 +177,9 @@ const createRules = {
 
 // 计算属性
 const canCreate = computed(() => {
-  return userStore.hasRole('teacher') || userStore.hasRole('admin')
+  // 暂时简化：只要用户已登录就可以创建课题
+  // TODO: 根据GitLab项目权限进行更精确的权限检查
+  return userStore.isLoggedIn
 })
 
 // 方法
@@ -229,7 +231,9 @@ const editProject = (id: string) => {
 }
 
 const canEdit = (project: ResearchProject) => {
-  return userStore.hasRole('admin') || project.creator_id === userStore.user?.id
+  // 暂时简化：管理员或项目创建者可以编辑
+  // TODO: 根据GitLab项目权限进行更精确的权限检查
+  return userStore.isAdmin || project.creator_id === userStore.user?.id?.toString()
 }
 
 const showCreateDialog = () => {

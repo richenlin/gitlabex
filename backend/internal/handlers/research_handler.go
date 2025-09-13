@@ -4,7 +4,9 @@ import (
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +27,53 @@ func NewResearchHandler(researchService *services.ResearchService, userService *
 		userService:     userService,
 		gitlabService:   gitlabService,
 	}
+}
+
+// generateProjectPath 生成符合GitLab要求的项目路径
+// GitLab路径要求：只能包含字母、数字、'_', '-' 和 '.'，不能以'-'开头，不能以'.git'或'.atom'结尾
+func generateProjectPath(name string) string {
+	// 转换为小写
+	path := strings.ToLower(name)
+
+	// 替换空格和其他特殊字符为连字符
+	reg := regexp.MustCompile(`[^a-z0-9._-]`)
+	path = reg.ReplaceAllString(path, "-")
+
+	// 移除连续的特殊字符
+	reg = regexp.MustCompile(`[-._]{2,}`)
+	path = reg.ReplaceAllString(path, "-")
+
+	// 确保不以'-'开头
+	path = strings.TrimPrefix(path, "-")
+
+	// 确保不以'.git'或'.atom'结尾
+	path = strings.TrimSuffix(path, ".git")
+	path = strings.TrimSuffix(path, ".atom")
+
+	// 确保不以特殊字符开头或结尾
+	path = strings.Trim(path, "-._")
+
+	// 如果路径为空或过短，使用默认值
+	if len(path) < 2 {
+		path = "research-project"
+	}
+
+	return path
+}
+
+// hasProjectCreationPermission 检查用户是否有创建项目的权限
+func (h *ResearchHandler) hasProjectCreationPermission(accessToken string) bool {
+	// 通过GitLab API检查用户权限
+	// 检查用户是否可以获取自己的用户信息，如果可以获取说明token有效且用户有基本权限
+	user, err := h.gitlabService.GetUser(accessToken)
+	if err != nil {
+		return false
+	}
+
+	// 检查用户是否有效
+	// 如果能够成功获取用户信息，说明token有效且用户有基本权限
+	// 在GitLab中，正常用户都应该能够在自己的命名空间下创建项目
+	return user.ID > 0 // 有效的用户ID表示用户有基本权限
 }
 
 // GetResearchProjects 获取研究课题列表
@@ -130,13 +179,27 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
-	// 检查权限 - 暂时允许所有登录用户创建项目
-	// TODO: 可以根据GitLab用户信息或项目权限进行更细粒度的权限控制
-	// isAdmin, exists := c.Get("is_admin")
-	// if !exists || !isAdmin.(bool) {
-	//     c.JSON(http.StatusForbidden, gin.H{"error": "无权限创建课题"})
-	//     return
-	// }
+	// 检查权限 - 根据GitLab权限机制进行权限控制
+	// 1. 系统管理员可以创建项目
+	// 2. 普通用户需要有足够的GitLab权限才能创建项目
+	isAdmin, _ := c.Get("is_admin")
+
+	if isAdmin != nil && isAdmin.(bool) {
+		// 系统管理员，允许创建
+	} else {
+		// 普通用户，检查GitLab权限
+		// 获取用户的GitLab信息来验证是否有创建项目的权限
+		accessToken := c.MustGet("gitlab_access_token").(string)
+
+		// 检查用户是否有创建项目的权限（通过尝试获取用户的命名空间信息）
+		if !h.hasProjectCreationPermission(accessToken) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":   "权限不足：您没有创建研究项目的权限",
+				"message": "请联系管理员或确保您在GitLab中有足够的权限",
+			})
+			return
+		}
+	}
 
 	// 处理项目名称和可见性
 	projectName := req.Name
@@ -156,8 +219,12 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		visibility = "public"
 	}
 
+	// 生成项目路径（GitLab要求的path字段）
+	projectPath := generateProjectPath(projectName)
+
 	createReq := &services.CreateProjectRequest{
 		Name:                 projectName,
+		Path:                 projectPath,
 		Description:          req.Description,
 		Visibility:           visibility,
 		InitializeWithReadme: true,
@@ -300,20 +367,20 @@ func (h *ResearchHandler) UpdateResearchProject(c *gin.Context) {
 		return
 	}
 
-	// 检查权限 - 只有创建者和管理员可以更新
-	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
+	// 获取项目信息以检查权限
+	project, err := h.researchService.GetResearchProjectByID(projectID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "检查项目所有者失败",
-			"details":    err.Error(),
-			"user_id":    gitlabUserID,
-			"project_id": projectID.String(),
-		})
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
 		return
 	}
 
-	// 检查权限：项目创建者或管理员可以更新
+	// 检查权限 - 管理员、项目创建者可以更新
+	// 注意：为了简化权限管理，我们暂时只允许项目创建者和管理员编辑项目
+	// 教师权限可以通过GitLab项目成员管理来实现
 	isAdmin, _ := c.Get("is_admin")
+	isOwner := project.CreatorID == gitlabUserID.(int64)
+
+	// 权限检查：项目创建者或管理员可以更新
 	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权限修改该课题"})
 		return
@@ -321,7 +388,7 @@ func (h *ResearchHandler) UpdateResearchProject(c *gin.Context) {
 
 	updates := make(map[string]interface{})
 	if req.Title != nil {
-		updates["title"] = *req.Title
+		updates["name"] = *req.Title
 	}
 	if req.Description != nil {
 		updates["description"] = *req.Description

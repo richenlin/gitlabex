@@ -360,23 +360,39 @@ const gradeForm = ref({
 // 计算属性
 const homeworkId = computed(() => route.params.id as string)
 
-const isStudent = computed(() => userStore.hasRole('student'))
+// 权限相关状态
+const canManage = ref(false)
+const canGrade = ref(false)
+const canSubmit = ref(false)
 
-const canManage = computed(() => {
-  return userStore.hasRole('admin') || 
-         userStore.hasRole('teacher') || 
-         homework.value?.creator_id === userStore.user?.id
-})
+// 检查权限
+const checkPermissions = async () => {
+  if (!userStore.isLoggedIn || !homework.value) {
+    canManage.value = false
+    canGrade.value = false
+    canSubmit.value = false
+    return
+  }
 
-const canGrade = computed(() => {
-  return userStore.hasRole('admin') || userStore.hasRole('teacher')
-})
+  try {
+    const [managePermission, gradePermission, submitPermission] = await Promise.all([
+      userStore.checkPermission('update', 'homework', homeworkId.value),
+      userStore.checkPermission('grade', 'homework', homeworkId.value),
+      userStore.checkPermission('submit', 'homework', homeworkId.value)
+    ])
 
-const canSubmit = computed(() => {
-  return isStudent.value && 
-         homework.value?.status === 'published' && 
-         new Date() < new Date(homework.value.deadline)
-})
+    canManage.value = managePermission
+    canGrade.value = gradePermission
+    canSubmit.value = submitPermission
+  } catch (error) {
+    console.error('权限检查失败:', error)
+    canManage.value = false
+    canGrade.value = false
+    canSubmit.value = false
+  }
+}
+
+// canSubmit已移至上面的权限检查逻辑中
 
 const canResubmit = computed(() => {
   return canSubmit.value && mySubmission.value?.status !== 'graded'
@@ -444,8 +460,11 @@ const fetchHomework = async () => {
     const response = await homeworkService.getHomework(homeworkId.value)
     homework.value = response
     
+    // 获取作业信息后检查权限
+    await checkPermissions()
+    
     // 设置默认标签页
-    if (isStudent.value) {
+    if (canSubmit.value) {
       activeTab.value = 'my-submission'
       fetchMySubmission()
     } else if (canGrade.value) {
