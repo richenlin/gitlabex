@@ -27,7 +27,7 @@
           class="announcement-btn"
           @click="showAnnouncements = true"
         >
-          <el-icon><Announcement /></el-icon>
+          <el-icon><InfoFilled /></el-icon>
         </el-button>
         
         <!-- 登录用户显示用户信息 -->
@@ -80,13 +80,10 @@ import { ref, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
-import { Bell, Message } from '@element-plus/icons-vue'
+import { Bell, Message, InfoFilled } from '@element-plus/icons-vue'
 import NotificationPanel from '@/components/common/NotificationPanel.vue'
-import { useNotifications } from '@/composables/useNotifications'
-
 const userStore = useUserStore()
 const router = useRouter()
-const { connect, disconnect, requestNotificationPermission } = useNotifications()
 
 const navItems = [
   { path: '/', label: '首页' },
@@ -126,7 +123,6 @@ const handleUserAction = (command: string) => {
       router.push('/user/notifications')
       break
     case 'logout':
-      disconnect() // 断开WebSocket连接
       userStore.logout()
       ElMessage.success('已退出登录')
       router.push('/auth/login')
@@ -134,12 +130,9 @@ const handleUserAction = (command: string) => {
   }
 }
 
-// 组件挂载时初始化通知系统
+// 组件挂载时的初始化
 onMounted(() => {
-  if (userStore.isLoggedIn) {
-    requestNotificationPermission()
-    connect()
-  }
+  // 可以在这里添加其他初始化逻辑
 })
 </script>
 

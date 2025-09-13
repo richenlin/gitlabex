@@ -70,40 +70,14 @@ func autoMigrate(db *gorm.DB) error {
 		&models.AssignmentTemplate{},
 	}
 
-	// 检查数据库是否为空（没有任何表）
-	var tableCount int64
-	err := db.Raw("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public'").Scan(&tableCount)
-	if err != nil {
-		log.Printf("Warning: Could not check table count: %v", err)
-	}
-
-	if tableCount == 0 {
-		log.Println("Database is empty, creating all tables...")
-		return db.AutoMigrate(models...)
-	}
-
-	// 数据库不为空，检查每个表是否存在，只迁移缺失的表
-	log.Printf("Found %d existing tables, checking for missing tables...", tableCount)
-
-	// 逐个检查和迁移模型
-	for _, model := range models {
-		if !db.Migrator().HasTable(model) {
-			log.Printf("Creating missing table for model: %T", model)
-			if err := db.AutoMigrate(model); err != nil {
-				return fmt.Errorf("failed to migrate model %T: %w", model, err)
-			}
-		}
-	}
-
-	// 检查现有表的列更新（GORM会安全地添加缺失的列）
-	log.Println("Checking for column updates...")
-	for _, model := range models {
-		if db.Migrator().HasTable(model) {
-			if err := db.AutoMigrate(model); err != nil {
-				// 如果是权限错误，记录警告但不中断
-				log.Printf("Warning: Could not update table for model %T: %v", model, err)
-			}
-		}
+	// 直接执行AutoMigrate，GORM会自动处理：
+	// 1. 创建不存在的表
+	// 2. 添加不存在的列
+	// 3. 创建索引
+	// 4. 不会删除现有列或数据
+	log.Println("Running AutoMigrate for all models...")
+	if err := db.AutoMigrate(models...); err != nil {
+		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
 	log.Println("Database migration completed")

@@ -1,6 +1,5 @@
 import { ref, computed } from 'vue'
 import { ElNotification } from 'element-plus'
-import { createWebSocketService, getWebSocketService, disconnectWebSocket } from '@/services/websocket'
 import { useUserStore } from '@/stores/user'
 
 interface NotificationItem {
@@ -39,41 +38,16 @@ export function useNotifications() {
       .slice(0, 10)
   )
 
-  // 连接WebSocket
+  // 空函数，用于兼容性
   const connect = () => {
-    if (!userStore.token || !userStore.user?.id) {
-      console.warn('用户未登录，无法连接WebSocket')
-      return
-    }
-
-    const wsService = createWebSocketService(userStore.token, {
-      onConnect: () => {
-        console.log('WebSocket已连接')
-        isConnected.value = true
-      },
-      
-      onDisconnect: () => {
-        console.log('WebSocket已断开')
-        isConnected.value = false
-      },
-      
-      onError: (error) => {
-        console.error('WebSocket错误:', error)
-        isConnected.value = false
-      },
-      
-      onMessage: (message: NotificationMessage) => {
-        handleNotificationMessage(message)
-      }
-    })
-
-    wsService.connect(userStore.user.id.toString())
+    // WebSocket功能已移除
+    console.log('WebSocket功能已移除')
   }
 
-  // 断开连接
+  // 空函数，用于兼容性
   const disconnect = () => {
-    disconnectWebSocket()
-    isConnected.value = false
+    // WebSocket功能已移除
+    console.log('WebSocket功能已移除')
   }
 
   // 处理通知消息
@@ -190,12 +164,10 @@ export function useNotifications() {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9)
   }
 
-  // 发送消息到WebSocket
+  // 发送消息（WebSocket功能已移除）
   const sendMessage = (message: any) => {
-    const wsService = getWebSocketService()
-    if (wsService) {
-      wsService.send(message)
-    }
+    // WebSocket功能已移除，这里可以改为其他通知方式
+    console.log('发送消息功能已移除:', message)
   }
 
   // 请求桌面通知权限
@@ -226,13 +198,12 @@ export function useNotifications() {
 
 // 在路由守卫中使用
 export function setupNotifications() {
-  const { connect, requestNotificationPermission } = useNotifications()
+  const { requestNotificationPermission } = useNotifications()
   const userStore = useUserStore()
 
-  // 用户登录后自动连接
+  // 用户登录后请求通知权限
   if (userStore.isLoggedIn) {
     requestNotificationPermission()
-    connect()
   }
 }
 

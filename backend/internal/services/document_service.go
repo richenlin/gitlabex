@@ -216,13 +216,15 @@ func (s *DocumentService) ScanProjectDocuments(projectID uuid.UUID, gitLabProjec
 			ProjectID:      &projectID,
 			Title:          strings.TrimSuffix(fileName, fileExt),
 			Description:    extractDescriptionFromContent(string(contentBytes), fileName),
-			FilePath:       minioPath, // 使用MINIO路径
+			FilePath:       filePath, // 使用原始GitLab路径作为文件路径
 			FileType:       models.DocumentType(docType),
 			Category:       categorizeDocument(filePath, docType),
 			Status:         models.DocumentStatusPending,
 			FileSize:       fileSize,
 			GitLabFilePath: filePath, // 保留原始GitLab路径
 			GitLabID:       fmt.Sprintf("%d", gitLabProjectID),
+			AutoIndexed:    true,      // 标记为自动索引的文档
+			MinIOPath:      minioPath, // 存储MINIO路径
 		}
 
 		if err := s.CreateDocument(document); err != nil {
@@ -272,7 +274,7 @@ func categorizeDocument(filePath string, fileType string) string {
 		return "pdf"
 	case "doc", "docx":
 		return "word"
-	case "xls", "xlsx":
+	case "xls", "xlsx", "csv":
 		return "excel"
 	case "ppt", "pptx":
 		return "powerpoint"
@@ -336,11 +338,43 @@ func (s *DocumentService) createDocumentFromGitLabFile(projectID uuid.UUID, gitL
 	return s.CreateDocument(document)
 }
 
-// GetDocumentCategories 获取文档分类列表
+// GetDocumentCategories 获取文档分类列表（基于配置的允许文件类型）
 func (s *DocumentService) GetDocumentCategories() ([]string, error) {
+	// 从配置中获取允许的文件类型
+	allowedFileTypes := strings.Split(s.Config.AllowedFileTypes, ",")
+
+	// 将文件扩展名映射到分类
+	categoryMap := make(map[string]bool)
+
+	for _, fileType := range allowedFileTypes {
+		fileType = strings.TrimSpace(fileType)
+		switch fileType {
+		case "pdf":
+			categoryMap["pdf"] = true
+		case "doc", "docx":
+			categoryMap["word"] = true
+		case "xls", "xlsx", "csv":
+			categoryMap["excel"] = true
+		case "ppt", "pptx":
+			categoryMap["ppt"] = true
+		case "txt", "md":
+			categoryMap["text"] = true
+		case "jpg", "jpeg", "png", "gif":
+			categoryMap["image"] = true
+		case "zip", "rar", "7z":
+			categoryMap["archive"] = true
+		default:
+			categoryMap["other"] = true
+		}
+	}
+
+	// 转换为切片
 	var categories []string
-	err := s.DB.Model(&models.Document{}).Distinct().Pluck("category", &categories).Error
-	return categories, err
+	for category := range categoryMap {
+		categories = append(categories, category)
+	}
+
+	return categories, nil
 }
 
 // GetDocumentStats 获取文档统计信息
@@ -410,10 +444,10 @@ func getFileType(filename string) string {
 	}
 }
 
-// GetDocumentByPath 根据文件路径获取文档
-func (s *DocumentService) GetDocumentByPath(projectID uuid.UUID, filePath string) (*models.Document, error) {
+// GetDocumentByPath 根据GitLab文件路径获取文档
+func (s *DocumentService) GetDocumentByPath(projectID uuid.UUID, gitlabFilePath string) (*models.Document, error) {
 	var document models.Document
-	err := s.DB.Where("project_id = ? AND file_path = ?", projectID, filePath).First(&document).Error
+	err := s.DB.Where("project_id = ? AND file_path = ?", projectID, gitlabFilePath).First(&document).Error
 	if err != nil {
 		return nil, err
 	}
@@ -579,7 +613,6 @@ func (s *DocumentService) GetDocumentEditHistory(documentID uuid.UUID) ([]models
 	var history []models.DocumentEditRequest
 
 	err := s.DB.Where("document_id = ?", documentID).
-		Preload("Requester").Preload("Reviewer").
 		Order("created_at DESC").
 		Find(&history).Error
 
@@ -784,17 +817,10 @@ func (s *DocumentService) SyncDocumentWithMinIO(documentID uuid.UUID, fileData [
 		return err
 	}
 
-	// 获取MinIO下载URL
-	downloadURL, err := s.MinIOService.GetDocumentURL(minioKey, 24*time.Hour)
-	if err != nil {
-		downloadURL = "" // 如果获取URL失败，设为空字符串
-	}
-
 	// 更新数据库记录
 	syncTime := time.Now()
 	return s.DB.Model(document).Updates(map[string]interface{}{
 		"minio_path":     minioKey,
-		"minio_url":      downloadURL,
 		"file_size":      int64(len(fileData)),
 		"last_sync_time": &syncTime,
 	}).Error
@@ -902,6 +928,12 @@ func (s *DocumentService) SyncProjectDocumentsToMinIO(projectID uuid.UUID, gitLa
 
 // CreateStandaloneDocument 创建独立文档（不关联课题）
 func (s *DocumentService) CreateStandaloneDocument(title, description, category string, uploaderID int64, fileData []byte, fileType models.DocumentType) (*models.Document, error) {
+	// 获取或创建独立文档项目
+	standaloneProjectID, err := s.getOrCreateStandaloneProject()
+	if err != nil {
+		return nil, fmt.Errorf("获取独立文档项目失败: %w", err)
+	}
+
 	// 创建文档记录
 	document := &models.Document{
 		Title:        title,
@@ -912,6 +944,7 @@ func (s *DocumentService) CreateStandaloneDocument(title, description, category 
 		Status:       models.DocumentStatusApproved,
 		IsStandalone: true,
 		FileSize:     int64(len(fileData)),
+		ProjectID:    &standaloneProjectID,
 	}
 
 	// 先创建数据库记录
@@ -947,4 +980,56 @@ func (s *DocumentService) GetPredefinedCategories() []string {
 		"text",          // 文本
 		"other",         // 其他
 	}
+}
+
+// GetDocumentDownloadURL 获取文档下载URL
+func (s *DocumentService) GetDocumentDownloadURL(document *models.Document) string {
+	if document.MinIOPath == "" {
+		return ""
+	}
+
+	// 使用配置中的MinIO endpoint构建下载URL
+	minioEndpoint := s.Config.MinIOEndpoint
+	if !strings.HasPrefix(minioEndpoint, "http") {
+		// 如果没有协议前缀，添加http://
+		if s.Config.MinIOUseSSL {
+			minioEndpoint = "https://" + minioEndpoint
+		} else {
+			minioEndpoint = "http://" + minioEndpoint
+		}
+	}
+
+	return fmt.Sprintf("%s/%s", minioEndpoint, document.MinIOPath)
+}
+
+// getOrCreateStandaloneProject 获取或创建独立文档项目
+func (s *DocumentService) getOrCreateStandaloneProject() (uuid.UUID, error) {
+	// 查找名为"独立文档"的项目
+	var project models.ResearchProject
+	err := s.DB.Where("name = ?", "独立文档").First(&project).Error
+
+	if err == nil {
+		// 找到了，返回项目ID
+		return project.ID, nil
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// 其他数据库错误
+		return uuid.Nil, err
+	}
+
+	// 没有找到，创建新的独立文档项目
+	standaloneProject := &models.ResearchProject{
+		Name:        "独立文档",
+		Description: "用于存储独立文档的虚拟项目",
+		Status:      "active",
+		CreatorID:   1, // 使用系统用户ID
+		IsPublic:    true,
+	}
+
+	if err := s.DB.Create(standaloneProject).Error; err != nil {
+		return uuid.Nil, err
+	}
+
+	return standaloneProject.ID, nil
 }

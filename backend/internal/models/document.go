@@ -53,8 +53,7 @@ type Document struct {
 	AutoIndexed    bool           `gorm:"default:false" json:"auto_indexed,omitempty"`
 	IsStandalone   bool           `gorm:"default:false" json:"is_standalone,omitempty"` // 标识独立文档
 	LastSyncTime   *time.Time     `gorm:"column:last_sync_time" json:"last_sync_time,omitempty"`
-	MinIOPath      string         `gorm:"size:500" json:"minio_path,omitempty"` // MinIO存储路径
-	MinIOURL       string         `gorm:"size:500" json:"minio_url,omitempty"`  // MinIO下载URL
+	MinIOPath      string         `gorm:"column:minio_path;size:500" json:"minio_path,omitempty"` // MinIO存储路径
 
 	// 关联关系
 	// 注意：Uploader关联已移除，上传者信息从GitLab API获取

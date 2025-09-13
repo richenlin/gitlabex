@@ -53,6 +53,9 @@ type Config struct {
 	// 日志配置
 	LogLevel  string
 	LogFormat string
+
+	// 文件类型配置
+	AllowedFileTypes string
 }
 
 // Load 加载配置
@@ -105,6 +108,9 @@ func Load() *Config {
 		// 日志配置
 		LogLevel:  getEnv("LOG_LEVEL", "debug"),
 		LogFormat: getEnv("LOG_FORMAT", "json"),
+
+		// 文件类型配置
+		AllowedFileTypes: getEnv("ALLOWED_FILE_TYPES", "pdf,doc,docx,ppt,pptx,xls,xlsx,csv,txt,md"),
 	}
 
 	// 构建数据库URL

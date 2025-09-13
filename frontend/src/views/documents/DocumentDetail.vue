@@ -345,8 +345,8 @@ const fetchDocument = async () => {
 const fetchEditHistory = async () => {
   historyLoading.value = true
   try {
-    const response: any = await documentService.getMyEditRequests(documentId.value)
-    editHistory.value = response || []
+    const response: any = await documentService.getDocumentEditHistory(documentId.value)
+    editHistory.value = response.edit_history || []
   } catch (error) {
     console.error('获取编辑历史失败:', error)
   } finally {
@@ -355,9 +355,11 @@ const fetchEditHistory = async () => {
 }
 
 const fetchRelatedDocuments = async () => {
+  if (!document.value?.project?.id) return
+  
   try {
     const response = await documentService.getDocuments({
-      category: document.value?.category,
+      projectId: document.value.project.id,
       pageSize: 5
     })
     const docs = (response as any).documents || []
@@ -377,13 +379,44 @@ const fetchCategories = async () => {
 }
 
 
-const downloadDocument = () => {
-  // 实现文档下载逻辑
-  if (document.value) {
+const downloadDocument = async () => {
+  if (!document.value) return
+  
+  try {
+    const response = await documentService.downloadDocument(document.value.id)
+    
+    // 创建下载链接
+    const blob = new Blob([response.data], { type: 'application/octet-stream' })
+    const url = window.URL.createObjectURL(blob)
     const link = window.document.createElement('a')
-    link.href = `/api/documents/${document.value.id}/download`
-    link.download = document.value.title
+    link.href = url
+    
+    // 从响应头获取文件名，如果没有则使用文档标题
+    const contentDisposition = response.headers?.['content-disposition']
+    let filename = document.value.title
+    if (contentDisposition) {
+      // 改进的文件名解析逻辑
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=([^;=\n]+)/)
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].trim().replace(/['"]/g, '')
+      }
+    }
+    
+    // 确保文件名有扩展名
+    if (document.value.file_type && !filename.includes('.')) {
+      filename = `${filename}.${document.value.file_type}`
+    }
+    
+    link.download = filename
+    window.document.body.appendChild(link)
     link.click()
+    window.document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('文档下载成功')
+  } catch (error) {
+    console.error('下载文档失败:', error)
+    ElMessage.error('下载文档失败')
   }
 }
 

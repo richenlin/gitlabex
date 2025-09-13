@@ -18,6 +18,7 @@ import (
 // MinIOService MinIO对象存储服务
 type MinIOService struct {
 	client          *minio.Client
+	endpoint        string
 	documentsBucket string
 	avatarsBucket   string
 	tempBucket      string
@@ -49,6 +50,7 @@ func NewMinIOService(endpoint, accessKey, secretKey string, useSSL bool, region 
 
 	service := &MinIOService{
 		client:          client,
+		endpoint:        endpoint,
 		documentsBucket: "documents",
 		avatarsBucket:   "avatars",
 		tempBucket:      "temp",
@@ -119,12 +121,16 @@ func (s *MinIOService) UploadDocument(key string, data []byte, contentType strin
 		return nil, fmt.Errorf("failed to get object info: %w", err)
 	}
 
+	// 生成下载URL
+	downloadURL := fmt.Sprintf("%s/%s/%s", s.endpoint, s.documentsBucket, key)
+
 	return &DocumentInfo{
 		Key:          key,
 		Name:         filepath.Base(key),
 		Size:         objInfo.Size,
 		ContentType:  objInfo.ContentType,
 		LastModified: objInfo.LastModified,
+		URL:          downloadURL,
 		Metadata:     objInfo.UserMetadata,
 	}, nil
 }
@@ -269,7 +275,7 @@ func (s *MinIOService) GetDocumentsByType(fileTypes []string) ([]*DocumentInfo, 
 func IsDocumentType(filename string) bool {
 	documentTypes := []string{
 		"doc", "docx", "pdf", "ppt", "pptx",
-		"xls", "xlsx", "txt", "md", "rtf",
+		"xls", "xlsx", "txt", "md", "rtf", "csv",
 		"odt", "ods", "odp", "csv",
 	}
 

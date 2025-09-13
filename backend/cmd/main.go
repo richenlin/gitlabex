@@ -215,10 +215,7 @@ func main() {
 			documentsAuth.PUT("/:id", documentHandler.UpdateDocument)
 			documentsAuth.DELETE("/:id", documentHandler.DeleteDocument)
 			documentsAuth.GET("/stats", documentHandler.GetDocumentStats)
-			documentsAuth.POST("", documentHandler.CreateDocument)
-
-			// 文件上传路由
-			documentsAuth.POST("/upload", documentHandler.UploadDocument)
+			documentsAuth.POST("", documentHandler.UploadDocument)
 
 			// 自动文档索引路由 - 需要认证
 			documentsAuth.POST("/sync/:project_id", documentHandler.SyncDocuments)

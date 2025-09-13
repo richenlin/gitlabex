@@ -69,6 +69,10 @@ const getErrorMessage = (error: AxiosError<any>): string => {
 // 响应拦截器
 api.interceptors.response.use(
   (response: AxiosResponse<any>) => {
+    // 对于blob响应（下载请求），返回完整的response对象
+    if (response.config.responseType === 'blob') {
+      return response
+    }
     return response.data
   },
   (error: AxiosError<ApiResponse<any>>) => {
@@ -247,14 +251,31 @@ export const documentService = {
   getDocument: (id: string) =>
     api.get(`/documents/${id}`),
   
-  createDocument: (data: Partial<Document>) =>
-    api.post('/documents', data),
+  createDocument: (formData: FormData) =>
+    api.post('/documents', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    }),
+  
+  createStandaloneDocument: (formData: FormData) =>
+    api.post('/documents/standalone', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    }),
   
   updateDocument: (id: string, data: Partial<Document>) =>
     api.put(`/documents/${id}`, data),
   
   deleteDocument: (id: string) =>
     api.delete(`/documents/${id}`),
+  
+  downloadDocument: (id: string) =>
+    api.get(`/documents/${id}/download`, { responseType: 'blob' }),
+  
+  getDocumentEditHistory: (id: string) =>
+    api.get(`/documents/${id}/edit-history`),
   
   getCategories: () =>
     api.get('/documents/categories'),

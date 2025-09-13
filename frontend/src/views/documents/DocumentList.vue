@@ -235,16 +235,6 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="文档分类" prop="category">
-          <el-select v-model="uploadForm.category" placeholder="选择分类" allow-create>
-            <el-option
-              v-for="category in categories"
-              :key="category"
-              :label="category"
-              :value="category"
-            />
-          </el-select>
-        </el-form-item>
         <el-form-item label="选择文件" prop="file">
           <el-upload
             ref="uploadRef"
@@ -256,7 +246,7 @@
             <el-button>选择文件</el-button>
             <template #tip>
               <div class="el-upload__tip">
-                支持 PDF, Word, Excel, PPT, 图片等格式，文件大小不超过50MB
+                支持 PDF, Word, Excel, PPT等格式，文件大小不超过50MB
               </div>
             </template>
           </el-upload>
@@ -314,13 +304,11 @@ const uploadForm = ref({
   title: '',
   description: '',
   project_id: '',
-  category: '',
   file: null as File | null
 })
 
 const uploadRules = {
   title: [{ required: true, message: '请输入文档标题', trigger: 'blur' }],
-  category: [{ required: true, message: '请选择文档分类', trigger: 'change' }],
   file: [{ required: true, message: '请选择文件', trigger: 'change' }]
 }
 
@@ -371,7 +359,7 @@ const fetchProjects = async () => {
 const fetchCategories = async () => {
   try {
     const response: any = await documentService.getCategories()
-    categories.value = response || []
+    categories.value = response.categories || []
   } catch (error) {
     console.error('获取分类列表失败:', error)
   }
@@ -407,9 +395,52 @@ const viewDocument = (id: string) => {
 
 const downloadDocument = async (id: string) => {
   try {
-    const response = await documentService.getDocument(id)
-    // TODO: 实现文件下载
-    ElMessage.info('下载功能待实现')
+    const response = await documentService.downloadDocument(id)
+    
+    // 创建下载链接
+    const blob = new Blob([response.data], { type: 'application/octet-stream' })
+    const url = window.URL.createObjectURL(blob)
+    const link = window.document.createElement('a')
+    link.href = url
+    
+    // 从响应头获取文件名，如果没有则使用默认名称
+    const contentDisposition = response.headers?.['content-disposition']
+    let filename = 'document'
+    if (contentDisposition) {
+      // 改进的文件名解析逻辑
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=([^;=\n]+)/)
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].trim().replace(/['"]/g, '')
+      }
+    }
+    
+    // 如果文件名没有扩展名，尝试从Content-Type推断
+    if (!filename.includes('.')) {
+      const contentType = response.headers?.['content-type']
+      if (contentType) {
+        if (contentType.includes('pdf')) {
+          filename = `${filename}.pdf`
+        } else if (contentType.includes('word') || contentType.includes('msword')) {
+          filename = `${filename}.doc`
+        } else if (contentType.includes('excel') || contentType.includes('spreadsheet')) {
+          filename = `${filename}.xls`
+        } else if (contentType.includes('powerpoint') || contentType.includes('presentation')) {
+          filename = `${filename}.ppt`
+        } else if (contentType.includes('text/plain')) {
+          filename = `${filename}.txt`
+        } else if (contentType.includes('text/markdown')) {
+          filename = `${filename}.md`
+        }
+      }
+    }
+    
+    link.download = filename
+    window.document.body.appendChild(link)
+    link.click()
+    window.document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    ElMessage.success('文档下载成功')
   } catch (error) {
     console.error('下载文档失败:', error)
     ElMessage.error('下载文档失败')
@@ -448,7 +479,6 @@ const resetUploadForm = () => {
     title: '',
     description: '',
     project_id: '',
-    category: '',
     file: null
   }
 }
@@ -481,12 +511,17 @@ const handleUpload = async () => {
     formData.append('file', uploadForm.value.file)
     formData.append('title', uploadForm.value.title)
     formData.append('description', uploadForm.value.description)
-    formData.append('category', uploadForm.value.category)
+    
+    // 根据是否选择项目决定使用哪个API
     if (uploadForm.value.project_id) {
+      // 关联到项目的文档
       formData.append('project_id', uploadForm.value.project_id)
+      await documentService.createDocument(formData)
+    } else {
+      // 独立文档
+      await documentService.createStandaloneDocument(formData)
     }
     
-    await documentService.createDocument(uploadForm.value)
     ElMessage.success('文档上传成功')
     uploadDialogVisible.value = false
     fetchDocuments()

@@ -193,11 +193,13 @@ func (h *DocumentHandler) UploadDocument(c *gin.Context) {
 		title = header.Filename
 	}
 	description := c.PostForm("description")
-	category := c.PostForm("category")
 
 	// 确定文件类型
 	fileType := h.getFileType(header.Filename)
 	mimeType := header.Header.Get("Content-Type")
+
+	// 根据文件类型自动确定分类
+	category := h.getCategoryFromFileType(fileType)
 
 	// 创建文档记录
 	document := &models.Document{
@@ -236,23 +238,16 @@ func (h *DocumentHandler) validateFile(header *multipart.FileHeader) error {
 
 	// 检查文件扩展名
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowedExts := map[string]bool{
-		".pdf":  true,
-		".doc":  true,
-		".docx": true,
-		".xls":  true,
-		".xlsx": true,
-		".ppt":  true,
-		".pptx": true,
-		".txt":  true,
-		".md":   true,
-		".jpg":  true,
-		".jpeg": true,
-		".png":  true,
-		".gif":  true,
-		".zip":  true,
-		".rar":  true,
-		".7z":   true,
+	// 移除点号，只保留扩展名
+	ext = strings.TrimPrefix(ext, ".")
+
+	// 从配置中获取允许的文件类型
+	allowedFileTypes := strings.Split(h.documentService.Config.AllowedFileTypes, ",")
+	allowedExts := make(map[string]bool)
+
+	for _, fileType := range allowedFileTypes {
+		fileType = strings.TrimSpace(fileType)
+		allowedExts[fileType] = true
 	}
 
 	if !allowedExts[ext] {
@@ -299,7 +294,7 @@ func (h *DocumentHandler) getFileType(filename string) models.DocumentType {
 		return models.DocumentTypePDF
 	case ".doc", ".docx":
 		return models.DocumentTypeWord
-	case ".xls", ".xlsx":
+	case ".xls", ".xlsx", ".csv":
 		return models.DocumentTypeExcel
 	case ".ppt", ".pptx":
 		return models.DocumentTypePPT
@@ -331,7 +326,13 @@ func (h *DocumentHandler) DownloadDocument(c *gin.Context) {
 	}
 
 	// 从MINIO获取文件内容
-	_, fileReader, err := h.documentService.MinIOService.GetDocument(document.FilePath)
+	minioPath := document.MinIOPath
+	if minioPath == "" {
+		// 如果没有MINIO路径，使用文件路径作为后备
+		minioPath = document.FilePath
+	}
+
+	_, fileReader, err := h.documentService.MinIOService.GetDocument(minioPath)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "文件不存在或无法访问"})
 		return
@@ -348,10 +349,19 @@ func (h *DocumentHandler) DownloadDocument(c *gin.Context) {
 	// 更新下载次数
 	h.documentService.IncrementDownloadCount(documentID)
 
+	// 生成带扩展名的文件名
+	fileName := document.Title
+	if document.FileType != "" {
+		// 如果标题没有扩展名，添加文件类型扩展名
+		if !strings.Contains(fileName, ".") {
+			fileName = fmt.Sprintf("%s.%s", fileName, document.FileType)
+		}
+	}
+
 	// 设置响应头
 	c.Header("Content-Description", "File Transfer")
 	c.Header("Content-Transfer-Encoding", "binary")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", document.Title))
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
 
 	// 根据文件类型设置正确的Content-Type
 	contentType := getContentTypeByFileType(document.FileType)
@@ -840,13 +850,12 @@ func (h *DocumentHandler) CreateStandaloneDocument(c *gin.Context) {
 	if description == "" {
 		description = title
 	}
-	category := c.PostForm("category")
-	if category == "" {
-		category = "other"
-	}
 
 	// 确定文件类型
 	fileType := h.getFileType(header.Filename)
+
+	// 根据文件类型自动确定分类
+	category := h.getCategoryFromFileType(fileType)
 
 	// 创建独立文档
 	document, err := h.documentService.CreateStandaloneDocument(
@@ -1018,5 +1027,29 @@ func getContentTypeByFileType(fileType models.DocumentType) string {
 		return "video/mp4"
 	default:
 		return "application/octet-stream"
+	}
+}
+
+// getCategoryFromFileType 根据文件类型自动确定分类
+func (h *DocumentHandler) getCategoryFromFileType(fileType models.DocumentType) string {
+	switch fileType {
+	case models.DocumentTypePDF:
+		return "pdf"
+	case models.DocumentTypeWord:
+		return "word"
+	case models.DocumentTypeExcel:
+		return "excel"
+	case models.DocumentTypePPT:
+		return "ppt"
+	case models.DocumentTypeText, models.DocumentTypeMarkdown:
+		return "text"
+	case models.DocumentTypeImage:
+		return "image"
+	case models.DocumentTypeVideo:
+		return "video"
+	case models.DocumentTypeCode:
+		return "code"
+	default:
+		return "other"
 	}
 }
