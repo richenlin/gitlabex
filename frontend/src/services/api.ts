@@ -183,6 +183,9 @@ export const researchService = {
   }) =>
     api.get('/research-projects', { params }),
   
+  getHotProjects: (limit?: number) =>
+    api.get('/research-projects/hot', { params: { limit } }),
+  
   getProject: (id: string) =>
     api.get(`/research-projects/${id}`),
   
@@ -234,6 +237,9 @@ export const topicService = {
     labels?: string[]
   }) =>
     api.get('/topics', { params }),
+  
+  getHotTopics: (limit?: number) =>
+    api.get('/topics/hot', { params: { limit } }),
   
   getTopic: (id: string, projectId: string) =>
     api.get(`/topics/${id}?project_id=${projectId}`),

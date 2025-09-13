@@ -985,3 +985,25 @@ func (h *ResearchHandler) CreateHomework(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, homework)
 }
+
+// GetHotProjects 获取热门项目
+func (h *ResearchHandler) GetHotProjects(c *gin.Context) {
+	// 获取限制参数
+	limitStr := c.DefaultQuery("limit", "10")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 || limit > 50 {
+		limit = 10
+	}
+
+	// 获取热门项目
+	projects, err := h.researchService.GetHotProjects(limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取热门项目失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"projects": projects,
+		"count":    len(projects),
+	})
+}

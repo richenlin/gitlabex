@@ -17,13 +17,15 @@ import (
 type TopicHandler struct {
 	gitlabService   *services.GitLabService
 	researchService *services.ResearchService
+	topicService    *services.TopicService
 }
 
 // NewTopicHandler 创建话题处理器
-func NewTopicHandler(gitlabService *services.GitLabService, researchService *services.ResearchService) *TopicHandler {
+func NewTopicHandler(gitlabService *services.GitLabService, researchService *services.ResearchService, topicService *services.TopicService) *TopicHandler {
 	return &TopicHandler{
 		gitlabService:   gitlabService,
 		researchService: researchService,
+		topicService:    topicService,
 	}
 }
 
@@ -709,4 +711,26 @@ func (h *TopicHandler) removeEmojiReaction(c *gin.Context, emojiName, actionName
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%s成功", actionName)})
+}
+
+// GetHotTopics 获取热门话题
+func (h *TopicHandler) GetHotTopics(c *gin.Context) {
+	// 获取限制参数
+	limitStr := c.DefaultQuery("limit", "10")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 || limit > 50 {
+		limit = 10
+	}
+
+	// 获取热门话题
+	topics, err := h.topicService.GetHotTopics(limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取热门话题失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"topics": topics,
+		"count":  len(topics),
+	})
 }

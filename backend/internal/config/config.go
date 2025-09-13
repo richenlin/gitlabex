@@ -41,7 +41,8 @@ type Config struct {
 	JWTExpirationHours int
 
 	// 应用配置
-	FrontendURL string
+	FrontendURL    string
+	AllowedOrigins string
 
 	// MinIO对象存储配置
 	MinIOEndpoint  string
@@ -96,7 +97,8 @@ func Load() *Config {
 		JWTExpirationHours: getEnvAsInt("JWT_EXPIRATION_HOURS", 24),
 
 		// 应用配置
-		FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),
+		FrontendURL:    getEnv("FRONTEND_URL", "http://localhost:3000"),
+		AllowedOrigins: getEnv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://0.0.0.0:3000"),
 
 		// MinIO对象存储配置
 		MinIOEndpoint:  getEnv("MINIO_ENDPOINT", "localhost:9000"),

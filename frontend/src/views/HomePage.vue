@@ -65,7 +65,7 @@
                   <p class="scene-description">{{ scene.description }}</p>
                   <div class="scene-meta">
                     <span>创建于 {{ formatDate(scene.created_at) }}</span>
-                    <span>· {{ scene.view_count || 0 }} 次访问</span>
+                    <span>· 创建者ID: {{ scene.creator_id }}</span>
                   </div>
                   <div class="scene-tags">
                     <el-tag
@@ -105,7 +105,7 @@
                 <h4>{{ scene.name }}</h4>
                 <p>{{ scene.description }}</p>
                 <div class="scene-stats">
-                  <span>参与者: {{ scene.members?.length || 0 }}</span>
+                  <span>状态: {{ scene.status }}</span>
                   <span>创建时间: {{ formatDate(scene.created_at) }}</span>
                 </div>
               </div>
@@ -141,12 +141,12 @@
                 <h4 class="topic-title">{{ topic.title }}</h4>
                 <div class="topic-likes">
                   <el-icon><Star /></el-icon>
-                  {{ topic.likes_count }}
+                  {{ topic.like_count }}
                 </div>
               </div>
               <p class="topic-summary">{{ topic.content.substring(0, 50) }}...</p>
               <div class="topic-meta">
-                <span>{{ topic.author.username }}</span>
+                <span>用户{{ topic.author_id }}</span>
                 <span>{{ formatDate(topic.created_at) }}</span>
               </div>
             </div>
@@ -302,22 +302,40 @@ const checkPermissions = async () => {
 const fetchScenes = async (page = 1) => {
   loading.value = true
   try {
-    const response: any = await researchService.getProjects({
-      page,
-      pageSize,
-      search: searchQuery.value || undefined
-    })
-    
-    // 处理响应数据结构（axios拦截器已经返回response.data）
-    if (response && response.projects) {
-      scenes.value = response.projects || []
-      total.value = response.pagination?.total || response.projects.length || 0
-    } else if (Array.isArray(response)) {
-      scenes.value = response
-      total.value = response.length
+    // 如果是首页第一页且没有搜索条件，调用热门课题接口
+    if (page === 1 && !searchQuery.value) {
+      const response: any = await researchService.getHotProjects(pageSize)
+      
+      // 处理热门课题响应数据结构
+      if (response && response.projects) {
+        scenes.value = response.projects || []
+        total.value = response.count || response.projects.length || 0
+      } else if (Array.isArray(response)) {
+        scenes.value = response
+        total.value = response.length
+      } else {
+        scenes.value = []
+        total.value = 0
+      }
     } else {
-      scenes.value = []
-      total.value = 0
+      // 有搜索条件或分页时，调用普通课题列表接口
+      const response: any = await researchService.getProjects({
+        page,
+        pageSize,
+        search: searchQuery.value || undefined
+      })
+      
+      // 处理响应数据结构（axios拦截器已经返回response.data）
+      if (response && response.projects) {
+        scenes.value = response.projects || []
+        total.value = response.pagination?.total || response.projects.length || 0
+      } else if (Array.isArray(response)) {
+        scenes.value = response
+        total.value = response.length
+      } else {
+        scenes.value = []
+        total.value = 0
+      }
     }
   } catch (error: any) {
     console.error('获取课题列表失败:', error)
@@ -360,12 +378,9 @@ const fetchMyScenes = async () => {
 const fetchHotTopics = async () => {
   topicsLoading.value = true
   try {
-    const response: any = await topicService.getTopics({
-      page: 1,
-      pageSize: 5
-    })
+    const response: any = await topicService.getHotTopics(5)
     
-    // 处理响应数据结构（axios拦截器已经返回response.data）
+    // 处理热门话题响应数据结构
     if (response && response.topics) {
       hotTopics.value = response.topics || []
     } else if (Array.isArray(response)) {

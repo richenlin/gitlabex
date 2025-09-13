@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"gitlabex/internal/config"
 	"gitlabex/internal/database"
@@ -59,6 +61,7 @@ func main() {
 
 	userService := services.NewUserService(db, gitlabService, cfg)
 	researchService := services.NewResearchService(db, gitlabService)
+	topicService := services.NewTopicService(db, gitlabService)
 	documentService := services.NewDocumentService(db, gitlabService, minioService)
 	homeworkService := services.NewHomeworkService(db, gitlabService)
 	notificationService := services.NewNotificationService(db)
@@ -72,7 +75,7 @@ func main() {
 	// 初始化处理器
 	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
 	researchHandler := handlers.NewResearchHandler(researchService, userService, gitlabService)
-	topicHandler := handlers.NewTopicHandler(gitlabService, researchService)
+	topicHandler := handlers.NewTopicHandler(gitlabService, researchService, topicService)
 	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWTSecret)
 	activityHandler := handlers.NewActivityHandler(activityService)
 	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService)
@@ -80,9 +83,22 @@ func main() {
 	// 创建Gin路由器
 	r := gin.Default()
 
-	// 配置CORS
+	// 配置CORS - 从配置文件读取AllowedOrigins
+	allowedOrigins := strings.Split(cfg.AllowedOrigins, ",")
+	// 添加FrontendURL到允许的源列表（如果不在配置中）
+	hasFrontendURL := false
+	for _, origin := range allowedOrigins {
+		if strings.TrimSpace(origin) == cfg.FrontendURL {
+			hasFrontendURL = true
+			break
+		}
+	}
+	if !hasFrontendURL {
+		allowedOrigins = append(allowedOrigins, cfg.FrontendURL)
+	}
+
 	corsConfig := cors.New(cors.Options{
-		AllowedOrigins:   []string{cfg.FrontendURL, "http://localhost:3000", "http://127.0.0.1:3000", "http://0.0.0.0:3000"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"*"},
 		AllowCredentials: true,
@@ -93,6 +109,15 @@ func main() {
 		corsConfig.HandlerFunc(c.Writer, c.Request)
 		c.Next()
 	})
+
+	// 使用XSS防护中间件
+	// 跳过某些不需要XSS检查的路径
+	skipPaths := []string{
+		"/health",
+		"/api/v1/auth/gitlab",
+		"/api/v1/auth/gitlab/callback",
+	}
+	r.Use(middleware.XSSWhitelistMiddleware(skipPaths))
 
 	// 健康检查端点
 	r.GET("/health", func(c *gin.Context) {
@@ -121,16 +146,27 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)
 	users.Use(middleware.RequireAuth(cfg))
 	{
+		// 用户资料 - 不需要缓存（不是高频接口）
 		users.GET("/me", userHandler.GetCurrentUser)
 		users.PUT("/me", userHandler.UpdateCurrentUser)
-		users.GET("/me/stats", userHandler.GetUserPersonalStats)
+
+		// 个人资料页面统计 - 高频接口，添加缓存
+		users.GET("/me/stats", middleware.CacheMiddleware(redisService, 15*time.Minute, "cache:user_stats"), userHandler.GetUserPersonalStats)
+
+		// SSH密钥管理
 		users.GET("/me/ssh-keys", userHandler.GetSSHKeys)
 		users.POST("/me/ssh-keys", userHandler.AddSSHKey)
 		users.DELETE("/me/ssh-keys/:id", userHandler.DeleteSSHKey)
+
+		// 密码管理
 		users.PUT("/me/password", userHandler.ChangePassword)
-		users.GET("/me/notifications", userHandler.GetNotifications)
+
+		// 通知获取 - 高频接口，添加缓存
+		users.GET("/me/notifications", middleware.CacheMiddleware(redisService, 2*time.Minute, "cache:notifications"), userHandler.GetNotifications)
 		users.POST("/me/notifications/:id/read", userHandler.MarkNotificationAsRead)
 		users.POST("/me/notifications/read-all", userHandler.MarkAllNotificationsAsRead)
+
+		// 用户列表
 		users.GET("", userHandler.GetUsers)
 		users.GET("/:id", userHandler.GetUserByID)
 	}
@@ -166,14 +202,17 @@ func main() {
 		researchPublic := research.Group("")
 		researchPublic.Use(middleware.OptionalAuth(cfg))
 		{
-			researchPublic.GET("", researchHandler.GetResearchProjects) // 课题列表 - 游客可访问
+			researchPublic.GET("", researchHandler.GetResearchProjects) // 课题列表 - 游客可访问（不是高频接口，移除缓存）
 		}
+
+		// 热门项目 - 高频接口，添加缓存
+		research.GET("/hot", middleware.CacheMiddleware(redisService, 10*time.Minute, "cache:hot_projects"), researchHandler.GetHotProjects)
 
 		// 需要认证的路由
 		researchAuth := research.Group("")
 		researchAuth.Use(middleware.RequireAuth(cfg))
 		{
-			researchAuth.GET("/:id", researchHandler.GetResearchProjectByID) // 课题详情
+			researchAuth.GET("/:id", researchHandler.GetResearchProjectByID) // 课题详情（不是高频接口，移除缓存）
 			researchAuth.POST("", researchHandler.CreateResearchProject)     // 创建课题不需要项目权限检查
 			researchAuth.PUT("/:id", researchHandler.UpdateResearchProject)
 			researchAuth.DELETE("/:id", researchHandler.DeleteResearchProject)
@@ -199,12 +238,15 @@ func main() {
 	// 话题相关路由
 	topics := api.Group("/topics")
 	{
+		// 热门话题 - 高频接口，添加缓存
+		topics.GET("/hot", middleware.CacheMiddleware(redisService, 10*time.Minute, "cache:hot_topics"), topicHandler.GetHotTopics)
+
 		// 公开访问的路由（游客可访问）
 		topicsPublic := topics.Group("")
 		topicsPublic.Use(middleware.OptionalAuth(cfg))
 		{
-			topicsPublic.GET("", topicHandler.GetTopics)        // 话题列表 - 游客可访问
-			topicsPublic.GET("/:id", topicHandler.GetTopicByID) // 话题详情 - 游客可访问
+			topicsPublic.GET("", topicHandler.GetTopics)        // 话题列表 - 游客可访问（不是高频接口，移除缓存）
+			topicsPublic.GET("/:id", topicHandler.GetTopicByID) // 话题详情 - 游客可访问（不是高频接口，移除缓存）
 		}
 
 		// 需要认证的路由
@@ -213,10 +255,11 @@ func main() {
 		{
 			topicsAuth.POST("", topicHandler.CreateTopic)
 			topicsAuth.POST("/:id/comments", topicHandler.CreateComment)
-			topicsAuth.POST("/:id/like", topicHandler.LikeTopic)
-			topicsAuth.DELETE("/:id/like", topicHandler.UnlikeTopic)
-			topicsAuth.POST("/:id/dislike", topicHandler.DislikeTopic)
-			topicsAuth.DELETE("/:id/dislike", topicHandler.UndislikeTopic)
+			// 话题浏览点赞反对回复计数 - 高频接口，添加缓存
+			topicsAuth.POST("/:id/like", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topic_stats"), topicHandler.LikeTopic)
+			topicsAuth.DELETE("/:id/like", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topic_stats"), topicHandler.UnlikeTopic)
+			topicsAuth.POST("/:id/dislike", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topic_stats"), topicHandler.DislikeTopic)
+			topicsAuth.DELETE("/:id/dislike", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topic_stats"), topicHandler.UndislikeTopic)
 		}
 	}
 
@@ -225,9 +268,9 @@ func main() {
 	documentHandler := handlers.NewDocumentHandler(documentService)
 	{
 		// 公开访问的路由（不需要认证）
-		documents.GET("", documentHandler.GetDocuments)                     // 文档列表
-		documents.GET("/:id", documentHandler.GetDocumentByID)              // 文档详情
-		documents.GET("/categories", documentHandler.GetDocumentCategories) // 文档分类
+		documents.GET("", documentHandler.GetDocuments)                     // 文档列表（不是高频接口，移除缓存）
+		documents.GET("/:id", documentHandler.GetDocumentByID)              // 文档详情（不是高频接口，移除缓存）
+		documents.GET("/categories", documentHandler.GetDocumentCategories) // 文档分类（不是高频接口，移除缓存）
 		documents.GET("/search", documentHandler.SearchDocuments)           // 文档搜索
 
 		// 需要认证的路由
@@ -389,13 +432,14 @@ func main() {
 	activities := api.Group("/activities")
 	{
 		// 公开访问的路由（游客可访问最近活动）
-		activities.GET("/recent", activityHandler.GetRecentActivities) // 最近活动 - 游客可访问
+		// 最新活动 - 高频接口，保留缓存
+		activities.GET("/recent", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:recent_activities"), activityHandler.GetRecentActivities)
 
 		// 需要认证的路由
 		activitiesAuth := activities.Group("")
 		activitiesAuth.Use(middleware.RequireAuth(cfg))
 		{
-			activitiesAuth.GET("/users/:userID", activityHandler.GetUserActivities) // 用户活动
+			activitiesAuth.GET("/users/:userID", activityHandler.GetUserActivities) // 用户活动（不是高频接口，移除缓存）
 		}
 	}
 

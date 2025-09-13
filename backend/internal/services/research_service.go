@@ -188,17 +188,10 @@ func (s *ResearchService) SearchProjects(keyword string, limit, offset int) ([]m
 func (s *ResearchService) GetHotProjects(limit int) ([]models.ResearchProject, error) {
 	var projects []models.ResearchProject
 	err := s.db.Where("is_public = ?", true).
-		Order("view_count DESC, created_at DESC").
+		Order("created_at DESC").
 		Limit(limit).
 		Find(&projects).Error
 	return projects, err
-}
-
-// IncrementViewCount 增加项目浏览次数
-func (s *ResearchService) IncrementViewCount(projectID uuid.UUID) error {
-	return s.db.Model(&models.ResearchProject{}).
-		Where("id = ?", projectID).
-		UpdateColumn("view_count", gorm.Expr("view_count + 1")).Error
 }
 
 // GetProjectActivity 获取项目活跃度统计

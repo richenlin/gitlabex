@@ -162,7 +162,7 @@ func (s *TopicService) SearchTopics(keyword string, limit, offset int) ([]models
 func (s *TopicService) GetHotTopics(limit int) ([]models.Topic, error) {
 	var topics []models.Topic
 	err := s.db.Preload("Project").
-		Order("likes_count DESC, created_at DESC").
+		Order("like_count DESC, created_at DESC").
 		Limit(limit).
 		Find(&topics).Error
 	return topics, err
