@@ -79,49 +79,6 @@
         </div>
       </div>
 
-      <!-- 文档预览 -->
-      <div class="document-preview card" v-if="canPreview">
-        <div class="preview-header">
-          <h3>文档预览</h3>
-          <div class="preview-actions">
-            <el-button size="small" @click="toggleFullscreen">
-              <el-icon><FullScreen /></el-icon>
-              全屏预览
-            </el-button>
-          </div>
-        </div>
-        
-        <div class="preview-content" :class="{ fullscreen: isFullscreen }">
-          <!-- PDF预览 -->
-          <div v-if="document.file_type === 'pdf'" class="pdf-preview">
-            <iframe 
-              :src="getPreviewUrl()" 
-              width="100%" 
-              height="600px"
-              frameborder="0"
-            ></iframe>
-          </div>
-          
-          <!-- 图片预览 -->
-          <div v-else-if="isImageFile(document.file_type)" class="image-preview">
-            <img :src="getPreviewUrl()" alt="文档预览" />
-          </div>
-          
-          <!-- 文本文件预览 -->
-          <div v-else-if="isTextFile(document.file_type)" class="text-preview">
-            <pre class="text-content">{{ textContent }}</pre>
-          </div>
-          
-          <!-- 不支持预览的文件 -->
-          <div v-else class="no-preview">
-            <el-icon class="no-preview-icon"><Document /></el-icon>
-            <p>此文件类型不支持在线预览</p>
-            <el-button type="primary" @click="downloadDocument">
-              下载查看
-            </el-button>
-          </div>
-        </div>
-      </div>
 
       <!-- 编辑历史 -->
       <div class="edit-history card" v-if="canViewHistory">
@@ -358,13 +315,6 @@ const canRequestEdit = computed(() => {
   return userStore.isLoggedIn && !canEdit.value
 })
 
-const canPreview = computed(() => {
-  if (!document.value) return false
-  const previewableTypes = ['pdf', 'image', 'text']
-  return previewableTypes.includes(document.value.file_type) || 
-         isImageFile(document.value.file_type) || 
-         isTextFile(document.value.file_type)
-})
 
 const canViewHistory = computed(() => {
   // 简化检查：管理员或教师，具体权限由后端验证
@@ -378,10 +328,6 @@ const fetchDocument = async () => {
     const response: any = await documentService.getDocument(documentId.value)
     document.value = response
     
-    // 如果是文本文件，加载内容
-    if (document.value && isTextFile(document.value.file_type)) {
-      await loadTextContent()
-    }
     
     // 加载相关数据
     fetchRelatedDocuments()
@@ -430,15 +376,6 @@ const fetchCategories = async () => {
   }
 }
 
-const loadTextContent = async () => {
-  try {
-    // 这里应该调用获取文件内容的API
-    // 暂时使用模拟数据
-    textContent.value = '文档内容加载中...'
-  } catch (error) {
-    console.error('加载文本内容失败:', error)
-  }
-}
 
 const downloadDocument = () => {
   // 实现文档下载逻辑
@@ -550,18 +487,6 @@ const viewDocument = (id: string) => {
   router.push(`/documents/${id}`)
 }
 
-const getPreviewUrl = () => {
-  if (!document.value) return ''
-  return `/api/documents/${document.value.id}/preview`
-}
-
-const isImageFile = (fileType: string) => {
-  return ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'].includes(fileType.toLowerCase())
-}
-
-const isTextFile = (fileType: string) => {
-  return ['txt', 'md', 'json', 'xml', 'csv'].includes(fileType.toLowerCase())
-}
 
 const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('zh-CN', {
@@ -742,80 +667,6 @@ onMounted(() => {
   margin: 0;
 }
 
-/* 文档预览样式 */
-.document-preview {
-  margin-bottom: 20px;
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.preview-header h3 {
-  margin: 0;
-  color: var(--text-color);
-}
-
-.preview-content {
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.preview-content.fullscreen {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 9999;
-  background-color: white;
-}
-
-.pdf-preview iframe {
-  width: 100%;
-  height: 600px;
-}
-
-.image-preview {
-  text-align: center;
-  padding: 20px;
-}
-
-.image-preview img {
-  max-width: 100%;
-  max-height: 600px;
-  border-radius: 4px;
-}
-
-.text-preview {
-  padding: 20px;
-  max-height: 600px;
-  overflow: auto;
-}
-
-.text-content {
-  margin: 0;
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.no-preview {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--light-text);
-}
-
-.no-preview-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
 
 /* 编辑历史样式 */
 .edit-history {
@@ -957,11 +808,6 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
   
-  .preview-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
   
   .history-info {
     flex-direction: column;

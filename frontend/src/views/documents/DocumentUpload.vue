@@ -54,10 +54,11 @@
           <el-form-item label="文档分类">
             <el-select 
               v-model="uploadForm.category" 
-              placeholder="选择分类"
+              placeholder="选择分类（可选，默认根据文件类型自动设置）"
               style="width: 100%"
               allow-create
               filterable
+              clearable
             >
               <el-option
                 v-for="category in categories"
@@ -66,6 +67,9 @@
                 :value="category"
               />
             </el-select>
+            <div class="form-tip">
+              支持的文件格式：PDF(.pdf)、Word(.doc, .docx)、Excel(.xls, .xlsx)、PowerPoint(.ppt, .pptx)、文本(.txt)、Markdown(.md)
+            </div>
           </el-form-item>
           
           <el-form-item label="上传文件" prop="project_id">
@@ -102,7 +106,7 @@ const userStore = useUserStore()
 
 // 响应式数据
 const projects = ref<ResearchProject[]>([])
-const categories = ref(['技术文档', '研究报告', '数据集', '代码示例', '参考资料', '其他'])
+const categories = ref(['pdf', 'word', 'excel', 'powerpoint', 'text', 'markdown'])
 const uploadFormRef = ref<FormInstance>()
 
 const uploadForm = ref({
@@ -188,5 +192,12 @@ onMounted(() => {
 .el-upload__tip {
   text-align: center;
   color: #606266;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 </style>

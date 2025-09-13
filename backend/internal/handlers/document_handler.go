@@ -1006,6 +1006,10 @@ func getContentTypeByFileType(fileType models.DocumentType) string {
 		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	case models.DocumentTypePPT:
 		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case models.DocumentTypeText:
+		return "text/plain"
+	case models.DocumentTypeMarkdown:
+		return "text/markdown"
 	case models.DocumentTypeCode:
 		return "text/plain"
 	case models.DocumentTypeImage:

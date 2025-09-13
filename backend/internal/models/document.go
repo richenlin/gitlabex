@@ -11,14 +11,16 @@ import (
 type DocumentType string
 
 const (
-	DocumentTypePDF   DocumentType = "pdf"
-	DocumentTypeWord  DocumentType = "word"
-	DocumentTypeExcel DocumentType = "excel"
-	DocumentTypePPT   DocumentType = "ppt"
-	DocumentTypeCode  DocumentType = "code"
-	DocumentTypeImage DocumentType = "image"
-	DocumentTypeVideo DocumentType = "video"
-	DocumentTypeOther DocumentType = "other"
+	DocumentTypePDF      DocumentType = "pdf"
+	DocumentTypeWord     DocumentType = "word"
+	DocumentTypeExcel    DocumentType = "excel"
+	DocumentTypePPT      DocumentType = "ppt"
+	DocumentTypeText     DocumentType = "text"
+	DocumentTypeMarkdown DocumentType = "markdown"
+	DocumentTypeCode     DocumentType = "code"
+	DocumentTypeImage    DocumentType = "image"
+	DocumentTypeVideo    DocumentType = "video"
+	DocumentTypeOther    DocumentType = "other"
 )
 
 // DocumentStatus 文档状态

@@ -264,47 +264,22 @@ func extractDescriptionFromContent(content string, filename string) string {
 	return description
 }
 
-// categorizeDocument 根据文件路径和类型自动分类文档
+// categorizeDocument 根据文件类型自动分类文档
 func categorizeDocument(filePath string, fileType string) string {
-	// 根据路径关键词分类
-	path := strings.ToLower(filePath)
-
-	if strings.Contains(path, "docs/") || strings.Contains(path, "documentation/") {
-		return "documentation"
-	}
-	if strings.Contains(path, "tutorial/") || strings.Contains(path, "guide/") {
-		return "tutorial"
-	}
-	if strings.Contains(path, "assignment/") || strings.Contains(path, "homework/") {
-		return "assignment"
-	}
-	if strings.Contains(path, "lecture/") || strings.Contains(path, "slide/") {
-		return "lecture"
-	}
-	if strings.Contains(path, "lab/") || strings.Contains(path, "experiment/") {
-		return "lab"
-	}
-	if strings.Contains(path, "exam/") || strings.Contains(path, "test/") {
-		return "exam"
-	}
-	if strings.Contains(path, "note/") || strings.Contains(path, "notes/") {
-		return "notes"
-	}
-
 	// 根据文件类型分类
 	switch fileType {
 	case "pdf":
 		return "pdf"
 	case "doc", "docx":
 		return "word"
+	case "xls", "xlsx":
+		return "excel"
 	case "ppt", "pptx":
-		return "presentation"
-	case "excel":
-		return "spreadsheet"
-	case "python", "java", "cpp", "c", "go", "rust", "javascript", "typescript":
-		return "code"
-	case "markdown", "text":
+		return "powerpoint"
+	case "txt":
 		return "text"
+	case "md":
+		return "markdown"
 	default:
 		return "other"
 	}
@@ -422,6 +397,14 @@ func getFileType(filename string) string {
 		return "pdf"
 	case ".doc", ".docx":
 		return "doc"
+	case ".xls", ".xlsx":
+		return "xls"
+	case ".ppt", ".pptx":
+		return "ppt"
+	case ".txt":
+		return "txt"
+	case ".md":
+		return "md"
 	default:
 		return "other"
 	}

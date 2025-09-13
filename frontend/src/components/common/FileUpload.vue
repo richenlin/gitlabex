@@ -74,7 +74,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   multiple: true,
-  accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.jpg,.jpeg,.png,.gif,.zip,.rar,.7z',
+  accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md',
   limit: 10,
   maxSize: 50,
   autoUpload: true,
@@ -119,17 +119,10 @@ const acceptText = computed(() => {
     '.docx': 'Word',
     '.xls': 'Excel',
     '.xlsx': 'Excel',
-    '.ppt': 'PPT',
-    '.pptx': 'PPT',
+    '.ppt': 'PowerPoint',
+    '.pptx': 'PowerPoint',
     '.txt': '文本',
-    '.md': 'Markdown',
-    '.jpg': '图片',
-    '.jpeg': '图片',
-    '.png': '图片',
-    '.gif': '图片',
-    '.zip': '压缩包',
-    '.rar': '压缩包',
-    '.7z': '压缩包'
+    '.md': 'Markdown'
   }
   
   const extensions = props.accept.split(',')
