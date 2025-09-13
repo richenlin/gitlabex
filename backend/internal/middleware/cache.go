@@ -16,6 +16,12 @@ import (
 // CacheMiddleware 缓存中间件
 func CacheMiddleware(redisService *services.RedisService, expiration time.Duration, keyPrefix string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 如果Redis服务不可用，跳过缓存
+		if redisService == nil {
+			c.Next()
+			return
+		}
+
 		// 只对GET请求进行缓存
 		if c.Request.Method != "GET" {
 			c.Next()
@@ -64,6 +70,12 @@ func CacheMiddleware(redisService *services.RedisService, expiration time.Durati
 // CacheWithTagsMiddleware 带标签的缓存中间件
 func CacheWithTagsMiddleware(redisService *services.RedisService, expiration time.Duration, keyPrefix string, tags []string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 如果Redis服务不可用，跳过缓存
+		if redisService == nil {
+			c.Next()
+			return
+		}
+
 		// 只对GET请求进行缓存
 		if c.Request.Method != "GET" {
 			c.Next()

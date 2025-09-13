@@ -41,7 +41,9 @@ func main() {
 	// 初始化Redis服务
 	redisService, err := services.NewRedisService(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword)
 	if err != nil {
-		log.Fatalf("Failed to initialize Redis service: %v", err)
+		log.Printf("Warning: Failed to initialize Redis service: %v", err)
+		log.Println("Continuing without Redis caching...")
+		redisService = nil
 	}
 
 	// 初始化服务
