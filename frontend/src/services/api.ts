@@ -245,6 +245,7 @@ export const documentService = {
     homeworkId?: string
     category?: string
     search?: string
+    status?: string
   }) =>
     api.get('/documents', { params }),
   
@@ -266,7 +267,7 @@ export const documentService = {
     }),
   
   updateDocument: (id: string, data: Partial<Document>) =>
-    api.put(`/documents/${id}`, data),
+    api.put(`/documents/${id}/with-permission-check`, data),
   
   deleteDocument: (id: string) =>
     api.delete(`/documents/${id}`),
@@ -478,6 +479,75 @@ export const permissionService = {
     api.get('/permissions/user', { 
       params: projectId ? { project_id: projectId } : undefined 
     })
+}
+
+// 用户管理相关 API (管理员专用)
+export const userManagementService = {
+  // 获取用户列表
+  getUsers: (params?: {
+    page?: number
+    pageSize?: number
+    search?: string
+    role?: string
+  }) =>
+    api.get('/admin/users', { params }),
+  
+  // 创建用户
+  createUser: (data: {
+    username: string
+    name: string
+    email: string
+    password: string
+    is_admin?: boolean
+    default_role?: string
+  }) =>
+    api.post('/admin/users', data),
+  
+  // 更新用户信息
+  updateUser: (userId: string, data: Partial<User>) =>
+    api.put(`/admin/users/${userId}`, data),
+  
+  // 删除用户
+  deleteUser: (userId: string) =>
+    api.delete(`/admin/users/${userId}`),
+  
+  // 获取用户详情
+  getUserDetails: (userId: string) =>
+    api.get(`/admin/users/${userId}`),
+  
+  // 更新用户角色
+  updateUserRoles: (userId: string, data: {
+    is_admin?: boolean
+    project_roles?: Array<{
+      project_id: string
+      role: string
+    }>
+  }) =>
+    api.put(`/admin/users/${userId}/roles`, data),
+  
+  // 获取用户项目角色
+  getUserProjectRoles: (userId: string) =>
+    api.get(`/admin/users/${userId}/project-roles`),
+  
+  // 添加用户到项目
+  addUserToProject: (userId: string, projectId: string, role: string) =>
+    api.post(`/admin/users/${userId}/projects`, { project_id: projectId, role }),
+  
+  // 从项目移除用户
+  removeUserFromProject: (userId: string, projectId: string) =>
+    api.delete(`/admin/users/${userId}/projects/${projectId}`),
+  
+  // 批量操作用户
+  batchUpdateUsers: (data: {
+    user_ids: string[]
+    action: 'enable' | 'disable' | 'delete'
+    roles?: any
+  }) =>
+    api.post('/admin/users/batch', data),
+  
+  // 获取用户统计信息
+  getUserStats: () =>
+    api.get('/admin/users/stats')
 }
 
 // 活动相关 API

@@ -638,11 +638,13 @@ func (h *DocumentHandler) SubmitEditRequest(c *gin.Context) {
 	requesterID := gitlabUserID.(int64)
 
 	var req struct {
-		Title       string   `json:"title"`
-		Description string   `json:"description"`
-		Category    string   `json:"category"`
-		Tags        []string `json:"tags"`
-		Reason      string   `json:"reason" binding:"required"`
+		ProposedChanges struct {
+			Title       string   `json:"title"`
+			Description string   `json:"description"`
+			Category    string   `json:"category"`
+			Tags        []string `json:"tags"`
+		} `json:"proposed_changes"`
+		Reason string `json:"reason" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -652,17 +654,17 @@ func (h *DocumentHandler) SubmitEditRequest(c *gin.Context) {
 
 	// 构建编辑数据
 	editData := make(map[string]interface{})
-	if req.Title != "" {
-		editData["title"] = req.Title
+	if req.ProposedChanges.Title != "" {
+		editData["title"] = req.ProposedChanges.Title
 	}
-	if req.Description != "" {
-		editData["description"] = req.Description
+	if req.ProposedChanges.Description != "" {
+		editData["description"] = req.ProposedChanges.Description
 	}
-	if req.Category != "" {
-		editData["category"] = req.Category
+	if req.ProposedChanges.Category != "" {
+		editData["category"] = req.ProposedChanges.Category
 	}
-	if len(req.Tags) > 0 {
-		editData["tags"] = req.Tags
+	if len(req.ProposedChanges.Tags) > 0 {
+		editData["tags"] = req.ProposedChanges.Tags
 	}
 
 	editRequest, err := h.documentService.SubmitEditRequest(documentID, requesterID, editData, req.Reason)
@@ -682,9 +684,9 @@ func (h *DocumentHandler) GetEditRequests(c *gin.Context) {
 
 	offset := (page - 1) * pageSize
 
-	var reviewerID *uuid.UUID
+	var reviewerID *int64
 	if reviewerIDStr := c.Query("reviewer_id"); reviewerIDStr != "" {
-		if id, err := uuid.Parse(reviewerIDStr); err == nil {
+		if id, err := strconv.ParseInt(reviewerIDStr, 10, 64); err == nil {
 			reviewerID = &id
 		}
 	}
@@ -720,6 +722,13 @@ func (h *DocumentHandler) ReviewEditRequest(c *gin.Context) {
 	}
 
 	reviewerID := gitlabUserID.(int64)
+
+	// 检查审核权限：只有管理员和教师可以审核编辑请求
+	canReview := h.CheckUserPermission(c, "admin") || h.CheckUserPermission(c, "teacher")
+	if !canReview {
+		c.JSON(http.StatusForbidden, gin.H{"error": "权限不足，只有管理员和教师可以审核编辑请求"})
+		return
+	}
 
 	var req struct {
 		Approved bool   `json:"approved"`
@@ -913,10 +922,48 @@ func (h *DocumentHandler) GetDocumentDownloadURL(c *gin.Context) {
 
 // CheckUserPermission 检查用户权限（基于GitLab角色）
 func (h *DocumentHandler) CheckUserPermission(c *gin.Context, requiredRole string) bool {
-	// TODO: 实现基于GitLab用户角色的权限检查
-	// 这里需要从用户会话中获取GitLab用户信息和角色
-	// 暂时返回true，允许所有操作
-	return true
+	// 检查是否为管理员
+	isAdmin, exists := c.Get("is_admin")
+	if exists && isAdmin.(bool) {
+		return true // 管理员拥有所有权限
+	}
+
+	// 根据所需角色检查权限
+	switch requiredRole {
+	case "admin":
+		return isAdmin != nil && isAdmin.(bool)
+	case "teacher":
+		// 检查用户是否为教师（Maintainer或Owner级别）
+		// 这里需要项目上下文，暂时通过检查用户是否为文档上传者来判断
+		// 在实际应用中，应该通过GitLab API检查用户在项目中的访问级别
+		gitlabUserID, exists := c.Get("gitlab_user_id")
+		if !exists {
+			return false
+		}
+
+		// 获取文档ID并检查用户是否为文档上传者
+		documentIDStr := c.Param("id")
+		if documentIDStr == "" {
+			return false
+		}
+
+		documentID, err := uuid.Parse(documentIDStr)
+		if err != nil {
+			return false
+		}
+
+		// 获取文档信息
+		document, err := h.documentService.GetDocumentByID(documentID)
+		if err != nil {
+			return false
+		}
+
+		// 检查用户是否为文档上传者（简化判断）
+		// 在实际应用中，应该检查用户在项目中的GitLab访问级别
+		return document.UploaderID == gitlabUserID.(int64)
+	default:
+		return false
+	}
 }
 
 // UpdateDocumentWithPermissionCheck 带权限检查的文档更新

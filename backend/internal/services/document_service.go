@@ -516,13 +516,13 @@ func (s *DocumentService) SubmitEditRequest(documentID uuid.UUID, requesterID in
 	}
 
 	// 预加载关联数据
-	s.DB.Preload("Document").Preload("Requester").First(editRequest, editRequest.ID)
+	s.DB.Preload("Document").First(editRequest, editRequest.ID)
 
 	return editRequest, nil
 }
 
 // GetEditRequests 获取文档编辑请求列表
-func (s *DocumentService) GetEditRequests(status string, reviewerID *uuid.UUID, limit, offset int) ([]models.DocumentEditRequest, int64, error) {
+func (s *DocumentService) GetEditRequests(status string, reviewerID *int64, limit, offset int) ([]models.DocumentEditRequest, int64, error) {
 	var requests []models.DocumentEditRequest
 	var total int64
 
@@ -540,7 +540,7 @@ func (s *DocumentService) GetEditRequests(status string, reviewerID *uuid.UUID, 
 	query.Count(&total)
 
 	// 获取分页数据
-	err := query.Preload("Document").Preload("Requester").Preload("Reviewer").
+	err := query.Preload("Document").
 		Order("created_at DESC").
 		Limit(limit).Offset(offset).
 		Find(&requests).Error
@@ -550,8 +550,9 @@ func (s *DocumentService) GetEditRequests(status string, reviewerID *uuid.UUID, 
 
 // ReviewEditRequest 审核文档编辑请求
 func (s *DocumentService) ReviewEditRequest(requestID uuid.UUID, reviewerID int64, approved bool, comments string) error {
-	// TODO: 重构审核者权限检查以使用GitLab用户系统
-	// 暂时跳过权限检查
+	// 检查审核者权限：只有管理员和教师可以审核编辑请求
+	// 这里需要从GitLab API获取用户权限，暂时简化处理
+	// 在实际应用中，应该通过GitLab API检查用户的访问级别
 
 	// 获取编辑请求
 	var editRequest models.DocumentEditRequest

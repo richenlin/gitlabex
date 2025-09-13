@@ -57,6 +57,13 @@
             <el-option label="其他" value="other" />
           </el-select>
         </el-col>
+        <el-col :span="3">
+          <el-select v-model="statusFilter" placeholder="审核状态" clearable @change="fetchDocuments">
+            <el-option label="待审核" value="pending" />
+            <el-option label="已通过" value="approved" />
+            <el-option label="已拒绝" value="rejected" />
+          </el-select>
+        </el-col>
       </el-row>
     </div>
 
@@ -132,10 +139,25 @@
           {{ formatDate(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="审核状态" width="100">
+        <template #default="{ row }">
+          <el-tag :type="getStatusTagType(row.status)" size="small">
+            {{ getDocumentStatusText(row.status) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
           <el-button size="small" @click="viewDocument(row.id)">查看</el-button>
           <el-button size="small" type="primary" @click="downloadDocument(row.id)">下载</el-button>
+          <el-button 
+            size="small" 
+            type="success" 
+            @click="approveDocument(row)"
+            v-if="canApprove(row)"
+          >
+            审核
+          </el-button>
           <el-button 
             size="small" 
             type="danger" 
@@ -261,6 +283,36 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 审核确认对话框 -->
+    <el-dialog v-model="approveDialogVisible" title="审核文档" width="500px">
+      <div class="approve-content">
+        <div class="document-info">
+          <h4>{{ currentDocument?.title }}</h4>
+          <p><strong>上传者:</strong> {{ currentDocument?.upload_user?.name }}</p>
+          <p><strong>上传时间:</strong> {{ currentDocument?.created_at ? formatDate(currentDocument.created_at) : '-' }}</p>
+          <p><strong>文件大小:</strong> {{ currentDocument?.file_size ? formatFileSize(currentDocument.file_size) : '-' }}</p>
+        </div>
+        <el-form :model="approveForm" label-width="80px">
+          <el-form-item label="审核意见">
+            <el-input 
+              v-model="approveForm.comments" 
+              type="textarea" 
+              :rows="3"
+              placeholder="请输入审核意见（可选）"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="approveDialogVisible = false">取消</el-button>
+          <el-button type="success" @click="confirmApprove" :loading="approving">
+            审核通过
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -291,12 +343,19 @@ const searchQuery = ref('')
 const projectFilter = ref('')
 const categoryFilter = ref('')
 const typeFilter = ref('')
+const statusFilter = ref('')
 const viewMode = ref('list')
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
 const uploadDialogVisible = ref(false)
+const approveDialogVisible = ref(false)
+const approving = ref(false)
+const currentDocument = ref<Document | null>(null)
+const approveForm = ref({
+  comments: ''
+})
 const uploadFormRef = ref<FormInstance>()
 const uploadRef = ref<UploadInstance>()
 
@@ -335,7 +394,8 @@ const fetchDocuments = async () => {
       pageSize: pageSize.value,
       search: searchQuery.value || undefined,
       projectId: projectFilter.value || undefined,
-      category: categoryFilter.value || undefined
+      category: categoryFilter.value || undefined,
+      status: statusFilter.value || undefined
     })
     documents.value = response.documents || []
     total.value = response.pagination?.total || 0
@@ -469,6 +529,38 @@ const canDelete = (doc: Document) => {
   return userStore.hasRole('admin') || doc.upload_user?.id === userStore.user?.id
 }
 
+const canApprove = (doc: Document) => {
+  // 只有管理员和教师可以审核，且文档状态为pending
+  return (userStore.hasRole('admin') || userStore.hasRole('teacher')) && doc.status === 'pending'
+}
+
+const approveDocument = (doc: Document) => {
+  currentDocument.value = doc
+  approveForm.value.comments = ''
+  approveDialogVisible.value = true
+}
+
+const confirmApprove = async () => {
+  if (!currentDocument.value) return
+  
+  approving.value = true
+  try {
+    // 这里需要调用审核API，暂时使用更新文档状态的方式
+    await documentService.updateDocument(currentDocument.value.id, {
+      status: 'approved'
+    })
+    
+    ElMessage.success('文档审核通过')
+    approveDialogVisible.value = false
+    fetchDocuments()
+  } catch (error) {
+    console.error('审核失败:', error)
+    ElMessage.error('审核失败')
+  } finally {
+    approving.value = false
+  }
+}
+
 const showUploadDialog = () => {
   uploadDialogVisible.value = true
   resetUploadForm()
@@ -569,6 +661,24 @@ const formatDate = (date: string) => {
   return new Date(date).toLocaleDateString('zh-CN')
 }
 
+const getDocumentStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    pending: '待审核',
+    approved: '已通过',
+    rejected: '已拒绝'
+  }
+  return statusMap[status] || status
+}
+
+const getStatusTagType = (status: string) => {
+  const typeMap: Record<string, string> = {
+    pending: 'warning',
+    approved: 'success',
+    rejected: 'danger'
+  }
+  return typeMap[status] || 'info'
+}
+
 // 生命周期
 onMounted(() => {
   fetchDocuments()
@@ -667,8 +777,29 @@ onMounted(() => {
 .document-title {
   margin: 0;
   font-size: 14px;
-  font-weight: 600;
-  line-height: 1.4;
+}
+
+/* 审核对话框样式 */
+.approve-content {
+  margin-bottom: 20px;
+}
+
+.document-info {
+  background: #f5f7fa;
+  padding: 15px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.document-info h4 {
+  margin: 0 0 10px 0;
+  color: #303133;
+}
+
+.document-info p {
+  margin: 5px 0;
+  color: #606266;
+  font-size: 14px;
 }
 
 .document-description {
@@ -678,6 +809,7 @@ onMounted(() => {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
 }
 

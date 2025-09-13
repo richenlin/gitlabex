@@ -80,6 +80,54 @@
       </div>
 
 
+      <!-- 待审核的编辑请求 -->
+      <div class="pending-requests card" v-if="canViewHistory && pendingRequests.length > 0">
+        <div class="requests-header">
+          <h3>待审核的编辑请求</h3>
+        </div>
+        
+        <div class="requests-list" v-loading="requestsLoading">
+          <div 
+            v-for="request in pendingRequests" 
+            :key="request.id"
+            class="request-item"
+          >
+            <div class="request-info">
+              <div class="request-user">
+                <span>申请人: {{ request.requester_id }}</span>
+              </div>
+              <div class="request-time">{{ formatDate(request.created_at) }}</div>
+            </div>
+            <div class="request-content">
+              <div class="request-reason" v-if="request.reason">
+                <strong>修改原因:</strong> {{ request.reason }}
+              </div>
+              <div class="request-changes" v-if="request.title || request.description">
+                <div v-if="request.title">
+                  <strong>标题:</strong> {{ request.title }}
+                </div>
+                <div v-if="request.description">
+                  <strong>描述:</strong> {{ request.description }}
+                </div>
+                <div v-if="request.category">
+                  <strong>分类:</strong> {{ request.category }}
+                </div>
+              </div>
+            </div>
+            <div class="request-actions">
+              <el-button @click="approveRequest(request.id)" type="success" size="small">
+                <el-icon><Check /></el-icon>
+                通过
+              </el-button>
+              <el-button @click="rejectRequest(request.id)" type="danger" size="small">
+                <el-icon><Close /></el-icon>
+                拒绝
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 编辑历史 -->
       <div class="edit-history card" v-if="canViewHistory">
         <div class="history-header">
@@ -256,7 +304,9 @@ import {
   Edit, 
   EditPen, 
   FullScreen, 
-  Document as DocumentIcon 
+  Document as DocumentIcon,
+  Check,
+  Close
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -266,12 +316,14 @@ const userStore = useUserStore()
 // 响应式数据
 const document = ref<Document | null>(null)
 const editHistory = ref<any[]>([])
+const pendingRequests = ref<any[]>([])
 const relatedDocuments = ref<Document[]>([])
 const categories = ref<string[]>([])
 const textContent = ref('')
 
 const loading = ref(false)
 const historyLoading = ref(false)
+const requestsLoading = ref(false)
 const saving = ref(false)
 const requesting = ref(false)
 const isFullscreen = ref(false)
@@ -351,6 +403,21 @@ const fetchEditHistory = async () => {
     console.error('获取编辑历史失败:', error)
   } finally {
     historyLoading.value = false
+  }
+}
+
+const fetchPendingRequests = async () => {
+  requestsLoading.value = true
+  try {
+    const response: any = await documentService.getEditRequests()
+    // 过滤出当前文档的待审核请求
+    pendingRequests.value = (response.edit_requests || []).filter((req: any) => 
+      req.document_id === documentId.value && req.status === 'pending'
+    )
+  } catch (error) {
+    console.error('获取待审核请求失败:', error)
+  } finally {
+    requestsLoading.value = false
   }
 }
 
@@ -490,11 +557,48 @@ const submitEditRequest = async () => {
     
     ElMessage.success('修改申请提交成功，等待审核')
     requestEditDialogVisible.value = false
+    // 刷新待审核请求列表
+    fetchPendingRequests()
   } catch (error) {
     console.error('提交修改申请失败:', error)
     ElMessage.error('提交修改申请失败')
   } finally {
     requesting.value = false
+  }
+}
+
+const approveRequest = async (requestId: string) => {
+  try {
+    await documentService.reviewEditRequest(requestId, {
+      approved: true,
+      comments: '审核通过'
+    })
+    
+    ElMessage.success('编辑请求已通过')
+    // 刷新数据
+    fetchPendingRequests()
+    fetchEditHistory()
+    fetchDocument()
+  } catch (error) {
+    console.error('审核失败:', error)
+    ElMessage.error('审核失败')
+  }
+}
+
+const rejectRequest = async (requestId: string) => {
+  try {
+    await documentService.reviewEditRequest(requestId, {
+      approved: false,
+      comments: '审核拒绝'
+    })
+    
+    ElMessage.success('编辑请求已拒绝')
+    // 刷新数据
+    fetchPendingRequests()
+    fetchEditHistory()
+  } catch (error) {
+    console.error('审核失败:', error)
+    ElMessage.error('审核失败')
   }
 }
 
@@ -595,6 +699,9 @@ const getEditStatusTagType = (status: string) => {
 // 生命周期
 onMounted(() => {
   fetchDocument()
+  if (canViewHistory.value) {
+    fetchPendingRequests()
+  }
 })
 </script>
 
@@ -813,6 +920,93 @@ onMounted(() => {
   gap: 16px;
   font-size: 12px;
   color: var(--lighter-text);
+}
+
+/* 待审核请求样式 */
+.pending-requests {
+  margin-bottom: 20px;
+}
+
+.requests-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.requests-header h3 {
+  margin: 0;
+  color: var(--primary-color);
+  font-size: 18px;
+}
+
+.requests-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.request-item {
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-color);
+  transition: all 0.3s ease;
+}
+
+.request-item:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.request-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.request-user {
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.request-time {
+  font-size: 12px;
+  color: var(--light-text);
+}
+
+.request-content {
+  margin-bottom: 16px;
+}
+
+.request-reason {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--light-bg);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.request-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.request-changes div {
+  padding: 6px 10px;
+  background: var(--light-bg);
+  border-radius: 4px;
+}
+
+.request-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 /* 表单样式 */
