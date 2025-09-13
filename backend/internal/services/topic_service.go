@@ -31,9 +31,7 @@ func (s *TopicService) GetTopicsByProject(projectID uuid.UUID, limit, offset int
 		return nil, 0, err
 	}
 
-	err = s.db.Preload("Author").
-		Preload("Comments.Author").
-		Preload("Project").
+	err = s.db.Preload("Project").
 		Where("project_id = ?", projectID).
 		Order("created_at DESC").
 		Limit(limit).
@@ -55,9 +53,7 @@ func (s *TopicService) GetPublicTopics(limit, offset int) ([]models.Topic, int64
 		return nil, 0, err
 	}
 
-	err = s.db.Preload("Author").
-		Preload("Comments.Author").
-		Where("project_id IS NULL").
+	err = s.db.Where("project_id IS NULL").
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -69,10 +65,7 @@ func (s *TopicService) GetPublicTopics(limit, offset int) ([]models.Topic, int64
 // GetTopicByID 根据ID获取话题
 func (s *TopicService) GetTopicByID(id uuid.UUID) (*models.Topic, error) {
 	var topic models.Topic
-	err := s.db.Preload("Author").
-		Preload("Comments.Author").
-		Preload("Comments.ReplyToUser").
-		Preload("Project").
+	err := s.db.Preload("Project").
 		Preload("Likes").
 		First(&topic, "id = ?", id).Error
 	return &topic, err
@@ -101,9 +94,7 @@ func (s *TopicService) CreateComment(comment *models.Comment) error {
 // GetCommentsByTopic 获取话题评论
 func (s *TopicService) GetCommentsByTopic(topicID uuid.UUID) ([]models.Comment, error) {
 	var comments []models.Comment
-	err := s.db.Preload("Author").
-		Preload("ReplyToUser").
-		Where("topic_id = ?", topicID).
+	err := s.db.Where("topic_id = ?", topicID).
 		Order("created_at ASC").
 		Find(&comments).Error
 	return comments, err
@@ -115,13 +106,13 @@ func (s *TopicService) LikeTopic(like *models.TopicLike) error {
 }
 
 // UnlikeTopic 取消点赞
-func (s *TopicService) UnlikeTopic(userID, topicID uuid.UUID) error {
+func (s *TopicService) UnlikeTopic(userID int64, topicID uuid.UUID) error {
 	return s.db.Where("user_id = ? AND topic_id = ?", userID, topicID).
 		Delete(&models.TopicLike{}).Error
 }
 
 // HasLikedTopic 检查用户是否已点赞话题
-func (s *TopicService) HasLikedTopic(userID, topicID uuid.UUID) (bool, error) {
+func (s *TopicService) HasLikedTopic(userID int64, topicID uuid.UUID) (bool, error) {
 	var count int64
 	err := s.db.Model(&models.TopicLike{}).
 		Where("user_id = ? AND topic_id = ?", userID, topicID).
@@ -157,8 +148,7 @@ func (s *TopicService) SearchTopics(keyword string, limit, offset int) ([]models
 		return nil, 0, err
 	}
 
-	err = query.Preload("Author").
-		Preload("Project").
+	err = query.Preload("Project").
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -170,8 +160,7 @@ func (s *TopicService) SearchTopics(keyword string, limit, offset int) ([]models
 // GetHotTopics 获取热门话题
 func (s *TopicService) GetHotTopics(limit int) ([]models.Topic, error) {
 	var topics []models.Topic
-	err := s.db.Preload("Author").
-		Preload("Project").
+	err := s.db.Preload("Project").
 		Order("likes_count DESC, created_at DESC").
 		Limit(limit).
 		Find(&topics).Error
@@ -181,8 +170,7 @@ func (s *TopicService) GetHotTopics(limit int) ([]models.Topic, error) {
 // GetRecentTopics 获取最近话题
 func (s *TopicService) GetRecentTopics(limit int) ([]models.Topic, error) {
 	var topics []models.Topic
-	err := s.db.Preload("Author").
-		Preload("Project").
+	err := s.db.Preload("Project").
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&topics).Error
@@ -190,7 +178,7 @@ func (s *TopicService) GetRecentTopics(limit int) ([]models.Topic, error) {
 }
 
 // GetUserTopics 获取用户创建的话题
-func (s *TopicService) GetUserTopics(userID uuid.UUID, limit, offset int) ([]models.Topic, int64, error) {
+func (s *TopicService) GetUserTopics(userID int64, limit, offset int) ([]models.Topic, int64, error) {
 	var topics []models.Topic
 	var total int64
 
@@ -201,8 +189,7 @@ func (s *TopicService) GetUserTopics(userID uuid.UUID, limit, offset int) ([]mod
 		return nil, 0, err
 	}
 
-	err = s.db.Preload("Author").
-		Preload("Project").
+	err = s.db.Preload("Project").
 		Where("author_id = ?", userID).
 		Order("created_at DESC").
 		Limit(limit).

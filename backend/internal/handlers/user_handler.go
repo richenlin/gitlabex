@@ -41,9 +41,9 @@ func (h *UserHandler) GetCurrentUser(c *gin.Context) {
 func (h *UserHandler) UpdateCurrentUser(c *gin.Context) {
 	// 用户信息更新应该在GitLab中进行
 	c.JSON(http.StatusOK, gin.H{
-		"message":     "用户信息更新请前往GitLab",
-		"gitlab_url":  "/profile", // GitLab个人资料页面
-		"redirect":    true,
+		"message":    "用户信息更新请前往GitLab",
+		"gitlab_url": "/profile", // GitLab个人资料页面
+		"redirect":   true,
 	})
 }
 
@@ -63,7 +63,7 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
 			return
 		}
-		
+
 		// 获取项目成员列表
 		users, err := h.userService.GetProjectMembers(accessToken.(string), projectID)
 		if err != nil {
@@ -82,7 +82,7 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"users": []interface{}{user},
+		"users":   []interface{}{user},
 		"message": "GitLab API限制，只能获取当前用户或项目成员信息",
 	})
 }

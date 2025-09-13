@@ -467,15 +467,8 @@ func (s *DocumentService) SearchDocuments(keyword string, limit, offset int) ([]
 
 // SubmitEditRequest 提交文档编辑请求（学生使用）
 func (s *DocumentService) SubmitEditRequest(documentID uuid.UUID, requesterID uuid.UUID, editData map[string]interface{}, reason string) (*models.DocumentEditRequest, error) {
-	// 检查用户权限 - 只有学生可以提交编辑请求
-	var requester models.User
-	if err := s.DB.First(&requester, requesterID).Error; err != nil {
-		return nil, err
-	}
-
-	if requester.EduRole != models.EduRoleStudent {
-		return nil, errors.New("只有学生可以提交文档编辑请求")
-	}
+	// TODO: 重构用户权限检查以使用GitLab用户系统
+	// 暂时跳过权限检查，所有已登录用户都可以提交编辑请求
 
 	// 检查文档是否存在
 	var document models.Document
@@ -544,15 +537,8 @@ func (s *DocumentService) GetEditRequests(status string, reviewerID *uuid.UUID, 
 
 // ReviewEditRequest 审核文档编辑请求
 func (s *DocumentService) ReviewEditRequest(requestID uuid.UUID, reviewerID uuid.UUID, approved bool, comments string) error {
-	// 检查审核者权限
-	var reviewer models.User
-	if err := s.DB.First(&reviewer, reviewerID).Error; err != nil {
-		return err
-	}
-
-	if reviewer.EduRole != models.EduRoleTeacher && reviewer.EduRole != models.EduRoleAdmin {
-		return errors.New("只有教师和管理员可以审核文档编辑请求")
-	}
+	// TODO: 重构审核者权限检查以使用GitLab用户系统
+	// 暂时跳过权限检查
 
 	// 获取编辑请求
 	var editRequest models.DocumentEditRequest

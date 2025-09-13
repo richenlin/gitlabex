@@ -126,11 +126,6 @@ func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 
 // CreateAnnouncement 创建公告
 func (h *NotificationHandler) CreateAnnouncement(c *gin.Context) {
-	userID, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
 
 	var req struct {
 		Title       string      `json:"title" binding:"required"`
@@ -147,59 +142,12 @@ func (h *NotificationHandler) CreateAnnouncement(c *gin.Context) {
 		return
 	}
 
-	// 获取当前用户信息
-	currentUser, err := h.userService.GetUserByID(userID.(uuid.UUID))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-		return
-	}
-
-	// 检查权限
-	if currentUser.EduRole < models.EduRoleTeacher {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权限创建公告"})
-		return
-	}
-
-	// 如果没有指定目标用户，根据目标角色获取用户
-	var targetUserIDs []uuid.UUID
-	if len(req.TargetUsers) > 0 {
-		targetUserIDs = req.TargetUsers
-	} else {
-		// 获取目标角色的用户
-		var roles []models.UserRole
-		for _, roleStr := range req.TargetRoles {
-			roles = append(roles, models.UserRole(roleStr))
-		}
-		users, err := h.userService.GetUsersByRoles(roles)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取目标用户失败"})
-			return
-		}
-		for _, user := range users {
-			targetUserIDs = append(targetUserIDs, user.ID)
-		}
-	}
-
-	announcement := &models.Announcement{
-		Title:       req.Title,
-		Content:     req.Content,
-		AuthorID:    userID.(uuid.UUID),
-		Priority:    req.Priority,
-		ValidFrom:   time.Now(),
-		ValidTo:     req.ValidTo,
-		TargetRoles: req.TargetRoles,
-	}
-
-	if req.ValidFrom != nil {
-		announcement.ValidFrom = *req.ValidFrom
-	}
-
-	if err := h.notificationService.CreateAnnouncement(announcement, targetUserIDs); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建公告失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "公告创建成功", "id": announcement.ID})
+	// TODO: 重构通知创建以使用GitLab用户系统
+	// 暂时返回功能不可用
+	c.JSON(http.StatusNotImplemented, gin.H{
+		"error":   "通知功能正在重构中",
+		"message": "请等待GitLab用户系统集成完成",
+	})
 }
 
 // GetAnnouncements 获取公告列表

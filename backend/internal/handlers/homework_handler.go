@@ -46,7 +46,7 @@ func (h *HomeworkHandler) CreateHomework(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -58,7 +58,7 @@ func (h *HomeworkHandler) CreateHomework(c *gin.Context) {
 		Description: req.Description,
 		DueDate:     req.DueDate,
 		MaxGrade:    req.MaxGrade,
-		CreatorID:   userID.(uuid.UUID),
+		CreatorID:   gitlabUserID.(int64),
 		Status:      "active",
 	}
 
@@ -687,13 +687,13 @@ func (h *HomeworkHandler) UseAssignmentTemplate(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	homework, err := h.homeworkService.UseAssignmentTemplate(templateID, projectID, userID.(uuid.UUID))
+	homework, err := h.homeworkService.UseAssignmentTemplate(templateID, projectID, gitlabUserID.(int64))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "使用模板失败"})
 		return
@@ -717,7 +717,7 @@ func (h *HomeworkHandler) BulkCreateHomework(c *gin.Context) {
 		return
 	}
 
-	userID, exists := c.Get("userID")
+	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
@@ -737,7 +737,7 @@ func (h *HomeworkHandler) BulkCreateHomework(c *gin.Context) {
 			Description: hw.Description,
 			DueDate:     hw.DueDate,
 			MaxGrade:    hw.MaxGrade,
-			CreatorID:   userID.(uuid.UUID),
+			CreatorID:   gitlabUserID.(int64),
 			Status:      "active",
 		}
 		homeworks = append(homeworks, homework)

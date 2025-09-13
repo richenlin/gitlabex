@@ -6,10 +6,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 
 	"gitlabex/internal/middleware"
-	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 )
 
@@ -92,116 +90,11 @@ type UserInfo struct {
 // @Failure 500 {object} CreateUserResponse "服务器内部错误"
 // @Router /api/v1/sync/users [post]
 func (h *SyncHandler) CreateUser(c *gin.Context) {
-	var req CreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, CreateUserResponse{
-			Success: false,
-			Message: "请求参数错误",
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	// 检查API密钥权限 - 第三方密钥不能创建管理员
-	if req.Role == "admin" {
-		keyInfo, exists := middleware.GetAPIKeyInfo(c)
-		if !exists || !keyInfo.CanAdmin {
-			c.JSON(http.StatusForbidden, CreateUserResponse{
-				Success: false,
-				Message: "权限不足",
-				Error:   "当前API密钥无权创建管理员账号",
-			})
-			return
-		}
-	}
-
-	// 检查用户是否已存在
-	existingUser, _ := h.userService.GetUserByUsername(req.Username)
-	if existingUser != nil {
-		c.JSON(http.StatusConflict, CreateUserResponse{
-			Success: false,
-			Message: "用户已存在",
-			Error:   "用户名已被使用",
-		})
-		return
-	}
-
-	// 检查邮箱是否已存在
-	existingUserByEmail, _ := h.userService.GetUserByEmail(req.Email)
-	if existingUserByEmail != nil {
-		c.JSON(http.StatusConflict, CreateUserResponse{
-			Success: false,
-			Message: "邮箱已存在",
-			Error:   "邮箱已被使用",
-		})
-		return
-	}
-
-	// 转换角色类型
-	userRole := convertStringToUserRole(req.Role)
-	eduRole := convertRoleToEducationRole(req.Role)
-
-	// 创建GitLab用户 (这里可以根据需要决定是否在GitLab中创建用户)
-	// 对于同步的用户，我们可能不需要在GitLab中创建，或者使用不同的策略
-
-	// 创建本地用户
-	user := &models.User{
-		BaseModel: models.BaseModel{
-			ID: uuid.New(),
-		},
-		GitLabID:    0, // 同步用户暂时不分配GitLab ID
-		Username:    req.Username,
-		Email:       req.Email,
-		Name:        req.Name,
-		AvatarURL:   req.AvatarURL,
-		Role:        userRole,
-		EduRole:     eduRole,
-		IsActive:    true,
-		LastLoginAt: nil,
-		// 注意：密码应该在服务层进行哈希处理
-	}
-
-	// 创建用户 (这里需要在UserService中添加带密码的创建方法)
-	if err := h.userService.CreateUserWithPassword(user, req.Password); err != nil {
-		c.JSON(http.StatusInternalServerError, CreateUserResponse{
-			Success: false,
-			Message: "用户创建失败",
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	// 生成JWT Token
-	token, err := h.generateJWTToken(user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, CreateUserResponse{
-			Success: false,
-			Message: "Token生成失败",
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	// 构造响应
-	userInfo := &UserInfo{
-		ID:         user.ID.String(),
-		Username:   user.Username,
-		Email:      user.Email,
-		Name:       user.Name,
-		Role:       string(user.Role),
-		AvatarURL:  user.AvatarURL,
-		IsActive:   user.IsActive,
-		CreatedAt:  user.CreatedAt,
-		ExternalID: req.ExternalID,
-	}
-
-	c.JSON(http.StatusCreated, CreateUserResponse{
-		Success: true,
-		Message: "用户创建成功",
-		Data: &UserTokenData{
-			User:  userInfo,
-			Token: token,
-		},
+	// 用户管理已完全迁移到GitLab
+	c.JSON(http.StatusNotImplemented, CreateUserResponse{
+		Success: false,
+		Message: "用户创建已迁移到GitLab",
+		Error:   "请在GitLab中管理用户",
 	})
 }
 
@@ -327,202 +220,29 @@ type UpdateUserRequest struct {
 // @Failure 404 {object} CreateUserResponse "用户不存在"
 // @Router /api/v1/sync/users/{id} [put]
 func (h *SyncHandler) UpdateUser(c *gin.Context) {
-	identifier := c.Param("id")
-
-	var req UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, CreateUserResponse{
-			Success: false,
-			Message: "请求参数错误",
-			Error:   err.Error(),
-		})
-		return
-	}
-
-	// 查找用户 (支持按ID或用户名查找)
-	var user *models.User
-	var err error
-
-	if uuid, parseErr := uuid.Parse(identifier); parseErr == nil {
-		user, err = h.userService.GetUserByID(uuid)
-	} else {
-		user, err = h.userService.GetUserByUsername(identifier)
-	}
-
-	if err != nil || user == nil {
-		c.JSON(http.StatusNotFound, CreateUserResponse{
-			Success: false,
-			Message: "用户不存在",
-			Error:   "找不到指定的用户",
-		})
-		return
-	}
-
-	// 更新用户信息
-	updates := make(map[string]interface{})
-	if req.Email != "" && req.Email != user.Email {
-		updates["email"] = req.Email
-	}
-	if req.Name != "" && req.Name != user.Name {
-		updates["name"] = req.Name
-	}
-	if req.Role != "" && req.Role != string(user.Role) {
-		updates["role"] = convertStringToUserRole(req.Role)
-		updates["edu_role"] = convertRoleToEducationRole(req.Role)
-	}
-	if req.IsActive != nil {
-		updates["is_active"] = *req.IsActive
-	}
-	if req.AvatarURL != "" {
-		updates["avatar_url"] = req.AvatarURL
-	}
-
-	if len(updates) > 0 {
-		if err := h.userService.UpdateUser(user.ID, updates); err != nil {
-			c.JSON(http.StatusInternalServerError, CreateUserResponse{
-				Success: false,
-				Message: "用户更新失败",
-				Error:   err.Error(),
-			})
-			return
-		}
-	}
-
-	// 重新获取更新后的用户信息
-	updatedUser, _ := h.userService.GetUserByID(user.ID)
-
-	userInfo := &UserInfo{
-		ID:        updatedUser.ID.String(),
-		Username:  updatedUser.Username,
-		Email:     updatedUser.Email,
-		Name:      updatedUser.Name,
-		Role:      string(updatedUser.Role),
-		AvatarURL: updatedUser.AvatarURL,
-		IsActive:  updatedUser.IsActive,
-		CreatedAt: updatedUser.CreatedAt,
-	}
-
-	c.JSON(http.StatusOK, CreateUserResponse{
-		Success: true,
-		Message: "用户更新成功",
-		Data: &UserTokenData{
-			User: userInfo,
-		},
+	// 用户管理已完全迁移到GitLab
+	c.JSON(http.StatusNotImplemented, CreateUserResponse{
+		Success: false,
+		Message: "用户更新已迁移到GitLab",
+		Error:   "请在GitLab中管理用户",
 	})
 }
 
-// convertStringToUserRole 转换字符串到用户角色类型
-func convertStringToUserRole(role string) models.UserRole {
-	switch role {
-	case "admin":
-		return models.RoleAdmin
-	case "teacher":
-		return models.RoleTeacher
-	case "assistant":
-		return models.RoleAssistant
-	case "student":
-		return models.RoleStudent
-	default:
-		return models.RoleStudent
-	}
-}
+// TODO: 移除旧的用户角色转换函数，现在使用GitLab角色系统
+// convertStringToUserRole 转换字符串到用户角色类型（已废弃）
+// func convertStringToUserRole(role string) models.UserRole { ... }
 
-// convertRoleToEducationRole 转换角色到教育角色类型
-func convertRoleToEducationRole(role string) models.EducationRole {
-	switch role {
-	case "admin":
-		return models.EduRoleAdmin
-	case "teacher":
-		return models.EduRoleTeacher
-	case "assistant":
-		return models.EduRoleAssistant
-	case "student":
-		return models.EduRoleStudent
-	default:
-		return models.EduRoleStudent
-	}
-}
+// TODO: 移除旧的教育角色转换函数，现在使用GitLab角色系统
+// convertRoleToEducationRole 转换角色到教育角色类型（已废弃）
+// func convertRoleToEducationRole(role string) models.EducationRole { ... }
 
-// createSingleUser 创建单个用户 (内部方法)
+// TODO: 重构用户创建逻辑以使用GitLab用户系统
+// createSingleUser 创建单个用户 (内部方法) - 已废弃
 func (h *SyncHandler) createSingleUser(req CreateUserRequest) CreateUserResponse {
-	// 检查用户是否已存在
-	existingUser, _ := h.userService.GetUserByUsername(req.Username)
-	if existingUser != nil {
-		return CreateUserResponse{
-			Success: false,
-			Message: "用户已存在",
-			Error:   "用户名已被使用",
-		}
-	}
-
-	// 转换角色类型
-	userRole := convertStringToUserRole(req.Role)
-	eduRole := convertRoleToEducationRole(req.Role)
-
-	// 创建本地用户
-	user := &models.User{
-		BaseModel: models.BaseModel{
-			ID: uuid.New(),
-		},
-		GitLabID:    0,
-		Username:    req.Username,
-		Email:       req.Email,
-		Name:        req.Name,
-		AvatarURL:   req.AvatarURL,
-		Role:        userRole,
-		EduRole:     eduRole,
-		IsActive:    true,
-		LastLoginAt: nil,
-	}
-
-	// 创建用户
-	if err := h.userService.CreateUserWithPassword(user, req.Password); err != nil {
-		return CreateUserResponse{
-			Success: false,
-			Message: "用户创建失败",
-			Error:   err.Error(),
-		}
-	}
-
-	// 生成JWT Token
-	token, err := h.generateJWTToken(user)
-	if err != nil {
-		return CreateUserResponse{
-			Success: false,
-			Message: "Token生成失败",
-			Error:   err.Error(),
-		}
-	}
-
-	// 构造响应
-	userInfo := &UserInfo{
-		ID:         user.ID.String(),
-		Username:   user.Username,
-		Email:      user.Email,
-		Name:       user.Name,
-		Role:       string(user.Role),
-		AvatarURL:  user.AvatarURL,
-		IsActive:   user.IsActive,
-		CreatedAt:  user.CreatedAt,
-		ExternalID: req.ExternalID,
-	}
-
+	// 现在用户管理完全基于GitLab，不再支持本地用户创建
 	return CreateUserResponse{
-		Success: true,
-		Message: "用户创建成功",
-		Data: &UserTokenData{
-			User:  userInfo,
-			Token: token,
-		},
+		Success: false,
+		Message: "用户创建已迁移到GitLab",
+		Error:   "请在GitLab中管理用户",
 	}
-}
-
-// generateJWTToken 生成JWT Token
-func (h *SyncHandler) generateJWTToken(user *models.User) (string, error) {
-	// 这里应该使用与AuthHandler相同的JWT生成逻辑
-	// 简化实现，返回包含用户信息的token格式
-	// 实际生产环境中应该使用真正的JWT库如github.com/golang-jwt/jwt
-
-	token := fmt.Sprintf("jwt.%s.%s", user.ID.String(), user.Username)
-	return token, nil
 }

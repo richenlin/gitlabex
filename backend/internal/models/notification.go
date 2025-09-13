@@ -75,5 +75,5 @@ type AssignmentTemplate struct {
 	Tags        pq.StringArray `gorm:"type:text[]" json:"tags"`
 
 	// 关联关系
-	Creator User `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
+	// 注意：Creator关联已移除，创建者信息从GitLab API获取
 }

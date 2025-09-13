@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // GitLabHandler GitLab API处理器
@@ -70,27 +69,15 @@ func (h *GitLabHandler) GetProjects(c *gin.Context) {
 
 // GetProject 获取特定项目信息
 func (h *GitLabHandler) GetProject(c *gin.Context) {
-	// 优先从请求头获取token，如果没有则从当前用户获取
+	// 优先从请求头获取token，如果没有则从上下文获取
 	accessToken := c.GetHeader("X-GitLab-Token")
 	if accessToken == "" {
-		userID, exists := c.Get("userID")
+		token, exists := c.Get("gitlab_access_token")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-			return
-		}
-
-		user, err := h.userService.GetUserByID(userID.(uuid.UUID))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-			return
-		}
-
-		if user.AccessToken == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
 			return
 		}
-
-		accessToken = user.AccessToken
+		accessToken = token.(string)
 	}
 
 	projectID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -195,27 +182,15 @@ func (h *GitLabHandler) CreateBranch(c *gin.Context) {
 
 // GetFileContent 获取文件内容
 func (h *GitLabHandler) GetFileContent(c *gin.Context) {
-	// 优先从请求头获取token，如果没有则从当前用户获取
+	// 优先从请求头获取token，如果没有则从上下文获取
 	accessToken := c.GetHeader("X-GitLab-Token")
 	if accessToken == "" {
-		userID, exists := c.Get("userID")
+		token, exists := c.Get("gitlab_access_token")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-			return
-		}
-
-		user, err := h.userService.GetUserByID(userID.(uuid.UUID))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败"})
-			return
-		}
-
-		if user.AccessToken == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
 			return
 		}
-
-		accessToken = user.AccessToken
+		accessToken = token.(string)
 	}
 
 	projectID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -423,33 +398,16 @@ func (h *GitLabHandler) GetMergeRequests(c *gin.Context) {
 
 // GetRepositoryTree 获取仓库文件树
 func (h *GitLabHandler) GetRepositoryTree(c *gin.Context) {
-	// 优先从请求头获取token，如果没有则从当前用户获取
+	// 优先从请求头获取token，如果没有则从上下文获取
 	accessToken := c.GetHeader("X-GitLab-Token")
 	if accessToken == "" {
-		userID, exists := c.Get("userID")
+		token, exists := c.Get("gitlab_access_token")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "GitLab access token required"})
 			return
 		}
-
-		user, err := h.userService.GetUserByID(userID.(uuid.UUID))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败", "details": err.Error()})
-			return
-		}
-
-		if user.AccessToken == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "GitLab access token required",
-				"message": "用户未绑定GitLab访问令牌，请重新登录",
-			})
-			return
-		}
-
-		accessToken = user.AccessToken
-		// 添加调试信息
-		c.Header("X-Debug-Token-Source", "user-database")
-		c.Header("X-Debug-User-ID", user.ID.String())
+		accessToken = token.(string)
+		c.Header("X-Debug-Token-Source", "context")
 	} else {
 		c.Header("X-Debug-Token-Source", "request-header")
 	}

@@ -88,7 +88,6 @@ type DocumentEditRequest struct {
 	ReviewedAt     *time.Time     `json:"reviewed_at,omitempty"`
 
 	// 关联关系
-	Document  Document `gorm:"foreignKey:DocumentID" json:"document,omitempty"`
-	Requester User     `gorm:"foreignKey:RequesterID" json:"requester,omitempty"`
-	Reviewer  *User    `gorm:"foreignKey:ReviewerID" json:"reviewer,omitempty"`
+	Document Document `gorm:"foreignKey:DocumentID" json:"document,omitempty"`
+	// 注意：Requester和Reviewer关联已移除，用户信息从GitLab API获取
 }

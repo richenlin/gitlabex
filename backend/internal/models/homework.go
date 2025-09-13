@@ -91,5 +91,5 @@ type SubmissionHistory struct {
 
 	// 关联关系
 	Submission Submission `gorm:"foreignKey:SubmissionID" json:"submission,omitempty"`
-	Changer    User       `gorm:"foreignKey:ChangedBy" json:"changer,omitempty"`
+	// 注意：Changer关联已移除，用户信息从GitLab API获取
 }

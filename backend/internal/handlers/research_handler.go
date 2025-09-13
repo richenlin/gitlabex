@@ -472,12 +472,8 @@ func (h *ResearchHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	userIDToRemoveStr := c.Param("userId")
-	userIDToRemove, err := uuid.Parse(userIDToRemoveStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的用户ID"})
-		return
-	}
+	// TODO: 重构用户ID解析以使用GitLab用户系统
+	// 暂时跳过用户ID解析
 
 	// 检查权限
 	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
@@ -493,17 +489,8 @@ func (h *ResearchHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
-	// 不能移除项目所有者
-	isTargetOwner, err := h.researchService.IsProjectOwner(projectID, userIDToRemove)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查目标用户权限失败"})
-		return
-	}
-
-	if isTargetOwner {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "不能移除项目所有者"})
-		return
-	}
+	// TODO: 重构项目所有者检查以使用GitLab用户系统
+	// 暂时跳过所有者检查
 
 	// 注意：成员管理已移至GitLab
 	c.JSON(http.StatusNotImplemented, gin.H{
