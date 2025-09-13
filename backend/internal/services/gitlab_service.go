@@ -188,17 +188,17 @@ func (s *GitLabService) SetupProjectBranchProtection(accessToken string, project
 // GitLabUser GitLab用户信息 - 使用models包中的定义
 // 这里保留一个简化的结构用于API响应解析
 type GitLabAPIUser struct {
-	ID           int64  `json:"id"`
-	Username     string `json:"username"`
-	Email        string `json:"email"`
-	Name         string `json:"name"`
-	Avatar       string `json:"avatar_url"`
-	IsAdmin      bool   `json:"is_admin"`
-	State        string `json:"state"`
-	UserType     string `json:"user_type"`
-	External     bool   `json:"external"`
-	CanCreateGroup bool `json:"can_create_group"`
-	CanCreateProject bool `json:"can_create_project"`
+	ID               int64  `json:"id"`
+	Username         string `json:"username"`
+	Email            string `json:"email"`
+	Name             string `json:"name"`
+	Avatar           string `json:"avatar_url"`
+	IsAdmin          bool   `json:"is_admin"`
+	State            string `json:"state"`
+	UserType         string `json:"user_type"`
+	External         bool   `json:"external"`
+	CanCreateGroup   bool   `json:"can_create_group"`
+	CanCreateProject bool   `json:"can_create_project"`
 }
 
 // GitLabProject GitLab项目信息

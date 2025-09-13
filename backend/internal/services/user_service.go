@@ -82,8 +82,8 @@ func (s *UserService) GetCurrentUser(accessToken string) (*models.GitLabUser, er
 	}
 
 	// 通过多种方式判断管理员权限
-	isAdmin := gitlabUser.IsAdmin || 
-		gitlabUser.CanCreateGroup || 
+	isAdmin := gitlabUser.IsAdmin ||
+		gitlabUser.CanCreateGroup ||
 		gitlabUser.CanCreateProject ||
 		gitlabUser.Username == "root" ||
 		gitlabUser.Username == "admin" ||
