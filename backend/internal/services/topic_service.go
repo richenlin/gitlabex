@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"gitlabex/internal/models"
 
 	"github.com/google/uuid"
@@ -230,4 +231,50 @@ func (s *TopicService) GetTopicStats() (map[string]interface{}, error) {
 	stats["month_topics"] = monthTopics
 
 	return stats, nil
+}
+
+// DislikeTopic 反对话题
+func (s *TopicService) DislikeTopic(dislike *models.TopicDislike) error {
+	// 检查是否已经反对过
+	var existingDislike models.TopicDislike
+	if err := s.db.Where("topic_id = ? AND user_id = ?", dislike.TopicID, dislike.UserID).First(&existingDislike).Error; err == nil {
+		return fmt.Errorf("用户已经反对过该话题")
+	}
+
+	// 如果之前点赞了，先取消点赞
+	s.UnlikeTopic(dislike.UserID, dislike.TopicID)
+
+	if err := s.db.Create(dislike).Error; err != nil {
+		return err
+	}
+
+	// 更新反对数量
+	return s.UpdateTopicDislikesCount(dislike.TopicID)
+}
+
+// UndislikeTopic 取消反对话题
+func (s *TopicService) UndislikeTopic(userID int64, topicID uuid.UUID) error {
+	if err := s.db.Where("topic_id = ? AND user_id = ?", topicID, userID).Delete(&models.TopicDislike{}).Error; err != nil {
+		return err
+	}
+
+	// 更新反对数量
+	return s.UpdateTopicDislikesCount(topicID)
+}
+
+// HasDislikedTopic 检查用户是否反对了话题
+func (s *TopicService) HasDislikedTopic(userID int64, topicID uuid.UUID) (bool, error) {
+	var count int64
+	err := s.db.Model(&models.TopicDislike{}).Where("topic_id = ? AND user_id = ?", topicID, userID).Count(&count).Error
+	return count > 0, err
+}
+
+// UpdateTopicDislikesCount 更新话题反对数量
+func (s *TopicService) UpdateTopicDislikesCount(topicID uuid.UUID) error {
+	var count int64
+	if err := s.db.Model(&models.TopicDislike{}).Where("topic_id = ?", topicID).Count(&count).Error; err != nil {
+		return err
+	}
+
+	return s.db.Model(&models.Topic{}).Where("id = ?", topicID).Update("dislike_count", count).Error
 }

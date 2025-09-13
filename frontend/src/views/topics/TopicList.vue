@@ -52,18 +52,17 @@
           v-for="topic in topics"
           :key="topic.id"
           class="topic-item"
-          @click="viewTopic(topic.id)"
+          @click="viewTopic(topic)"
         >
           <div class="topic-main">
             <div class="topic-header">
               <h3 class="topic-title">{{ topic.title }}</h3>
               <div class="topic-badges">
-                <el-tag v-if="topic.is_pinned" type="warning" size="small">置顶</el-tag>
-                <el-tag :type="topic.status === 'open' ? 'success' : 'info'" size="small">
-                  {{ topic.status === 'open' ? '开放' : '关闭' }}
+                <el-tag :type="topic.status === 'opened' ? 'success' : 'info'" size="small">
+                  {{ topic.status === 'opened' ? '开放' : '关闭' }}
                 </el-tag>
-                <el-tag v-if="topic.priority !== 'medium'" :type="getPriorityType(topic.priority)" size="small">
-                  {{ getPriorityText(topic.priority) }}
+                <el-tag v-if="topic.project" type="primary" size="small">
+                  {{ topic.project.name }}
                 </el-tag>
               </div>
             </div>
@@ -72,15 +71,38 @@
               {{ topic.content ? topic.content.substring(0, 150) + '...' : '暂无内容' }}
             </div>
             
-            <div class="topic-labels" v-if="topic.tags && topic.tags.length">
+            <div class="topic-labels" v-if="topic.labels && topic.labels.length">
               <el-tag
-                v-for="tag in topic.tags.slice(0, 3)"
+                v-for="tag in topic.labels.slice(0, 3)"
                 :key="tag"
                 size="small"
                 class="topic-label"
               >
                 {{ tag }}
               </el-tag>
+            </div>
+            
+            <!-- 话题操作区域 -->
+            <div class="topic-actions" @click.stop>
+              <el-button 
+                size="small" 
+                :type="topic.user_liked ? 'primary' : 'default'"
+                :icon="topic.user_liked ? 'StarFilled' : 'Star'"
+                @click="toggleLike(topic)"
+                :loading="topic.liking"
+              >
+                点赞 {{ topic.like_count || 0 }}
+              </el-button>
+              
+              <el-button 
+                size="small" 
+                :type="topic.user_disliked ? 'danger' : 'default'"
+                icon="CircleClose"
+                @click="toggleDislike(topic)"
+                :loading="topic.disliking"
+              >
+                反对 {{ topic.dislike_count || 0 }}
+              </el-button>
             </div>
           </div>
 
@@ -192,6 +214,125 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 话题详情模态框 -->
+    <el-dialog 
+      v-model="topicDetailDialogVisible" 
+      :title="currentTopicDetail?.title || '话题详情'" 
+      width="80%" 
+      max-width="800px"
+      top="5vh"
+    >
+      <div v-loading="topicDetailLoading">
+        <!-- 话题内容 -->
+        <div v-if="currentTopicDetail" class="topic-detail">
+          <div class="topic-header">
+            <div class="topic-meta">
+              <el-avatar 
+                :src="currentTopicDetail.author?.avatar_url" 
+                :size="32"
+                class="author-avatar"
+              />
+              <div class="author-info">
+                <span class="author-name">{{ currentTopicDetail.author?.name }}</span>
+                <span class="publish-time">{{ formatDate(currentTopicDetail.created_at) }}</span>
+              </div>
+            </div>
+            <div class="topic-labels" v-if="currentTopicDetail.labels?.length">
+              <el-tag 
+                v-for="label in currentTopicDetail.labels" 
+                :key="label" 
+                size="small"
+                class="topic-label"
+              >
+                {{ label }}
+              </el-tag>
+            </div>
+          </div>
+          
+          <div class="topic-content">
+            <p>{{ currentTopicDetail.content }}</p>
+          </div>
+          
+          <div class="topic-stats">
+            <span class="stat-item">
+              <el-icon><ChatDotRound /></el-icon>
+              {{ currentTopicDetail.comments_count || 0 }} 回复
+            </span>
+            <span class="stat-item">
+              <el-icon><Star /></el-icon>
+              {{ currentTopicDetail.like_count || 0 }} 点赞
+            </span>
+            <span class="stat-item">
+              <el-icon><CircleClose /></el-icon>
+              {{ currentTopicDetail.dislike_count || 0 }} 反对
+            </span>
+          </div>
+        </div>
+        
+        <!-- 回复输入框 -->
+        <div class="reply-section" v-if="userStore.isLoggedIn">
+          <h4 class="reply-title">添加回复</h4>
+          <el-input 
+            v-model="replyForm.content" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请输入回复内容..."
+            maxlength="1000"
+            show-word-limit
+            class="reply-input"
+          />
+          <div class="reply-actions">
+            <el-button @click="replyForm.content = ''">清空</el-button>
+            <el-button type="primary" @click="submitReply" :loading="submittingReply">
+              {{ submittingReply ? '提交中...' : '提交回复' }}
+            </el-button>
+          </div>
+        </div>
+        
+        <!-- 回复列表 -->
+        <div class="comments-section" v-if="topicComments.length > 0 || commentsTotal > 0">
+          <h4 class="comments-title">回复 ({{ commentsTotal || topicComments.length }})</h4>
+          <div class="comments-list" v-loading="commentsLoading">
+            <div 
+              v-for="comment in topicComments" 
+              :key="comment.id" 
+              class="comment-item"
+            >
+              <el-avatar 
+                :src="comment.author?.avatar_url" 
+                :size="28"
+                class="comment-avatar"
+              />
+              <div class="comment-content">
+                <div class="comment-header">
+                  <span class="comment-author">{{ comment.author?.name }}</span>
+                  <span class="comment-time">{{ formatDate(comment.created_at) }}</span>
+                </div>
+                <div class="comment-body">
+                  {{ comment.content }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 回复分页 -->
+          <div class="comments-pagination" v-if="commentsTotal > commentsPageSize">
+            <el-pagination
+              v-model:current-page="commentsCurrentPage"
+              :total="commentsTotal"
+              :page-size="commentsPageSize"
+              layout="prev, pager, next"
+              @current-change="handleCommentsPageChange"
+            />
+          </div>
+        </div>
+        
+        <div v-else class="login-prompt">
+          <p>请先登录后再回复话题</p>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -202,7 +343,7 @@ import { useUserStore } from '@/stores/user'
 import { topicService, researchService } from '@/services/api'
 import type { Topic, ResearchProject } from '@/types'
 import { ElMessage, type FormInstance } from 'element-plus'
-import { Plus, Search, Star, ChatDotRound } from '@element-plus/icons-vue'
+import { Plus, Search, Star, ChatDotRound, CircleClose } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -223,6 +364,23 @@ const createDialogVisible = ref(false)
 const createFormRef = ref<FormInstance>()
 const labelInput = ref('')
 
+// 话题详情模态框相关状态
+const topicDetailDialogVisible = ref(false)
+const topicDetailLoading = ref(false)
+const currentTopicDetail = ref<any>(null)
+const topicComments = ref<any[]>([])
+const replyingTopic = ref<Topic | null>(null)
+const submittingReply = ref(false)
+const replyForm = ref({
+  content: ''
+})
+
+// 回复分页相关
+const commentsCurrentPage = ref(1)
+const commentsPageSize = ref(10)
+const commentsTotal = ref(0)
+const commentsLoading = ref(false)
+
 const createForm = ref({
   title: '',
   content: '',
@@ -238,7 +396,7 @@ const createRules = {
 
 // 计算属性
 const activeTopics = computed(() => {
-  return topics.value.filter(topic => topic.status === 'open').length
+  return topics.value.filter(topic => topic.status === 'opened').length
 })
 
 // 方法
@@ -290,8 +448,28 @@ const handleSearch = () => {
   fetchTopics()
 }
 
-const viewTopic = (id: string) => {
-  router.push(`/topics/${id}`)
+const viewTopic = async (topic: Topic) => {
+  // 从话题列表获取项目ID
+  if (!topic.project_id) {
+    ElMessage.error('无法获取话题所属项目信息')
+    return
+  }
+  
+  topicDetailLoading.value = true
+  topicDetailDialogVisible.value = true
+  
+  try {
+    const response: any = await topicService.getTopic(topic.id, topic.project_id)
+    currentTopicDetail.value = response.topic
+    topicComments.value = response.comments || []
+    replyingTopic.value = currentTopicDetail.value
+  } catch (error) {
+    console.error('获取话题详情失败:', error)
+    ElMessage.error('获取话题详情失败')
+    topicDetailDialogVisible.value = false
+  } finally {
+    topicDetailLoading.value = false
+  }
 }
 
 const showCreateDialog = () => {
@@ -368,6 +546,164 @@ const getPriorityText = (priority: string) => {
     urgent: '紧急'
   }
   return texts[priority] || priority
+}
+
+const submitReply = async () => {
+  if (!replyForm.value.content.trim()) {
+    ElMessage.warning('请输入回复内容')
+    return
+  }
+  
+  if (!replyingTopic.value || !replyingTopic.value.project_id) {
+    ElMessage.error('无法获取话题信息')
+    return
+  }
+  
+  submittingReply.value = true
+  try {
+    const response: any = await topicService.createComment(
+      replyingTopic.value.id, 
+      replyForm.value.content, 
+      replyingTopic.value.project_id
+    )
+    ElMessage.success('回复成功')
+    replyForm.value.content = ''
+    
+    // 更新评论列表 - 刷新评论并可能跳转到最后一页
+    if (response.comment) {
+      if (currentTopicDetail.value) {
+        currentTopicDetail.value.comments_count = (currentTopicDetail.value.comments_count || 0) + 1
+      }
+      
+      // 计算新评论可能所在的页面
+      const newTotal = currentTopicDetail.value?.comments_count || 1
+      const lastPage = Math.ceil(newTotal / commentsPageSize.value)
+      
+      // 如果新评论在最后一页，跳转到最后一页
+      if (lastPage > commentsCurrentPage.value) {
+        commentsCurrentPage.value = lastPage
+      }
+      
+      await fetchComments()
+    }
+    
+    // 更新话题列表中的回复数量
+    const topicIndex = topics.value.findIndex(t => t.id === replyingTopic.value?.id)
+    if (topicIndex >= 0) {
+      topics.value[topicIndex].comments_count = (topics.value[topicIndex].comments_count || 0) + 1
+    }
+  } catch (error) {
+    console.error('提交回复失败:', error)
+    ElMessage.error('提交回复失败')
+  } finally {
+    submittingReply.value = false
+  }
+}
+
+const toggleLike = async (topic: Topic) => {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning('请先登录')
+    return
+  }
+  
+  if (!topic.project_id) {
+    ElMessage.error('无法获取话题所属项目信息')
+    return
+  }
+  
+  topic.liking = true
+  try {
+    if (topic.user_liked) {
+      await topicService.unlikeTopic(topic.id, topic.project_id)
+      topic.user_liked = false
+      topic.like_count = Math.max(0, (topic.like_count || 0) - 1)
+      ElMessage.success('取消点赞成功')
+    } else {
+      await topicService.likeTopic(topic.id, topic.project_id)
+      topic.user_liked = true
+      topic.like_count = (topic.like_count || 0) + 1
+      // 如果之前反对了，取消反对
+      if (topic.user_disliked) {
+        await topicService.undislikeTopic(topic.id, topic.project_id)
+        topic.user_disliked = false
+        topic.dislike_count = Math.max(0, (topic.dislike_count || 0) - 1)
+      }
+      ElMessage.success('点赞成功')
+    }
+  } catch (error) {
+    console.error('点赞操作失败:', error)
+    ElMessage.error('点赞操作失败')
+  } finally {
+    topic.liking = false
+  }
+}
+
+const toggleDislike = async (topic: Topic) => {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning('请先登录')
+    return
+  }
+  
+  if (!topic.project_id) {
+    ElMessage.error('无法获取话题所属项目信息')
+    return
+  }
+  
+  topic.disliking = true
+  try {
+    if (topic.user_disliked) {
+      await topicService.undislikeTopic(topic.id, topic.project_id)
+      topic.user_disliked = false
+      topic.dislike_count = Math.max(0, (topic.dislike_count || 0) - 1)
+      ElMessage.success('取消反对成功')
+    } else {
+      await topicService.dislikeTopic(topic.id, topic.project_id)
+      topic.user_disliked = true
+      topic.dislike_count = (topic.dislike_count || 0) + 1
+      // 如果之前点赞了，取消点赞
+      if (topic.user_liked) {
+        await topicService.unlikeTopic(topic.id, topic.project_id)
+        topic.user_liked = false
+        topic.like_count = Math.max(0, (topic.like_count || 0) - 1)
+      }
+      ElMessage.success('反对成功')
+    }
+  } catch (error) {
+    console.error('反对操作失败:', error)
+    ElMessage.error('反对操作失败')
+  } finally {
+    topic.disliking = false
+  }
+}
+
+const fetchComments = async () => {
+  if (!currentTopicDetail.value || !currentTopicDetail.value.project_id) {
+    return
+  }
+  
+  commentsLoading.value = true
+  try {
+    const response: any = await topicService.getTopic(
+      currentTopicDetail.value.id, 
+      currentTopicDetail.value.project_id
+    )
+    const allComments = response.comments || []
+    commentsTotal.value = allComments.length
+    
+    // 前端分页逻辑
+    const startIndex = (commentsCurrentPage.value - 1) * commentsPageSize.value
+    const endIndex = startIndex + commentsPageSize.value
+    topicComments.value = allComments.slice(startIndex, endIndex)
+  } catch (error) {
+    console.error('获取评论失败:', error)
+  } finally {
+    commentsLoading.value = false
+  }
+}
+
+const handleCommentsPageChange = (page: number) => {
+  commentsCurrentPage.value = page
+  fetchComments()
 }
 
 const formatDate = (date: string) => {
@@ -536,5 +872,195 @@ onMounted(() => {
 
 .labels-container {
   margin-top: 10px;
+}
+
+.topic-actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  gap: 8px;
+}
+
+.topic-actions .el-button {
+  border-radius: 16px;
+}
+
+/* 话题详情模态框样式 */
+.topic-detail {
+  margin-bottom: 24px;
+}
+
+.topic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.topic-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.author-name {
+  font-weight: 600;
+  color: #303133;
+  font-size: 14px;
+}
+
+.publish-time {
+  color: #909399;
+  font-size: 12px;
+}
+
+.topic-labels {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.topic-label {
+  border-radius: 12px;
+}
+
+.topic-content {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #409eff;
+}
+
+.topic-content p {
+  margin: 0;
+  color: #303133;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.topic-stats {
+  display: flex;
+  gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #909399;
+  font-size: 14px;
+}
+
+.stat-item .el-icon {
+  font-size: 16px;
+}
+
+.comments-section {
+  margin: 24px 0;
+}
+
+.comments-title {
+  color: #303133;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.comment-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+}
+
+.comment-content {
+  flex: 1;
+}
+
+.comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.comment-author {
+  font-weight: 600;
+  color: #303133;
+  font-size: 14px;
+}
+
+.comment-time {
+  color: #909399;
+  font-size: 12px;
+}
+
+.comment-body {
+  color: #606266;
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.reply-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.reply-title {
+  color: #303133;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px 0;
+}
+
+.reply-input {
+  margin-bottom: 12px;
+}
+
+.reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.login-prompt {
+  text-align: center;
+  padding: 40px 20px;
+  color: #909399;
+}
+
+.login-prompt p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* 回复分页样式 */
+.comments-pagination {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
 }
 </style>

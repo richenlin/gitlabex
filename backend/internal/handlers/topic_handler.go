@@ -5,7 +5,9 @@ import (
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 	"net/http"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -13,28 +15,20 @@ import (
 
 // TopicHandler 话题处理器
 type TopicHandler struct {
-	topicService    *services.TopicService
-	userService     *services.UserService
 	gitlabService   *services.GitLabService
 	researchService *services.ResearchService
 }
 
 // NewTopicHandler 创建话题处理器
-func NewTopicHandler(topicService *services.TopicService, userService *services.UserService, gitlabService *services.GitLabService, researchService *services.ResearchService) *TopicHandler {
+func NewTopicHandler(gitlabService *services.GitLabService, researchService *services.ResearchService) *TopicHandler {
 	return &TopicHandler{
-		topicService:    topicService,
-		userService:     userService,
 		gitlabService:   gitlabService,
 		researchService: researchService,
 	}
 }
 
-// GetTopics 获取话题列表
+// GetTopics 获取话题列表 (从GitLab Issues获取)
 func (h *TopicHandler) GetTopics(c *gin.Context) {
-	// 检查是否为游客模式
-	isGuest, _ := c.Get("is_guest")
-	userID, _ := c.Get("userID")
-
 	// 获取分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
@@ -47,548 +41,672 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 		limit = 20
 	}
 
-	offset := (page - 1) * limit
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
 
-	var topics []models.Topic
-	var total int64
-	var err error
+	var allTopics []map[string]interface{}
 
 	if projectIDStr != "" {
-		// 获取特定课题的话题
+		// 获取特定项目的话题
 		projectID, err := uuid.Parse(projectIDStr)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
 			return
 		}
 
-		// 检查访问权限
 		project, err := h.researchService.GetResearchProjectByID(projectID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
 			return
 		}
 
-		// 如果是游客模式，只能访问公开项目的话题
-		if isGuest == true || userID == "" {
-			if !project.IsPublic {
-				c.JSON(http.StatusForbidden, gin.H{"error": "无权限访问该课题的话题"})
+		if project.GitLabProjectID != nil {
+			topics, err := h.getProjectTopics(accessToken.(string), project, page, limit, c)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "获取话题失败",
+					"details": err.Error(),
+				})
 				return
 			}
-		} else {
-			// 已登录用户，检查项目权限
-			// TODO: 重构用户验证以使用GitLab用户系统
-			// 暂时跳过用户验证
-
-			if !project.IsPublic {
-				// 注意：权限检查已简化，具体权限由GitLab控制
-				// 暂时允许访问，实际权限在GitLab层面控制
-			}
+			allTopics = topics
 		}
-
-		topics, total, err = h.topicService.GetTopicsByProject(projectID, limit, offset)
 	} else {
-		// 获取所有公开话题
-		topics, total, err = h.topicService.GetPublicTopics(limit, offset)
-	}
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取话题失败"})
-		return
-	}
-
-	// 填充作者信息
-	topicsWithAuthors := make([]map[string]interface{}, len(topics))
-	for i, topic := range topics {
-		topicMap := map[string]interface{}{
-			"id":              topic.ID,
-			"created_at":      topic.CreatedAt,
-			"updated_at":      topic.UpdatedAt,
-			"deleted_at":      topic.DeletedAt,
-			"title":           topic.Title,
-			"content":         topic.Content,
-			"project_id":      topic.ProjectID,
-			"author_id":       topic.AuthorID,
-			"gitlab_issue_id": topic.GitLabIssueID,
-			"status":          topic.Status,
-			"priority":        topic.Priority,
-			"tags":            topic.Tags,
-			"view_count":      topic.ViewCount,
-			"like_count":      topic.LikeCount,
-			"project":         topic.Project,
+		// 获取所有项目的话题
+		projects, _, err := h.researchService.GetAllProjects(1000, 0, false, true) // 获取所有项目，包括私有项目
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "获取项目列表失败",
+				"details": err.Error(),
+			})
+			return
 		}
 
-		// 获取作者信息
-		if accessToken, exists := c.Get("gitlab_access_token"); exists {
-			if author, err := h.gitlabService.GetUserByID(accessToken.(string), topic.AuthorID); err == nil {
-				topicMap["author"] = map[string]interface{}{
-					"id":         author.ID,
-					"username":   author.Username,
-					"name":       author.Name,
-					"avatar_url": author.AvatarURL,
-					"email":      author.Email,
+		// 遍历所有项目，获取话题
+		for _, project := range projects {
+			if project.GitLabProjectID != nil {
+				topics, err := h.getProjectTopics(accessToken.(string), &project, 1, limit, c)
+				if err != nil {
+					// 如果某个项目获取失败，继续处理其他项目
+					continue
 				}
-			} else {
-				// 如果获取失败，设置默认值
-				topicMap["author"] = map[string]interface{}{
-					"id":         topic.AuthorID,
-					"username":   fmt.Sprintf("user_%d", topic.AuthorID),
-					"name":       fmt.Sprintf("用户%d", topic.AuthorID),
-					"avatar_url": "/default-avatar.png",
+				// 为每个话题添加项目信息
+				for i := range topics {
+					topics[i]["project_id"] = project.ID.String()
+					topics[i]["project"] = map[string]interface{}{
+						"id":   project.ID.String(),
+						"name": project.Name,
+					}
 				}
+				allTopics = append(allTopics, topics...)
 			}
+		}
+
+		// 按创建时间排序（最新的在前面）
+		sort.Slice(allTopics, func(i, j int) bool {
+			timeI, _ := time.Parse(time.RFC3339, allTopics[i]["created_at"].(string))
+			timeJ, _ := time.Parse(time.RFC3339, allTopics[j]["created_at"].(string))
+			return timeI.After(timeJ)
+		})
+
+		// 应用分页
+		start := (page - 1) * limit
+		end := start + limit
+		if start >= len(allTopics) {
+			allTopics = []map[string]interface{}{}
+		} else if end > len(allTopics) {
+			allTopics = allTopics[start:]
 		} else {
-			// 没有访问令牌时的默认值
-			topicMap["author"] = map[string]interface{}{
-				"id":         topic.AuthorID,
-				"username":   fmt.Sprintf("user_%d", topic.AuthorID),
-				"name":       fmt.Sprintf("用户%d", topic.AuthorID),
-				"avatar_url": "/default-avatar.png",
-			}
+			allTopics = allTopics[start:end]
 		}
-
-		topicsWithAuthors[i] = topicMap
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"topics": topicsWithAuthors,
+		"topics": allTopics,
 		"pagination": gin.H{
 			"page":  page,
 			"limit": limit,
-			"total": total,
-			"pages": (total + int64(limit) - 1) / int64(limit),
+			"total": len(allTopics),
+			"pages": (len(allTopics) + limit - 1) / limit,
 		},
 	})
 }
 
-// GetTopicByID 根据ID获取话题详情
+// getProjectTopics 获取单个项目的话题列表
+func (h *TopicHandler) getProjectTopics(accessToken string, project *models.ResearchProject, page, limit int, c *gin.Context) ([]map[string]interface{}, error) {
+	// 从GitLab获取Issues
+	issues, err := h.gitlabService.GetProjectIssues(accessToken, *project.GitLabProjectID, page, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	// 转换为前端需要的格式
+	topics := make([]map[string]interface{}, len(issues))
+	for i, issue := range issues {
+		// 获取当前用户对该Issue的表情反应
+		userLiked, userDisliked := false, false
+		if gitlabUserID, exists := c.Get("gitlab_user_id"); exists {
+			emojis, _ := h.gitlabService.GetIssueAwardEmojis(accessToken, *project.GitLabProjectID, issue.IID)
+			for _, emoji := range emojis {
+				if emoji.User.ID == gitlabUserID.(int64) {
+					if emoji.Name == "thumbsup" {
+						userLiked = true
+					} else if emoji.Name == "thumbsdown" {
+						userDisliked = true
+					}
+				}
+			}
+		}
+
+		topics[i] = map[string]interface{}{
+			"id":             fmt.Sprintf("%d", issue.IID), // 使用IID作为前端ID
+			"gitlab_id":      issue.ID,
+			"gitlab_iid":     issue.IID,
+			"title":          issue.Title,
+			"content":        issue.Description,
+			"status":         issue.State,
+			"labels":         issue.Labels,
+			"created_at":     issue.CreatedAt,
+			"updated_at":     issue.UpdatedAt,
+			"like_count":     issue.Upvotes,
+			"dislike_count":  issue.Downvotes,
+			"comments_count": issue.UserNotesCount,
+			"user_liked":     userLiked,
+			"user_disliked":  userDisliked,
+			"author": map[string]interface{}{
+				"id":         issue.Author.ID,
+				"username":   issue.Author.Username,
+				"name":       issue.Author.Name,
+				"avatar_url": issue.Author.AvatarURL,
+			},
+		}
+	}
+
+	return topics, nil
+}
+
+// CreateTopic 创建话题 (在GitLab中创建Issue)
+func (h *TopicHandler) CreateTopic(c *gin.Context) {
+	_, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	var req struct {
+		Title     string   `json:"title" binding:"required"`
+		Content   string   `json:"content" binding:"required"`
+		ProjectID string   `json:"project_id" binding:"required"`
+		Labels    []string `json:"labels"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 解析项目ID
+	projectID, err := uuid.Parse(req.ProjectID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		return
+	}
+
+	// 获取项目信息
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+		return
+	}
+
+	// 检查项目是否关联了GitLab
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
+		return
+	}
+
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
+
+	// 在GitLab中创建Issue
+	issue, err := h.gitlabService.CreateProjectIssue(
+		accessToken.(string),
+		*project.GitLabProjectID,
+		req.Title,
+		req.Content,
+		req.Labels,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "创建话题失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	// 返回创建的话题信息
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "话题创建成功",
+		"topic": map[string]interface{}{
+			"id":             fmt.Sprintf("%d", issue.IID),
+			"gitlab_id":      issue.ID,
+			"gitlab_iid":     issue.IID,
+			"title":          issue.Title,
+			"content":        issue.Description,
+			"status":         issue.State,
+			"labels":         issue.Labels,
+			"created_at":     issue.CreatedAt,
+			"updated_at":     issue.UpdatedAt,
+			"like_count":     issue.Upvotes,
+			"dislike_count":  issue.Downvotes,
+			"comments_count": issue.UserNotesCount,
+		},
+	})
+}
+
+// GetTopicByID 获取话题详情和回复列表
 func (h *TopicHandler) GetTopicByID(c *gin.Context) {
 	topicIDStr := c.Param("id")
-	topicID, err := uuid.Parse(topicIDStr)
+	topicIID, err := strconv.ParseInt(topicIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
 		return
 	}
 
-	topic, err := h.topicService.GetTopicByID(topicID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "话题不存在"})
+	projectIDStr := c.Query("project_id")
+	if projectIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少项目ID"})
 		return
 	}
 
-	// 检查访问权限
-	if topic.ProjectID != nil {
-		project, err := h.researchService.GetResearchProjectByID(*topic.ProjectID)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "关联课题不存在"})
-			return
-		}
-
-		// 获取当前用户信息
-		// TODO: 重构权限检查以使用GitLab用户系统
-		isAdmin, _ := c.Get("is_admin")
-
-		// 使用GitLab权限检查（如果项目关联了GitLab）
-		if project.GitLabProjectID != nil {
-			// 对于关联GitLab的项目，使用GitLab权限检查
-			hasPermission := false
-
-			// 系统管理员可以访问所有项目
-			if isAdmin != nil && isAdmin.(bool) {
-				hasPermission = true
-			} else if project.IsPublic {
-				// 公开项目所有人都可以查看
-				hasPermission = true
-			} else {
-				// 对于私有项目，检查GitLab访问令牌
-				accessToken, exists := c.Get("gitlab_access_token")
-				if exists && accessToken.(string) != "" {
-					// 使用GitLab API检查权限（暂时简化）
-					hasPermission = true
-				}
-			}
-
-			if !hasPermission {
-				c.JSON(http.StatusForbidden, gin.H{"error": "无权限访问该话题"})
-				return
-			}
-		} else {
-			// 对于未关联GitLab的项目，使用简化权限检查
-			if !project.IsPublic {
-				// 只有项目创建者可以访问私有项目的话题
-				gitlabUserID, _ := c.Get("gitlab_user_id")
-				// TODO: 修复用户ID类型不匹配
-				if project.CreatorID != gitlabUserID.(int64) {
-					c.JSON(http.StatusForbidden, gin.H{"error": "无权限访问该话题"})
-					return
-				}
-			}
-		}
-	}
-
-	// 获取作者信息
-	authorInfo, err := h.enrichTopicWithUserInfo(topic)
+	// 解析项目ID
+	projectID, err := uuid.Parse(projectIDStr)
 	if err != nil {
-		// 如果获取用户信息失败，仍然返回topic，但不包含用户信息
-		c.JSON(http.StatusOK, topic)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
 		return
 	}
 
-	c.JSON(http.StatusOK, authorInfo)
-}
+	// 获取项目信息
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+		return
+	}
 
-// CreateTopic 创建新话题
-func (h *TopicHandler) CreateTopic(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
+	// 检查项目是否关联了GitLab
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
+		return
+	}
+
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
 
-	var req struct {
-		Title       string   `json:"title" binding:"required"`
-		Content     string   `json:"content" binding:"required"`
-		ProjectID   *string  `json:"project_id"`
-		Tags        []string `json:"tags"`
-		GitLabIssue *int64   `json:"gitlab_issue_id"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	// 从GitLab获取Issue详情
+	issue, err := h.gitlabService.GetIssue(accessToken.(string), *project.GitLabProjectID, topicIID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取话题详情失败",
+			"details": err.Error(),
+		})
 		return
 	}
 
-	// 检查项目权限
-	if req.ProjectID != nil {
-		_, err := uuid.Parse(*req.ProjectID)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
-			return
-		}
-
-		// 注意：权限检查已简化，具体权限由GitLab控制
-	}
-
-	topic := &models.Topic{
-		Title:    req.Title,
-		Content:  req.Content,
-		AuthorID: gitlabUserID.(int64), // TODO: 修复用户ID类型不匹配
-		Tags:     req.Tags,
-	}
-
-	if req.ProjectID != nil {
-		projectID, _ := uuid.Parse(*req.ProjectID)
-		topic.ProjectID = &projectID
-	}
-
-	if err := h.topicService.CreateTopic(topic); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建话题失败"})
+	// 获取Issue的回复列表
+	notes, err := h.gitlabService.GetIssueNotes(accessToken.(string), *project.GitLabProjectID, topicIID, 1, 100)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取回复列表失败",
+			"details": err.Error(),
+		})
 		return
 	}
 
-	// 如果是关联GitLab Issue，同步创建
-	if req.ProjectID != nil {
-		projectID, _ := uuid.Parse(*req.ProjectID)
-		project, err := h.researchService.GetResearchProjectByID(projectID)
-		if err == nil && project.GitLabProjectID != nil {
-			// 获取用户的GitLab访问令牌
-			accessToken, exists := c.Get("gitlab_access_token")
-			if exists && accessToken.(string) != "" {
-				// 创建GitLab Issue
-				issue, err := h.gitlabService.CreateIssue(
-					accessToken.(string),
-					*project.GitLabProjectID,
-					req.Title,
-					req.Content,
-					req.Tags,
-					nil,
-				)
-				if err == nil {
-					issueID := issue.ID
-					topic.GitLabIssueID = &issueID
-					// 更新数据库中的GitLab Issue ID
-					h.topicService.UpdateTopic(topic.ID, map[string]interface{}{"gitlab_issue_id": issue.ID})
+	// 获取当前用户对该Issue的表情反应
+	userLiked, userDisliked := false, false
+	if gitlabUserID, exists := c.Get("gitlab_user_id"); exists {
+		emojis, _ := h.gitlabService.GetIssueAwardEmojis(accessToken.(string), *project.GitLabProjectID, issue.IID)
+		for _, emoji := range emojis {
+			if emoji.User.ID == gitlabUserID.(int64) {
+				if emoji.Name == "thumbsup" {
+					userLiked = true
+				} else if emoji.Name == "thumbsdown" {
+					userDisliked = true
 				}
 			}
 		}
 	}
 
-	c.JSON(http.StatusCreated, topic)
-}
-
-// UpdateTopic 更新话题
-func (h *TopicHandler) UpdateTopic(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
-
-	topicIDStr := c.Param("id")
-	topicID, err := uuid.Parse(topicIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
-		return
-	}
-
-	var req struct {
-		Title   *string  `json:"title"`
-		Content *string  `json:"content"`
-		Tags    []string `json:"tags"`
-		Status  *string  `json:"status"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 获取原话题
-	topic, err := h.topicService.GetTopicByID(topicID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "话题不存在"})
-		return
-	}
-
-	// 检查权限 - 只有作者和管理员可以更新
-	if topic.AuthorID != gitlabUserID.(int64) {
-		// TODO: 重构权限检查以使用GitLab用户系统
-		// 暂时只允许管理员修改他人话题
-		isAdmin, _ := c.Get("is_admin")
-		if isAdmin == nil || !isAdmin.(bool) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "无权限修改该话题"})
-			return
+	// 转换回复为前端需要的格式
+	comments := make([]map[string]interface{}, len(notes))
+	for i, note := range notes {
+		comments[i] = map[string]interface{}{
+			"id":         note.ID,
+			"content":    note.Body,
+			"created_at": note.CreatedAt,
+			"updated_at": note.UpdatedAt,
+			"author": map[string]interface{}{
+				"id":         note.Author.ID,
+				"username":   note.Author.Username,
+				"name":       note.Author.Name,
+				"avatar_url": note.Author.AvatarURL,
+			},
 		}
 	}
 
-	updates := make(map[string]interface{})
-	if req.Title != nil {
-		updates["title"] = *req.Title
-	}
-	if req.Content != nil {
-		updates["content"] = *req.Content
-	}
-	if req.Tags != nil {
-		updates["tags"] = req.Tags
-	}
-	if req.Status != nil {
-		updates["status"] = *req.Status
-	}
-
-	if err := h.topicService.UpdateTopic(topicID, updates); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新话题失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "话题更新成功"})
-}
-
-// CreateComment 创建话题评论
-func (h *TopicHandler) CreateComment(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
-
-	topicIDStr := c.Param("id")
-	topicID, err := uuid.Parse(topicIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
-		return
-	}
-
-	var req struct {
-		Content string     `json:"content" binding:"required"`
-		ReplyTo *uuid.UUID `json:"reply_to"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 获取话题
-	topic, err := h.topicService.GetTopicByID(topicID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "话题不存在"})
-		return
-	}
-
-	// 检查访问权限
-	if topic.ProjectID != nil {
-		// 注意：权限检查已简化，具体权限由GitLab控制
-	}
-
-	comment := &models.Comment{
-		TopicID:  topicID,
-		Content:  req.Content,
-		AuthorID: gitlabUserID.(int64),
-		ParentID: req.ReplyTo,
-	}
-
-	if err := h.topicService.CreateComment(comment); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建评论失败"})
-		return
-	}
-
-	// 同步到GitLab讨论
-	if topic.GitLabIssueID != nil && topic.ProjectID != nil {
-		project, err := h.researchService.GetResearchProjectByID(*topic.ProjectID)
-		if err == nil && project.GitLabProjectID != nil {
-			// TODO: 实现CreateIssueDiscussion方法
-			// h.gitlabService.CreateIssueDiscussion(*project.GitLabProjectID, *topic.GitLabIssueID, req.Content)
-		}
-	}
-
-	c.JSON(http.StatusCreated, comment)
-}
-
-// LikeTopic 点赞话题
-func (h *TopicHandler) LikeTopic(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
-
-	topicIDStr := c.Param("id")
-	topicID, err := uuid.Parse(topicIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
-		return
-	}
-
-	// 检查是否已经点赞
-	isLiked, err := h.topicService.HasLikedTopic(gitlabUserID.(int64), topicID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查点赞状态失败"})
-		return
-	}
-	if isLiked {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "已经点过赞了"})
-		return
-	}
-
-	like := &models.TopicLike{
-		TopicID: topicID,
-		UserID:  gitlabUserID.(int64),
-	}
-
-	if err := h.topicService.LikeTopic(like); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "点赞失败"})
-		return
-	}
-
-	// 更新点赞数
-	h.topicService.UpdateTopicLikesCount(topicID)
-
-	c.JSON(http.StatusOK, gin.H{"message": "点赞成功"})
-}
-
-// UnlikeTopic 取消点赞
-func (h *TopicHandler) UnlikeTopic(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
-
-	topicIDStr := c.Param("id")
-	topicID, err := uuid.Parse(topicIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
-		return
-	}
-
-	if err := h.topicService.UnlikeTopic(gitlabUserID.(int64), topicID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "取消点赞失败"})
-		return
-	}
-
-	// 更新点赞数
-	h.topicService.UpdateTopicLikesCount(topicID)
-
-	c.JSON(http.StatusOK, gin.H{"message": "取消点赞成功"})
-}
-
-// DeleteTopic 删除话题
-func (h *TopicHandler) DeleteTopic(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
-
-	topicIDStr := c.Param("id")
-	topicID, err := uuid.Parse(topicIDStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
-		return
-	}
-
-	// 获取话题信息
-	topic, err := h.topicService.GetTopicByID(topicID)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "话题不存在"})
-		return
-	}
-
-	// 检查权限 - 只有作者和管理员可以删除
-	if topic.AuthorID != gitlabUserID.(int64) {
-		// TODO: 重构权限检查以使用GitLab用户系统
-		// 暂时只允许管理员删除他人话题
-		isAdmin, _ := c.Get("is_admin")
-		if isAdmin == nil || !isAdmin.(bool) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "无权限删除该话题"})
-			return
-		}
-	}
-
-	if err := h.topicService.DeleteTopic(topicID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除话题失败"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "话题删除成功"})
-}
-
-// enrichTopicWithUserInfo 为话题添加用户信息
-func (h *TopicHandler) enrichTopicWithUserInfo(topic *models.Topic) (map[string]interface{}, error) {
-	// 获取访问令牌（用于获取用户信息）
-	// 注意：这里我们需要一个管理员令牌或者当前用户的令牌来获取其他用户信息
-	// 暂时使用简化的方式，只返回基本的topic信息
-
-	// 构建包含基本信息的响应
-	result := map[string]interface{}{
-		"id":              topic.ID,
-		"title":           topic.Title,
-		"content":         topic.Content,
-		"author_id":       topic.AuthorID,
-		"project_id":      topic.ProjectID,
-		"gitlab_issue_id": topic.GitLabIssueID,
-		"tags":            topic.Tags,
-		"like_count":      topic.LikeCount,
-		"view_count":      topic.ViewCount,
-		"status":          topic.Status,
-		"priority":        topic.Priority,
-		"created_at":      topic.CreatedAt,
-		"updated_at":      topic.UpdatedAt,
-		"author": map[string]interface{}{
-			"id": topic.AuthorID,
-			// TODO: 从GitLab API获取用户详细信息
-			"username":   fmt.Sprintf("gitlab_user_%d", topic.AuthorID),
-			"name":       "GitLab用户",
-			"avatar_url": "",
+	// 返回话题详情和回复列表
+	c.JSON(http.StatusOK, gin.H{
+		"topic": map[string]interface{}{
+			"id":             fmt.Sprintf("%d", issue.IID),
+			"gitlab_id":      issue.ID,
+			"gitlab_iid":     issue.IID,
+			"title":          issue.Title,
+			"content":        issue.Description,
+			"status":         issue.State,
+			"labels":         issue.Labels,
+			"created_at":     issue.CreatedAt,
+			"updated_at":     issue.UpdatedAt,
+			"like_count":     issue.Upvotes,
+			"dislike_count":  issue.Downvotes,
+			"comments_count": issue.UserNotesCount,
+			"user_liked":     userLiked,
+			"user_disliked":  userDisliked,
+			"author": map[string]interface{}{
+				"id":         issue.Author.ID,
+				"username":   issue.Author.Username,
+				"name":       issue.Author.Name,
+				"avatar_url": issue.Author.AvatarURL,
+			},
 		},
+		"comments": comments,
+	})
+}
+
+// CreateComment 创建话题回复 (创建GitLab Issue Note)
+func (h *TopicHandler) CreateComment(c *gin.Context) {
+	_, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
 	}
 
-	// 如果有项目信息，也包含进去
-	if topic.Project.ID != uuid.Nil {
-		result["project"] = map[string]interface{}{
-			"id":   topic.Project.ID,
-			"name": topic.Project.Name,
+	topicIDStr := c.Param("id")
+	topicIID, err := strconv.ParseInt(topicIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
+		return
+	}
+
+	var req struct {
+		Content   string `json:"content" binding:"required"`
+		ProjectID string `json:"project_id"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 从查询参数或请求体获取项目ID
+	projectIDStr := req.ProjectID
+	if projectIDStr == "" {
+		projectIDStr = c.Query("project_id")
+	}
+
+	if projectIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少项目ID"})
+		return
+	}
+
+	// 解析项目ID
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		return
+	}
+
+	// 获取项目信息
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+		return
+	}
+
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
+		return
+	}
+
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
+
+	// 在GitLab中创建Issue Note
+	note, err := h.gitlabService.CreateIssueNote(
+		accessToken.(string),
+		*project.GitLabProjectID,
+		topicIID,
+		req.Content,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "创建回复失败",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "回复创建成功",
+		"comment": map[string]interface{}{
+			"id":         note.ID,
+			"content":    note.Body,
+			"created_at": note.CreatedAt,
+			"updated_at": note.UpdatedAt,
+			"author": map[string]interface{}{
+				"id":         note.Author.ID,
+				"username":   note.Author.Username,
+				"name":       note.Author.Name,
+				"avatar_url": note.Author.AvatarURL,
+			},
+		},
+	})
+}
+
+// LikeTopic 点赞话题 (添加👍表情反应)
+func (h *TopicHandler) LikeTopic(c *gin.Context) {
+	h.toggleEmojiReaction(c, "thumbsup", "点赞")
+}
+
+// UnlikeTopic 取消点赞话题 (移除👍表情反应)
+func (h *TopicHandler) UnlikeTopic(c *gin.Context) {
+	h.removeEmojiReaction(c, "thumbsup", "取消点赞")
+}
+
+// DislikeTopic 反对话题 (添加👎表情反应)
+func (h *TopicHandler) DislikeTopic(c *gin.Context) {
+	h.toggleEmojiReaction(c, "thumbsdown", "反对")
+}
+
+// UndislikeTopic 取消反对话题 (移除👎表情反应)
+func (h *TopicHandler) UndislikeTopic(c *gin.Context) {
+	h.removeEmojiReaction(c, "thumbsdown", "取消反对")
+}
+
+// toggleEmojiReaction 切换表情反应的通用方法
+func (h *TopicHandler) toggleEmojiReaction(c *gin.Context, emojiName, actionName string) {
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	topicIDStr := c.Param("id")
+	topicIID, err := strconv.ParseInt(topicIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
+		return
+	}
+
+	projectIDStr := c.Query("project_id")
+	if projectIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少项目ID"})
+		return
+	}
+
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		return
+	}
+
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+		return
+	}
+
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
+		return
+	}
+
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
+
+	// 检查是否已经有该表情反应
+	existingEmoji, err := h.gitlabService.FindUserAwardEmoji(
+		accessToken.(string),
+		*project.GitLabProjectID,
+		topicIID,
+		emojiName,
+		gitlabUserID.(int64),
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   fmt.Sprintf("检查%s状态失败", actionName),
+			"details": err.Error(),
+		})
+		return
+	}
+
+	if existingEmoji != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("已经%s过了", actionName)})
+		return
+	}
+
+	// 如果是点赞，先检查并移除反对；如果是反对，先检查并移除点赞
+	var oppositeEmoji string
+	if emojiName == "thumbsup" {
+		oppositeEmoji = "thumbsdown"
+	} else if emojiName == "thumbsdown" {
+		oppositeEmoji = "thumbsup"
+	}
+
+	if oppositeEmoji != "" {
+		// 查找并移除相反的表情反应
+		existingOpposite, err := h.gitlabService.FindUserAwardEmoji(
+			accessToken.(string),
+			*project.GitLabProjectID,
+			topicIID,
+			oppositeEmoji,
+			gitlabUserID.(int64),
+		)
+		if err == nil && existingOpposite != nil {
+			// 移除相反的表情反应
+			h.gitlabService.RemoveIssueAwardEmoji(
+				accessToken.(string),
+				*project.GitLabProjectID,
+				topicIID,
+				existingOpposite.ID,
+			)
 		}
 	}
 
-	return result, nil
+	// 添加表情反应
+	_, err = h.gitlabService.AddIssueAwardEmoji(
+		accessToken.(string),
+		*project.GitLabProjectID,
+		topicIID,
+		emojiName,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   fmt.Sprintf("%s失败", actionName),
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%s成功", actionName)})
+}
+
+// removeEmojiReaction 移除表情反应的通用方法
+func (h *TopicHandler) removeEmojiReaction(c *gin.Context, emojiName, actionName string) {
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	topicIDStr := c.Param("id")
+	topicIID, err := strconv.ParseInt(topicIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的话题ID"})
+		return
+	}
+
+	projectIDStr := c.Query("project_id")
+	if projectIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少项目ID"})
+		return
+	}
+
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		return
+	}
+
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+		return
+	}
+
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
+		return
+	}
+
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
+
+	// 查找用户的表情反应
+	existingEmoji, err := h.gitlabService.FindUserAwardEmoji(
+		accessToken.(string),
+		*project.GitLabProjectID,
+		topicIID,
+		emojiName,
+		gitlabUserID.(int64),
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   fmt.Sprintf("查找%s状态失败", actionName),
+			"details": err.Error(),
+		})
+		return
+	}
+
+	if existingEmoji == nil {
+		// 根据actionName确定未执行的操作
+		var baseAction string
+		if actionName == "取消点赞" {
+			baseAction = "点赞"
+		} else if actionName == "取消反对" {
+			baseAction = "反对"
+		} else {
+			baseAction = actionName
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("尚未%s", baseAction)})
+		return
+	}
+
+	// 移除表情反应
+	err = h.gitlabService.RemoveIssueAwardEmoji(
+		accessToken.(string),
+		*project.GitLabProjectID,
+		topicIID,
+		existingEmoji.ID,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   fmt.Sprintf("%s失败", actionName),
+			"details": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("%s成功", actionName)})
 }

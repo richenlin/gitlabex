@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"gitlabex/internal/config"
@@ -20,12 +21,37 @@ type GitLabService struct {
 
 // NewGitLabService 创建GitLab服务
 func NewGitLabService(cfg *config.Config) *GitLabService {
+	// 配置HTTP传输层以优化连接复用和资源管理
+	transport := &http.Transport{
+		MaxIdleConns:        100,              // 最大空闲连接数
+		MaxIdleConnsPerHost: 10,               // 每个主机的最大空闲连接数
+		IdleConnTimeout:     90 * time.Second, // 空闲连接超时时间
+		DisableKeepAlives:   false,            // 启用Keep-Alive
+		ForceAttemptHTTP2:   true,             // 强制尝试HTTP/2
+	}
+
 	return &GitLabService{
 		Config: cfg,
 		HTTPClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: transport,
 		},
 	}
+}
+
+// makeRequest 通用HTTP请求方法，带有context支持
+func (s *GitLabService) makeRequest(ctx context.Context, method, url, accessToken string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	return s.HTTPClient.Do(req)
 }
 
 // GitLabUser GitLab用户信息 - 使用models包中的定义
@@ -103,17 +129,50 @@ type GitLabCommit struct {
 
 // GitLabIssue GitLab议题信息
 type GitLabIssue struct {
-	ID          int64          `json:"id"`
-	IID         int64          `json:"iid"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	State       string         `json:"state"`
-	Author      *GitLabAPIUser `json:"author"`
-	Assignee    *GitLabAPIUser `json:"assignee"`
-	Labels      []string       `json:"labels"`
-	CreatedAt   string         `json:"created_at"`
-	UpdatedAt   string         `json:"updated_at"`
-	WebURL      string         `json:"web_url"`
+	ID          int64    `json:"id"`
+	IID         int64    `json:"iid"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	State       string   `json:"state"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+	Labels      []string `json:"labels"`
+	Author      struct {
+		ID        int64  `json:"id"`
+		Username  string `json:"username"`
+		Name      string `json:"name"`
+		AvatarURL string `json:"avatar_url"`
+	} `json:"author"`
+	Upvotes        int    `json:"upvotes"`
+	Downvotes      int    `json:"downvotes"`
+	UserNotesCount int    `json:"user_notes_count"`
+	WebURL         string `json:"web_url"`
+}
+
+// GitLabIssueNote GitLab Issue评论结构
+type GitLabIssueNote struct {
+	ID        int64  `json:"id"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+	Author    struct {
+		ID        int64  `json:"id"`
+		Username  string `json:"username"`
+		Name      string `json:"name"`
+		AvatarURL string `json:"avatar_url"`
+	} `json:"author"`
+}
+
+// GitLabAwardEmoji GitLab Award Emoji结构
+type GitLabAwardEmoji struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	User struct {
+		ID        int64  `json:"id"`
+		Username  string `json:"username"`
+		Name      string `json:"name"`
+		AvatarURL string `json:"avatar_url"`
+	} `json:"user"`
 }
 
 // GitLabMergeRequest GitLab合并请求信息
@@ -811,26 +870,24 @@ func (s *GitLabService) SearchFiles(accessToken string, projectID int64, search 
 	return results, nil
 }
 
-// GetProjectIssues 获取项目Issues
-func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64) ([]GitLabIssue, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLabURL, projectID)
+// GetProjectIssues 获取项目Issues列表
+func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64, page, perPage int) ([]GitLabIssue, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues?page=%d&per_page=%d",
+		s.Config.GitLabURL, projectID, page, perPage)
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
+	// 使用context控制请求超时，防止资源泄漏
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
+	resp, err := s.makeRequest(ctx, "GET", url, accessToken, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("获取Issues失败: %s - %s", resp.Status, string(body))
 	}
 
 	var issues []GitLabIssue
@@ -1119,4 +1176,226 @@ func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*GitLabAP
 	}
 
 	return &user, nil
+}
+
+// CreateProjectIssue 创建项目Issue
+func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, title, description string, labels []string) (*GitLabIssue, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLabURL, projectID)
+
+	data := map[string]interface{}{
+		"title":       title,
+		"description": description,
+	}
+	if len(labels) > 0 {
+		data["labels"] = strings.Join(labels, ",")
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// 使用context控制请求超时
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	resp, err := s.makeRequest(ctx, "POST", url, accessToken, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("创建Issue失败: %s - %s", resp.Status, string(body))
+	}
+
+	var issue GitLabIssue
+	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+		return nil, err
+	}
+
+	return &issue, nil
+}
+
+// GetIssueNotes 获取Issue评论列表
+func (s *GitLabService) GetIssueNotes(accessToken string, projectID, issueIID int64, page, perPage int) ([]GitLabIssueNote, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes?page=%d&per_page=%d&sort=asc&order_by=created_at",
+		s.Config.GitLabURL, projectID, issueIID, page, perPage)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("获取评论失败: %s - %s", resp.Status, string(body))
+	}
+
+	var notes []GitLabIssueNote
+	if err := json.NewDecoder(resp.Body).Decode(&notes); err != nil {
+		return nil, err
+	}
+
+	return notes, nil
+}
+
+// CreateIssueNote 创建Issue评论
+func (s *GitLabService) CreateIssueNote(accessToken string, projectID, issueIID int64, body string) (*GitLabIssueNote, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes", s.Config.GitLabURL, projectID, issueIID)
+
+	data := map[string]interface{}{
+		"body": body,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("创建评论失败: %s - %s", resp.Status, string(body))
+	}
+
+	var note GitLabIssueNote
+	if err := json.NewDecoder(resp.Body).Decode(&note); err != nil {
+		return nil, err
+	}
+
+	return &note, nil
+}
+
+// GetIssueAwardEmojis 获取Issue的表情反应列表
+func (s *GitLabService) GetIssueAwardEmojis(accessToken string, projectID, issueIID int64) ([]GitLabAwardEmoji, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLabURL, projectID, issueIID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("获取表情反应失败: %s - %s", resp.Status, string(body))
+	}
+
+	var emojis []GitLabAwardEmoji
+	if err := json.NewDecoder(resp.Body).Decode(&emojis); err != nil {
+		return nil, err
+	}
+
+	return emojis, nil
+}
+
+// AddIssueAwardEmoji 给Issue添加表情反应
+func (s *GitLabService) AddIssueAwardEmoji(accessToken string, projectID, issueIID int64, emojiName string) (*GitLabAwardEmoji, error) {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLabURL, projectID, issueIID)
+
+	data := map[string]interface{}{
+		"name": emojiName,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("添加表情反应失败: %s - %s", resp.Status, string(body))
+	}
+
+	var emoji GitLabAwardEmoji
+	if err := json.NewDecoder(resp.Body).Decode(&emoji); err != nil {
+		return nil, err
+	}
+
+	return &emoji, nil
+}
+
+// RemoveIssueAwardEmoji 移除Issue表情反应
+func (s *GitLabService) RemoveIssueAwardEmoji(accessToken string, projectID, issueIID, emojiID int64) error {
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji/%d", s.Config.GitLabURL, projectID, issueIID, emojiID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("移除表情反应失败: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// FindUserAwardEmoji 查找用户的特定表情反应
+func (s *GitLabService) FindUserAwardEmoji(accessToken string, projectID, issueIID int64, emojiName string, userID int64) (*GitLabAwardEmoji, error) {
+	emojis, err := s.GetIssueAwardEmojis(accessToken, projectID, issueIID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, emoji := range emojis {
+		if emoji.Name == emojiName && emoji.User.ID == userID {
+			return &emoji, nil
+		}
+	}
+
+	return nil, nil // 未找到
 }

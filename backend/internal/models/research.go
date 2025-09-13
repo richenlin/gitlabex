@@ -42,12 +42,14 @@ type Topic struct {
 	Tags          pq.StringArray `gorm:"type:text[]" json:"tags"`
 	ViewCount     int            `gorm:"default:0" json:"view_count"`
 	LikeCount     int            `gorm:"default:0" json:"like_count"`
+	DislikeCount  int            `gorm:"default:0" json:"dislike_count"`
 
 	// 关联关系
 	Project ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
 	// 注意：Author关联已移除，作者信息从GitLab API获取
-	Comments   []Comment   `gorm:"foreignKey:TopicID" json:"comments,omitempty"`
-	TopicLikes []TopicLike `gorm:"foreignKey:TopicID" json:"topic_likes,omitempty"`
+	Comments      []Comment      `gorm:"foreignKey:TopicID" json:"comments,omitempty"`
+	TopicLikes    []TopicLike    `gorm:"foreignKey:TopicID" json:"topic_likes,omitempty"`
+	TopicDislikes []TopicDislike `gorm:"foreignKey:TopicID" json:"topic_dislikes,omitempty"`
 }
 
 // Comment 评论模型
@@ -69,8 +71,19 @@ type Comment struct {
 // TopicLike 话题点赞模型
 type TopicLike struct {
 	BaseModel
-	TopicID uuid.UUID `gorm:"not null;uniqueIndex:idx_topic_user" json:"topic_id"`
-	UserID  int64     `gorm:"not null;uniqueIndex:idx_topic_user" json:"user_id"` // GitLab用户ID
+	TopicID uuid.UUID `gorm:"not null;uniqueIndex:idx_topic_user_like" json:"topic_id"`
+	UserID  int64     `gorm:"not null;uniqueIndex:idx_topic_user_like" json:"user_id"` // GitLab用户ID
+
+	// 关联关系
+	Topic Topic `gorm:"foreignKey:TopicID" json:"topic,omitempty"`
+	// 注意：User关联已移除，用户信息从GitLab API获取
+}
+
+// TopicDislike 话题反对模型
+type TopicDislike struct {
+	BaseModel
+	TopicID uuid.UUID `gorm:"not null;uniqueIndex:idx_topic_user_dislike" json:"topic_id"`
+	UserID  int64     `gorm:"not null;uniqueIndex:idx_topic_user_dislike" json:"user_id"` // GitLab用户ID
 
 	// 关联关系
 	Topic Topic `gorm:"foreignKey:TopicID" json:"topic,omitempty"`

@@ -195,15 +195,17 @@ export const topicService = {
   getTopics: (params?: {
     page?: number
     pageSize?: number
+    limit?: number
     projectId?: string
+    project_id?: string
     authorId?: string
     search?: string
     labels?: string[]
   }) =>
     api.get('/topics', { params }),
   
-  getTopic: (id: string) =>
-    api.get(`/topics/${id}`),
+  getTopic: (id: string, projectId: string) =>
+    api.get(`/topics/${id}?project_id=${projectId}`),
   
   createTopic: (data: Partial<Topic>) =>
     api.post('/topics', data),
@@ -214,14 +216,20 @@ export const topicService = {
   deleteTopic: (id: string) =>
     api.delete(`/topics/${id}`),
   
-  likeTopic: (id: string) =>
-    api.post(`/topics/${id}/like`),
+  likeTopic: (id: string, projectId: string) =>
+    api.post(`/topics/${id}/like?project_id=${projectId}`),
   
-  unlikeTopic: (id: string) =>
-    api.delete(`/topics/${id}/like`),
+  unlikeTopic: (id: string, projectId: string) =>
+    api.delete(`/topics/${id}/like?project_id=${projectId}`),
   
-  createComment: (id: string, content: string, parentId?: string) =>
-    api.post(`/topics/${id}/comments`, { content, parentId })
+  dislikeTopic: (id: string, projectId: string) =>
+    api.post(`/topics/${id}/dislike?project_id=${projectId}`),
+  
+  undislikeTopic: (id: string, projectId: string) =>
+    api.delete(`/topics/${id}/dislike?project_id=${projectId}`),
+  
+  createComment: (id: string, content: string, projectId: string, parentId?: string) =>
+    api.post(`/topics/${id}/comments?project_id=${projectId}`, { content, parentId })
 }
 
 // 文档相关 API

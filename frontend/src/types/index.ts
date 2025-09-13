@@ -100,15 +100,24 @@ export interface Topic {
   author_id: string
   author: User
   gitlab_issue_id?: number
-  status: 'open' | 'closed'
+  status: 'opened' | 'closed'
   labels: string[]
   likes_count: number
+  like_count?: number // 别名，用于兼容
+  dislike_count?: number
   comments_count: number
   is_pinned: boolean
   priority: 'low' | 'medium' | 'high' | 'urgent'
   created_at: string
   updated_at: string
   comments?: Comment[]
+  view_count?: number
+  
+  // 用户交互状态 (前端使用，不从后端获取)
+  user_liked?: boolean
+  user_disliked?: boolean
+  liking?: boolean
+  disliking?: boolean
 }
 
 // 评论类型

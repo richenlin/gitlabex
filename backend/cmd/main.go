@@ -59,11 +59,9 @@ func main() {
 
 	userService := services.NewUserService(gitlabService, cfg)
 	researchService := services.NewResearchService(db, gitlabService)
-	topicService := services.NewTopicService(db, gitlabService)
 	documentService := services.NewDocumentService(db, gitlabService, minioService)
 	homeworkService := services.NewHomeworkService(db, gitlabService)
 	notificationService := services.NewNotificationService(db)
-	websocketService := services.NewWebSocketService()
 
 	// 初始化文档扫描服务
 	documentScannerService := services.NewDocumentScannerService(minioService, documentService)
@@ -73,14 +71,11 @@ func main() {
 
 	// 初始化处理器
 	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
-	gitlabWebhookHandler := handlers.NewGitLabWebhookHandler(gitlabService, userService, researchService, homeworkService, notificationService, websocketService, documentScannerService)
 	researchHandler := handlers.NewResearchHandler(researchService, userService, gitlabService)
-	topicHandler := handlers.NewTopicHandler(topicService, userService, gitlabService, researchService)
+	topicHandler := handlers.NewTopicHandler(gitlabService, researchService)
 	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWTSecret)
-	websocketHandler := handlers.NewWebSocketHandler(websocketService)
 	activityHandler := handlers.NewActivityHandler(activityService)
 	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService)
-	// documentSyncHandler 已移除，文档扫描现在通过webhook自动触发
 
 	// 创建Gin路由器
 	r := gin.Default()
@@ -185,20 +180,20 @@ func main() {
 		topicsPublic := topics.Group("")
 		topicsPublic.Use(middleware.OptionalAuth(cfg))
 		{
-			topicsPublic.GET("", topicHandler.GetTopics) // 话题列表 - 游客可访问
+			topicsPublic.GET("", topicHandler.GetTopics)        // 话题列表 - 游客可访问
+			topicsPublic.GET("/:id", topicHandler.GetTopicByID) // 话题详情 - 游客可访问
 		}
 
 		// 需要认证的路由
 		topicsAuth := topics.Group("")
 		topicsAuth.Use(middleware.RequireAuth(cfg))
 		{
-			topicsAuth.GET("/:id", topicHandler.GetTopicByID) // 话题详情
 			topicsAuth.POST("", topicHandler.CreateTopic)
-			topicsAuth.PUT("/:id", topicHandler.UpdateTopic)
-			topicsAuth.DELETE("/:id", topicHandler.DeleteTopic)
 			topicsAuth.POST("/:id/comments", topicHandler.CreateComment)
 			topicsAuth.POST("/:id/like", topicHandler.LikeTopic)
 			topicsAuth.DELETE("/:id/like", topicHandler.UnlikeTopic)
+			topicsAuth.POST("/:id/dislike", topicHandler.DislikeTopic)
+			topicsAuth.DELETE("/:id/dislike", topicHandler.UndislikeTopic)
 		}
 	}
 
@@ -395,26 +390,6 @@ func main() {
 		gitlab.GET("/projects/:id/tree", gitlabHandler.GetRepositoryTree)
 		gitlab.GET("/projects/:id/search", gitlabHandler.SearchFiles)
 		gitlab.GET("/projects/:id/validate", gitlabHandler.ValidateRepositoryAccess)
-	}
-
-	// GitLab webhook路由
-	webhook := api.Group("/webhooks")
-	{
-		webhook.POST("/gitlab", gitlabWebhookHandler.HandleWebhook)
-		webhook.POST("/gitlab/push", gitlabWebhookHandler.HandlePush)
-		webhook.POST("/gitlab/merge-request", gitlabWebhookHandler.HandleMergeRequest)
-		webhook.POST("/gitlab/issue", gitlabWebhookHandler.HandleIssue)
-		webhook.POST("/gitlab/pipeline", gitlabWebhookHandler.HandlePipeline)
-		gitlab.POST("/projects/:id/register-webhook", gitlabWebhookHandler.RegisterWebhook)
-		gitlab.GET("/projects/:id/webhooks", gitlabWebhookHandler.ListWebhooks)
-		gitlab.DELETE("/projects/:id/webhooks/:webhook_id", gitlabWebhookHandler.DeleteWebhook)
-	}
-
-	// WebSocket 实时通知路由
-	ws := api.Group("/ws")
-	ws.Use(middleware.RequireAuth(cfg))
-	{
-		ws.GET("/connect", websocketHandler.HandleWebSocket)
 	}
 
 	// 第三方系统同步API路由 (需要API密钥认证)
