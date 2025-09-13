@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"gitlabex/internal/models"
@@ -178,40 +179,56 @@ func (s *DocumentService) ScanProjectDocuments(projectID uuid.UUID, gitLabProjec
 			continue
 		}
 
-		// 获取文件内容用于提取描述
+		// 获取文件内容
 		fileContent, err := s.GitLabService.GetFileContent(accessToken, gitLabProjectID, filePath, defaultBranch)
-		var content string
 		if err != nil {
-			// 如果无法获取内容，仍然创建文档记录
-			content = ""
-		} else {
-			content = fileContent.Content
+			// 如果无法获取内容，跳过该文件
+			continue
 		}
 
-		// 获取文件大小（如果可用）
-		var fileSize int64
-		if sizeInterface, exists := fileData["size"]; exists {
-			if sizeFloat, ok := sizeInterface.(float64); ok {
-				fileSize = int64(sizeFloat)
-			}
+		// 解码base64内容
+		contentBytes, err := base64.StdEncoding.DecodeString(fileContent.Content)
+		if err != nil {
+			// 如果解码失败，跳过该文件
+			continue
 		}
+
+		// 生成唯一的文件名
+		fileExt := filepath.Ext(fileName)
+		uniqueFileName := fmt.Sprintf("%s_%s%s",
+			strings.TrimSuffix(fileName, fileExt),
+			uuid.New().String()[:8],
+			fileExt)
+
+		// 将文件内容保存到MINIO
+		minioPath := fmt.Sprintf("documents/%s/%s", projectID.String(), uniqueFileName)
+		_, err = s.MinIOService.UploadDocument(minioPath, contentBytes, fileContent.Encoding, nil)
+		if err != nil {
+			// 如果保存到MINIO失败，跳过该文件
+			continue
+		}
+
+		// 获取文件大小
+		fileSize := int64(len(contentBytes))
 
 		// 创建文档记录
 		document := &models.Document{
 			ProjectID:      &projectID,
-			Title:          strings.TrimSuffix(fileName, filepath.Ext(fileName)),
-			Description:    extractDescriptionFromContent(content, fileName),
-			FilePath:       filePath,
+			Title:          strings.TrimSuffix(fileName, fileExt),
+			Description:    extractDescriptionFromContent(string(contentBytes), fileName),
+			FilePath:       minioPath, // 使用MINIO路径
 			FileType:       models.DocumentType(docType),
 			Category:       categorizeDocument(filePath, docType),
 			Status:         models.DocumentStatusPending,
 			FileSize:       fileSize,
-			GitLabFilePath: filePath,
+			GitLabFilePath: filePath, // 保留原始GitLab路径
 			GitLabID:       fmt.Sprintf("%d", gitLabProjectID),
 		}
 
 		if err := s.CreateDocument(document); err != nil {
-			continue // 跳过失败的文档，继续处理其他文件
+			// 如果创建文档记录失败，删除MINIO中的文件
+			s.MinIOService.DeleteDocument(minioPath)
+			continue
 		}
 		processedFiles++
 	}
@@ -405,42 +422,6 @@ func getFileType(filename string) string {
 		return "pdf"
 	case ".doc", ".docx":
 		return "doc"
-	case ".xls", ".xlsx":
-		return "excel"
-	case ".ppt", ".pptx":
-		return "ppt"
-	case ".txt":
-		return "text"
-	case ".md":
-		return "markdown"
-	case ".py":
-		return "python"
-	case ".js", ".jsx":
-		return "javascript"
-	case ".ts", ".tsx":
-		return "typescript"
-	case ".java":
-		return "java"
-	case ".cpp", ".cc", ".cxx":
-		return "cpp"
-	case ".c":
-		return "c"
-	case ".go":
-		return "go"
-	case ".rs":
-		return "rust"
-	case ".html", ".htm":
-		return "html"
-	case ".css":
-		return "css"
-	case ".json":
-		return "json"
-	case ".xml":
-		return "xml"
-	case ".zip", ".rar", ".7z":
-		return "archive"
-	case ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg":
-		return "image"
 	default:
 		return "other"
 	}
@@ -479,13 +460,16 @@ func (s *DocumentService) SearchDocuments(keyword string, limit, offset int) ([]
 
 // SubmitEditRequest 提交文档编辑请求（学生使用）
 func (s *DocumentService) SubmitEditRequest(documentID uuid.UUID, requesterID int64, editData map[string]interface{}, reason string) (*models.DocumentEditRequest, error) {
-	// TODO: 重构用户权限检查以使用GitLab用户系统
-	// 暂时跳过权限检查，所有已登录用户都可以提交编辑请求
-
 	// 检查文档是否存在
 	var document models.Document
 	if err := s.DB.First(&document, documentID).Error; err != nil {
 		return nil, err
+	}
+
+	// 检查用户权限：只有已登录的GitLab用户才能提交编辑请求
+	// requesterID > 0 表示是有效的GitLab用户ID
+	if requesterID <= 0 {
+		return nil, fmt.Errorf("无效的用户ID")
 	}
 
 	// 创建编辑请求

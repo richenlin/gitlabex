@@ -330,9 +330,18 @@ func (h *DocumentHandler) DownloadDocument(c *gin.Context) {
 		return
 	}
 
-	// 检查文件是否存在
-	if _, err := os.Stat(document.FilePath); os.IsNotExist(err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "文件不存在"})
+	// 从MINIO获取文件内容
+	_, fileReader, err := h.documentService.MinIOService.GetDocument(document.FilePath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文件不存在或无法访问"})
+		return
+	}
+	defer fileReader.Close()
+
+	// 读取文件内容
+	fileData, err := io.ReadAll(fileReader)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "读取文件失败"})
 		return
 	}
 
@@ -343,10 +352,13 @@ func (h *DocumentHandler) DownloadDocument(c *gin.Context) {
 	c.Header("Content-Description", "File Transfer")
 	c.Header("Content-Transfer-Encoding", "binary")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", document.Title))
-	c.Header("Content-Type", "application/octet-stream")
 
-	// 发送文件
-	c.File(document.FilePath)
+	// 根据文件类型设置正确的Content-Type
+	contentType := getContentTypeByFileType(document.FileType)
+	c.Header("Content-Type", contentType)
+
+	// 发送文件内容
+	c.Data(http.StatusOK, contentType, fileData)
 }
 
 // UpdateDocument 更新文档信息
@@ -980,5 +992,27 @@ func (h *DocumentHandler) UpdateDocumentWithPermissionCheck(c *gin.Context) {
 			"message":      "编辑请求已提交，等待审核",
 			"edit_request": editRequest,
 		})
+	}
+}
+
+// getContentTypeByFileType 根据文件类型获取Content-Type
+func getContentTypeByFileType(fileType models.DocumentType) string {
+	switch fileType {
+	case models.DocumentTypePDF:
+		return "application/pdf"
+	case models.DocumentTypeWord:
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case models.DocumentTypeExcel:
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case models.DocumentTypePPT:
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case models.DocumentTypeCode:
+		return "text/plain"
+	case models.DocumentTypeImage:
+		return "image/jpeg"
+	case models.DocumentTypeVideo:
+		return "video/mp4"
+	default:
+		return "application/octet-stream"
 	}
 }

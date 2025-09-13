@@ -58,6 +58,7 @@ func autoMigrate(db *gorm.DB) error {
 	models := []interface{}{
 		&models.ResearchProject{},
 		&models.Document{},
+		&models.DocumentEditRequest{},
 		&models.Homework{},
 		&models.Submission{},
 		&models.Topic{},
