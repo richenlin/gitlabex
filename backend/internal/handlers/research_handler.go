@@ -1049,3 +1049,40 @@ func (h *ResearchHandler) GetHotProjects(c *gin.Context) {
 		"count":    len(projects),
 	})
 }
+
+// GetGitLabIDEURL 获取GitLab IDE URL
+func (h *ResearchHandler) GetGitLabIDEURL(c *gin.Context) {
+	projectID := c.Param("id")
+	filePath := c.Query("file")
+	branch := c.DefaultQuery("branch", "main")
+
+	if filePath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件路径不能为空"})
+		return
+	}
+
+	// 获取项目信息
+	var project models.ResearchProject
+	if err := h.researchService.DB.First(&project, projectID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
+		return
+	}
+
+	if project.GitLabProjectID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "项目未关联GitLab项目"})
+		return
+	}
+
+	// 构建GitLab IDE URL
+	gitlabURL := h.researchService.Config.GitLabURL
+	ideURL := fmt.Sprintf("%s/-/ide/project/root/%d/edit/%s/-/%s",
+		gitlabURL, *project.GitLabProjectID, branch, filePath)
+
+	c.JSON(http.StatusOK, gin.H{
+		"ide_url":    ideURL,
+		"gitlab_url": gitlabURL,
+		"project_id": *project.GitLabProjectID,
+		"file_path":  filePath,
+		"branch":     branch,
+	})
+}

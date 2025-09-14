@@ -221,7 +221,13 @@ export const researchService = {
     api.get(`/research-projects/${projectId}/issues/${issueId}/discussions`),
   
   createDiscussion: (projectId: string, issueId: string, body: string) =>
-    api.post(`/research-projects/${projectId}/issues/${issueId}/discussions`, { body })
+    api.post(`/research-projects/${projectId}/issues/${issueId}/discussions`, { body }),
+  
+  // 获取GitLab IDE URL
+  getGitLabIDEURL: (projectId: string, filePath: string, branch?: string) =>
+    api.get(`/research-projects/${projectId}/ide-url`, {
+      params: { file: filePath, branch: branch || 'main' }
+    })
 }
 
 // 话题相关 API  

@@ -874,10 +874,11 @@ const handleTabChange = (tabName: string) => {
   }
 }
 
-const handleFileClick = (file: any) => {
+const handleFileClick = async (file: any) => {
   selectedFile.value = file
   if (file.type === 'blob') {
-    loadFileContent(file)
+    // 打开GitLab IDE而不是加载文件内容
+    await openFileInIDE(file)
   }
 }
 
@@ -885,6 +886,28 @@ const handleFileDoubleClick = (file: any) => {
   if (file.type === 'tree') {
     const newPath = currentPath.value ? `${currentPath.value}/${file.name}` : file.name
     fetchFiles(newPath)
+  }
+}
+
+const openFileInIDE = async (file: any) => {
+  if (!project.value?.id) return
+  
+  try {
+    const filePath = currentPath.value ? `${currentPath.value}/${file.name}` : file.name
+    const response: any = await researchService.getGitLabIDEURL(
+      project.value.id,
+      filePath
+    )
+    
+    if (response.data?.ide_url) {
+      // 在新窗口打开GitLab IDE
+      window.open(response.data.ide_url, '_blank')
+    } else {
+      ElMessage.error('无法获取IDE链接')
+    }
+  } catch (error) {
+    console.error('获取IDE链接失败:', error)
+    ElMessage.error('获取IDE链接失败')
   }
 }
 

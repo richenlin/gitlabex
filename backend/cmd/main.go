@@ -232,6 +232,9 @@ func main() {
 		researchAuth.GET("/:id/issues/:issueId/discussions", researchHandler.GetDiscussions)
 		researchAuth.POST("/:id/issues/:issueId/discussions", researchHandler.CreateDiscussion)
 
+		// GitLab IDE URL
+		researchAuth.GET("/:id/ide-url", researchHandler.GetGitLabIDEURL)
+
 		// 作业管理 - 需要认证
 		researchAuth.GET("/:id/homework", researchHandler.GetHomework)
 		researchAuth.POST("/:id/homework", researchHandler.CreateHomework)
