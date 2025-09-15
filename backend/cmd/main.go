@@ -250,14 +250,14 @@ func main() {
 		topicsPublic := topics.Group("")
 		topicsPublic.Use(middleware.OptionalAuth(cfg))
 		{
-			topicsPublic.GET("", topicHandler.GetTopics)        // 话题列表 - 游客可访问（不是高频接口，移除缓存）
-			topicsPublic.GET("/:id", topicHandler.GetTopicByID) // 话题详情 - 游客可访问（不是高频接口，移除缓存）
+			topicsPublic.GET("", topicHandler.GetTopics) // 话题列表 - 游客可访问（不是高频接口，移除缓存）
 		}
 
 		// 需要认证的路由
 		topicsAuth := topics.Group("")
 		topicsAuth.Use(middleware.RequireAuth(cfg))
 		{
+			topicsAuth.GET("/:id", topicHandler.GetTopicByID) // 话题详情 - 需要登录访问
 			topicsAuth.POST("", topicHandler.CreateTopic)
 			topicsAuth.POST("/:id/comments", topicHandler.CreateComment)
 			// 话题浏览点赞反对回复计数 - 高频接口，添加缓存

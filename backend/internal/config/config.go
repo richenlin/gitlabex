@@ -92,7 +92,7 @@ func Load() *Config {
 		GitLabClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
 		GitLabRedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:3000/auth/gitlab/callback"),
 		GitLabScopes:       getEnv("SCOPES", "api read_api openid"),
-		GitLabSystemToken:  getEnv("GITLAB_SYSTEM_TOKEN", ""),
+		GitLabSystemToken:  getEnv("GITLAB_ACCESS_TOKEN", ""), // 使用GITLAB_ACCESS_TOKEN作为系统token
 
 		// JWT配置
 		JWTSecret:          getEnv("JWT_SECRET", "your_jwt_secret_key_here_please_change_in_production"),
