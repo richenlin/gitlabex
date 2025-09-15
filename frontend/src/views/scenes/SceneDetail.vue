@@ -301,14 +301,14 @@
         <div class="member-search">
           <el-input 
             v-model="memberSearchQuery" 
-            placeholder="搜索用户..." 
-            @input="searchUsers"
+            placeholder="搜索现有成员..." 
+            @input="filterMembers"
           />
           <el-button type="primary" @click="showAddMemberDialog">添加成员</el-button>
         </div>
         <div class="member-list">
           <div 
-            v-for="member in members" 
+            v-for="member in filteredMembers" 
             :key="member.id"
             class="member-item"
           >
@@ -337,6 +337,66 @@
           </div>
         </div>
       </div>
+    </el-dialog>
+
+    <!-- 添加成员对话框 -->
+    <el-dialog v-model="addMemberDialogVisible" title="添加课题成员" width="500px">
+      <div class="add-member-form">
+        <el-form :model="addMemberForm" label-width="80px">
+          <el-form-item label="搜索用户">
+            <el-input 
+              v-model="addMemberForm.searchQuery" 
+              placeholder="输入用户名或姓名搜索..."
+              @input="searchUsersForAdd"
+              clearable
+            />
+          </el-form-item>
+          
+          <el-form-item label="选择用户" v-if="searchResults.length > 0">
+            <div class="user-search-results">
+              <div 
+                v-for="user in searchResults" 
+                :key="user.id"
+                class="user-search-item"
+                :class="{ 'selected': addMemberForm.selectedUser?.id === user.id }"
+                @click="selectUser(user)"
+              >
+                <div class="user-info">
+                  <img :src="user.avatar_url || '/default-avatar.png'" alt="用户头像" class="user-avatar">
+                  <div class="user-details">
+                    <h4>{{ user.name || user.username }}</h4>
+                    <span class="user-email">{{ user.email }}</span>
+                  </div>
+                </div>
+                <el-icon v-if="addMemberForm.selectedUser?.id === user.id" class="selected-icon">
+                  <Check />
+                </el-icon>
+              </div>
+            </div>
+          </el-form-item>
+
+          <el-form-item label="权限级别" v-if="addMemberForm.selectedUser">
+            <el-select v-model="addMemberForm.accessLevel" placeholder="选择权限级别">
+              <el-option label="Guest (只读)" :value="10" />
+              <el-option label="Reporter (报告者)" :value="20" />
+              <el-option label="Developer (开发者)" :value="30" />
+              <el-option label="Maintainer (维护者)" :value="40" v-if="canManage" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+      </div>
+      
+      <template #footer>
+        <el-button @click="cancelAddMember">取消</el-button>
+        <el-button 
+          type="primary" 
+          @click="confirmAddMember" 
+          :loading="addingMember"
+          :disabled="!addMemberForm.selectedUser || !addMemberForm.accessLevel"
+        >
+          {{ addingMember ? '添加中...' : '添加成员' }}
+        </el-button>
+      </template>
     </el-dialog>
 
     <!-- 创建话题对话框 -->
@@ -597,7 +657,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { researchService, gitlabService, topicService, homeworkService } from '@/services/api'
+import { researchService, gitlabService, topicService, homeworkService, userService } from '@/services/api'
 import type { ResearchProject, GitLabProjectMember, Topic, Homework } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
@@ -899,9 +959,9 @@ const openFileInIDE = async (file: any) => {
       filePath
     )
     
-    if (response.data?.ide_url) {
+    if (response.ide_url) {
       // 在新窗口打开GitLab IDE
-      window.open(response.data.ide_url, '_blank')
+      window.open(response.ide_url, '_blank')
     } else {
       ElMessage.error('无法获取IDE链接')
     }
@@ -1461,15 +1521,176 @@ const downloadFile = async () => {
   }
 }
 
-// 搜索用户（占位方法）
-const searchUsers = () => {
-  // 这里可以实现用户搜索功能
-  console.log('搜索用户:', memberSearchQuery.value)
+// 成员搜索相关
+const filteredMembers = computed(() => {
+  if (!memberSearchQuery.value) {
+    return members.value
+  }
+  return members.value.filter(member => 
+    member.name?.toLowerCase().includes(memberSearchQuery.value.toLowerCase()) ||
+    member.username?.toLowerCase().includes(memberSearchQuery.value.toLowerCase()) ||
+    member.email?.toLowerCase().includes(memberSearchQuery.value.toLowerCase())
+  )
+})
+
+const filterMembers = () => {
+  // 过滤逻辑已在computed中实现
 }
 
-// 显示添加成员对话框（占位方法）
+// 添加成员表单数据
+const addMemberForm = ref({
+  searchQuery: '',
+  selectedUser: null as any,
+  accessLevel: 30
+})
+
+// 搜索用户方法
+const searchUsersForAdd = async () => {
+  if (!addMemberForm.value.searchQuery.trim()) {
+    searchResults.value = []
+    return
+  }
+
+  searchingUsers.value = true
+  try {
+    const response: any = await userService.searchUsers({
+      search: addMemberForm.value.searchQuery,
+      page: 1,
+      page_size: 10
+    })
+    searchResults.value = response.users || []
+  } catch (error) {
+    console.error('搜索用户失败:', error)
+    handleApiError(error, '搜索用户')
+    searchResults.value = []
+  } finally {
+    searchingUsers.value = false
+  }
+}
+
+// 确认添加成员
+const confirmAddMember = async () => {
+  if (!addMemberForm.value.selectedUser) {
+    ElMessage.warning('请先选择要添加的用户')
+    return
+  }
+
+  if (!project.value?.gitlab_project_id) {
+    ElMessage.error('项目信息获取失败')
+    return
+  }
+
+  addingMember.value = true
+  try {
+    // 发送正确的请求体格式
+    const memberData = {
+      username: addMemberForm.value.selectedUser.username,
+      access_level: addMemberForm.value.accessLevel
+    }
+    
+    await researchService.addMember(projectId.value, memberData)
+    
+    showSuccess('成员添加成功')
+    addMemberDialogVisible.value = false
+    fetchMembers() // 刷新成员列表
+  } catch (error) {
+    console.error('添加成员失败:', error)
+    handleApiError(error, '添加成员')
+  } finally {
+    addingMember.value = false
+  }
+}
+
+// 添加成员相关状态
+const addMemberDialogVisible = ref(false)
+const searchingUsers = ref(false)
+const searchResults = ref<any[]>([])
+const selectedUser = ref<any>(null)
+const selectedAccessLevel = ref(30) // 默认为Developer级别
+const addingMember = ref(false)
+
+// 访问级别选项
+const accessLevelOptions = [
+  { value: 10, label: 'Guest - 只读访问' },
+  { value: 20, label: 'Reporter - 可查看和评论' },
+  { value: 30, label: 'Developer - 可开发和推送' },
+  { value: 40, label: 'Maintainer - 可管理项目' },
+  { value: 50, label: 'Owner - 完全控制' }
+]
+
+// 显示添加成员对话框
 const showAddMemberDialog = () => {
-  ElMessage.info('添加成员功能待实现')
+  addMemberDialogVisible.value = true
+  searchResults.value = []
+  selectedUser.value = null
+  selectedAccessLevel.value = 30
+  memberSearchQuery.value = ''
+}
+
+// 搜索用户
+const searchUsers = async () => {
+  if (!memberSearchQuery.value.trim()) {
+    searchResults.value = []
+    return
+  }
+
+  searchingUsers.value = true
+  try {
+    const response: any = await userService.searchUsers({
+      search: memberSearchQuery.value,
+      page: 1,
+      page_size: 10
+    })
+    searchResults.value = response.users || []
+  } catch (error) {
+    console.error('搜索用户失败:', error)
+    handleApiError(error, '搜索用户')
+    searchResults.value = []
+  } finally {
+    searchingUsers.value = false
+  }
+}
+
+// 选择用户
+const selectUser = (user: any) => {
+  addMemberForm.value.selectedUser = user
+  addMemberForm.value.searchQuery = user.name || user.username
+  searchResults.value = []
+}
+
+// 添加成员
+const addMember = async () => {
+  if (!selectedUser.value) {
+    ElMessage.warning('请先选择要添加的用户')
+    return
+  }
+
+  if (!project.value?.gitlab_project_id) {
+    ElMessage.error('项目信息获取失败')
+    return
+  }
+
+  addingMember.value = true
+  try {
+    await researchService.addMember(projectId.value, selectedUser.value.id.toString())
+    
+    showSuccess('成员添加成功')
+    addMemberDialogVisible.value = false
+    fetchMembers() // 刷新成员列表
+  } catch (error) {
+    console.error('添加成员失败:', error)
+    handleApiError(error, '添加成员')
+  } finally {
+    addingMember.value = false
+  }
+}
+
+// 取消添加成员
+const cancelAddMember = () => {
+  addMemberDialogVisible.value = false
+  searchResults.value = []
+  selectedUser.value = null
+  memberSearchQuery.value = ''
 }
 
 // 生命周期

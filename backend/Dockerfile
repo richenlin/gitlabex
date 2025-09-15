@@ -1,8 +1,12 @@
 # 构建阶段
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # 安装必要的工具
 RUN apk add --no-cache git ca-certificates tzdata
+
+# 设置Go代理为中国镜像源
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=sum.golang.google.cn
 
 # 设置工作目录
 WORKDIR /app

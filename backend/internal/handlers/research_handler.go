@@ -1052,7 +1052,7 @@ func (h *ResearchHandler) GetHotProjects(c *gin.Context) {
 
 // GetGitLabIDEURL 获取GitLab IDE URL
 func (h *ResearchHandler) GetGitLabIDEURL(c *gin.Context) {
-	projectID := c.Param("id")
+	projectIDStr := c.Param("id")
 	filePath := c.Query("file")
 	branch := c.DefaultQuery("branch", "main")
 
@@ -1061,9 +1061,16 @@ func (h *ResearchHandler) GetGitLabIDEURL(c *gin.Context) {
 		return
 	}
 
+	// 解析项目ID
+	projectID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		return
+	}
+
 	// 获取项目信息
-	var project models.ResearchProject
-	if err := h.researchService.DB.First(&project, projectID).Error; err != nil {
+	project, err := h.researchService.GetResearchProjectByID(projectID)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "项目不存在"})
 		return
 	}
@@ -1073,16 +1080,38 @@ func (h *ResearchHandler) GetGitLabIDEURL(c *gin.Context) {
 		return
 	}
 
+	// 获取GitLab访问令牌
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+		return
+	}
+
+	// 通过GitLab API获取项目详细信息以获取正确的项目路径
+	gitlabProject, err := h.gitlabService.GetProject(accessToken.(string), *project.GitLabProjectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取GitLab项目信息失败"})
+		return
+	}
+
+	// 获取项目的完整路径（namespace/project-name）
+	projectPath := gitlabProject.PathWithNamespace
+	if projectPath == "" {
+		// 如果没有获取到完整路径，使用项目名称作为fallback
+		projectPath = fmt.Sprintf("root/%s", generateProjectPath(project.Name))
+	}
+
 	// 构建GitLab IDE URL
 	gitlabURL := h.researchService.Config.GitLabURL
-	ideURL := fmt.Sprintf("%s/-/ide/project/root/%d/edit/%s/-/%s",
-		gitlabURL, *project.GitLabProjectID, branch, filePath)
+	ideURL := fmt.Sprintf("%s/-/ide/project/%s/edit/%s/-/%s",
+		gitlabURL, projectPath, branch, filePath)
 
 	c.JSON(http.StatusOK, gin.H{
-		"ide_url":    ideURL,
-		"gitlab_url": gitlabURL,
-		"project_id": *project.GitLabProjectID,
-		"file_path":  filePath,
-		"branch":     branch,
+		"ide_url":      ideURL,
+		"gitlab_url":   gitlabURL,
+		"project_id":   *project.GitLabProjectID,
+		"file_path":    filePath,
+		"branch":       branch,
+		"project_path": projectPath,
 	})
 }

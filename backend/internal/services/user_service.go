@@ -157,8 +157,16 @@ type UpdateUserRolesData struct {
 
 // GetAllUsers 获取所有用户列表 (管理员专用)
 func (s *UserService) GetAllUsers(accessToken string, page, pageSize int, search string) ([]*models.GitLabUser, int, error) {
-	// 尝试通过GitLab API获取用户列表
-	gitlabUsers, err := s.gitlabService.GetAllUsers(accessToken, page, pageSize)
+	var gitlabUsers []*GitLabAPIUser
+	var err error
+
+	// 如果有搜索条件，使用搜索API
+	if search != "" {
+		gitlabUsers, err = s.gitlabService.SearchUsers(accessToken, search, page, pageSize)
+	} else {
+		gitlabUsers, err = s.gitlabService.GetAllUsers(accessToken, page, pageSize)
+	}
+
 	if err != nil {
 		// 如果GitLab API失败，返回模拟数据
 		fmt.Printf("GitLab API获取用户列表失败: %v\n", err)
@@ -178,15 +186,28 @@ func (s *UserService) GetAllUsers(accessToken string, page, pageSize int, search
 		}
 	}
 
-	// 简单的搜索过滤
-	if search != "" {
-		filtered := []*models.GitLabUser{}
-		for _, user := range users {
-			if contains(user.Username, search) || contains(user.Name, search) || contains(user.Email, search) {
-				filtered = append(filtered, user)
-			}
+	return users, len(users), nil
+}
+
+// SearchUsers 搜索用户
+func (s *UserService) SearchUsers(accessToken string, search string, page, pageSize int) ([]*models.GitLabUser, int, error) {
+	// 通过GitLab API搜索用户
+	gitlabUsers, err := s.gitlabService.SearchUsers(accessToken, search, page, pageSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("搜索用户失败: %v", err)
+	}
+
+	// 转换GitLab用户数据为内部格式
+	users := make([]*models.GitLabUser, len(gitlabUsers))
+	for i, gitlabUser := range gitlabUsers {
+		users[i] = &models.GitLabUser{
+			ID:        gitlabUser.ID,
+			Username:  gitlabUser.Username,
+			Email:     gitlabUser.Email,
+			Name:      gitlabUser.Name,
+			AvatarURL: gitlabUser.Avatar,
+			IsAdmin:   gitlabUser.IsAdmin,
 		}
-		users = filtered
 	}
 
 	return users, len(users), nil

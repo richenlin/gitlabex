@@ -201,8 +201,8 @@ export const researchService = {
   getMembers: (id: string) =>
     api.get(`/research-projects/${id}/members`),
   
-  addMember: (id: string, userId: string) =>
-    api.post(`/research-projects/${id}/members`, { userId }),
+  addMember: (id: string, memberData: { username: string; access_level: number }) =>
+    api.post(`/research-projects/${id}/members`, memberData),
   
   removeMember: (id: string, userId: string) =>
     api.delete(`/research-projects/${id}/members/${userId}`),
@@ -603,6 +603,30 @@ export const activityService = {
   
   getMyActivities: (limit?: number) =>
     api.get('/activities/users/me', { params: { limit } })
+}
+
+// 用户搜索相关 API
+export const userService = {
+  // 搜索用户
+  searchUsers: (params: {
+    search: string
+    page?: number
+    page_size?: number
+  }) =>
+    api.get('/users', { params }),
+  
+  // 获取用户列表
+  getUsers: (params?: {
+    page?: number
+    page_size?: number
+    search?: string
+    project_id?: string
+  }) =>
+    api.get('/users', { params }),
+  
+  // 根据ID获取用户信息
+  getUserById: (id: string) =>
+    api.get(`/users/${id}`)
 }
 
 export default api

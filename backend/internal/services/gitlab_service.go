@@ -432,6 +432,71 @@ func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*G
 	return users, nil
 }
 
+// SearchUsers 搜索用户
+func (s *GitLabService) SearchUsers(accessToken string, search string, page, perPage int) ([]*GitLabAPIUser, error) {
+	url := fmt.Sprintf("%s/api/v4/users?search=%s&page=%d&per_page=%d",
+		s.Config.GitLabURL, url.QueryEscape(search), page, perPage)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+	}
+
+	var users []*GitLabAPIUser
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+// GetUserByUsername 根据用户名获取用户信息
+func (s *GitLabService) GetUserByUsername(accessToken string, username string) (*GitLabAPIUser, error) {
+	url := fmt.Sprintf("%s/api/v4/users?username=%s", s.Config.GitLabURL, url.QueryEscape(username))
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
+	}
+
+	var users []*GitLabAPIUser
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return nil, err
+	}
+
+	if len(users) == 0 {
+		return nil, fmt.Errorf("用户不存在")
+	}
+
+	return users[0], nil
+}
+
 // CreateUser 创建用户 (管理员专用)
 func (s *GitLabService) CreateUser(accessToken string, userData *GitLabCreateUserData) (*GitLabAPIUser, error) {
 	url := fmt.Sprintf("%s/api/v4/users", s.Config.GitLabURL)
@@ -1365,10 +1430,16 @@ func (s *GitLabService) GetProjectMembers(accessToken string, projectID int64) (
 
 // AddProjectMember 添加GitLab项目成员
 func (s *GitLabService) AddProjectMember(accessToken string, projectID int64, username string, accessLevel int) error {
+	// 首先根据用户名获取用户ID
+	user, err := s.GetUserByUsername(accessToken, username)
+	if err != nil {
+		return fmt.Errorf("获取用户信息失败: %v", err)
+	}
+
 	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLabURL, projectID)
 
 	data := map[string]interface{}{
-		"user_id":      username, // 可以是用户名或用户ID
+		"user_id":      user.ID, // 必须使用数字ID
 		"access_level": accessLevel,
 	}
 

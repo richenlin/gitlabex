@@ -55,6 +55,21 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		return
 	}
 
+	// 获取搜索参数
+	search := c.Query("search")
+	pageStr := c.DefaultQuery("page", "1")
+	pageSizeStr := c.DefaultQuery("page_size", "20")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
 	// 获取项目ID（如果提供）
 	projectIDStr := c.Query("project_id")
 	if projectIDStr != "" {
@@ -74,16 +89,87 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		return
 	}
 
-	// 如果没有项目ID，返回当前用户信息（GitLab API不支持获取所有用户列表）
-	user, err := h.userService.GetCurrentUser(accessToken.(string))
+	// 如果有搜索条件，使用搜索API
+	if search != "" {
+		users, total, err := h.userService.SearchUsers(accessToken.(string), search, page, pageSize)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索用户失败", "details": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"users":     users,
+			"total":     total,
+			"page":      page,
+			"page_size": pageSize,
+		})
+		return
+	}
+
+	// 获取所有用户列表（需要管理员权限）
+	users, total, err := h.userService.GetAllUsers(accessToken.(string), page, pageSize, "")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败", "details": err.Error()})
+		// 如果获取失败，返回当前用户信息
+		user, userErr := h.userService.GetCurrentUser(accessToken.(string))
+		if userErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败", "details": userErr.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"users":     []interface{}{user},
+			"total":     1,
+			"page":      1,
+			"page_size": 1,
+			"message":   "GitLab API限制，只能获取当前用户信息",
+		})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"users":   []interface{}{user},
-		"message": "GitLab API限制，只能获取当前用户或项目成员信息",
+		"users":     users,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// SearchUsers 搜索用户
+func (h *UserHandler) SearchUsers(c *gin.Context) {
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	search := c.Query("search")
+	if search == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "搜索关键词不能为空"})
+		return
+	}
+
+	pageStr := c.DefaultQuery("page", "1")
+	pageSizeStr := c.DefaultQuery("page_size", "20")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	users, total, err := h.userService.SearchUsers(accessToken.(string), search, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索用户失败", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users":     users,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 

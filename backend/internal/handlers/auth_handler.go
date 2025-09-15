@@ -59,11 +59,14 @@ func (h *AuthHandler) GitLabAuth(c *gin.Context) {
 		return
 	}
 
-	// 将state存储到Redis中，10分钟有效期
-	if err := h.redisService.SetOAuthState(state, 10*time.Minute); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "存储状态参数失败"})
-		return
+	// 将state存储到Redis中，10分钟有效期（如果Redis可用）
+	if h.redisService != nil {
+		if err := h.redisService.SetOAuthState(state, 10*time.Minute); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "存储状态参数失败"})
+			return
+		}
 	}
+	// 注意：如果Redis不可用，我们仍然继续OAuth流程，但state验证将被跳过
 
 	// 构建GitLab OAuth授权URL
 	// 将scope中的空格替换为加号，符合URL编码规范
@@ -92,16 +95,19 @@ func (h *AuthHandler) GitLabCallback(c *gin.Context) {
 		return
 	}
 
-	// 验证state参数
-	valid, err := h.redisService.ValidateOAuthState(state)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "验证状态参数失败"})
-		return
+	// 验证state参数（如果Redis可用）
+	if h.redisService != nil {
+		valid, err := h.redisService.ValidateOAuthState(state)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "验证状态参数失败"})
+			return
+		}
+		if !valid {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的状态参数"})
+			return
+		}
 	}
-	if !valid {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的状态参数"})
-		return
-	}
+	// 注意：如果Redis不可用，我们跳过state验证（降级处理）
 
 	// 交换授权码获取访问令牌
 	oauthResp, err := h.exchangeCodeForToken(code)
