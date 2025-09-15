@@ -2150,10 +2150,12 @@ func (s *GitLabService) GetSystemToken() string {
 	// 直接使用oauth.env中的GITLAB_ACCESS_TOKEN
 	// 这个令牌已经在配置加载时从oauth.env文件中读取
 	if token := os.Getenv("GITLAB_ACCESS_TOKEN"); token != "" {
+		fmt.Printf("DEBUG: Found system token: %s\n", token[:10]+"...")
 		return token
 	}
 
 	// 如果没有配置令牌，返回空字符串
 	// 这将导致热门话题接口返回空列表
+	fmt.Printf("DEBUG: No system token found\n")
 	return ""
 }

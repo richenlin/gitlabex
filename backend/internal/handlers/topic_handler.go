@@ -43,11 +43,22 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 		limit = 20
 	}
 
-	// 获取GitLab访问令牌
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
-		return
+	// 获取GitLab访问令牌，支持游客访问
+	var tokenToUse string
+	if accessToken, exists := c.Get("gitlab_access_token"); exists {
+		fmt.Printf("DEBUG: Using user token\n")
+		tokenToUse = accessToken.(string)
+	} else {
+		// 如果没有用户token，尝试使用系统token（用于游客访问）
+		fmt.Printf("DEBUG: No user token, trying system token\n")
+		systemToken := h.gitlabService.GetSystemToken()
+		if systemToken == "" {
+			fmt.Printf("DEBUG: No system token available\n")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
+			return
+		}
+		fmt.Printf("DEBUG: Using system token\n")
+		tokenToUse = systemToken
 	}
 
 	var allTopics []map[string]interface{}
@@ -67,7 +78,7 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 		}
 
 		if project.GitLabProjectID != nil {
-			topics, err := h.getProjectTopics(accessToken.(string), project, page, limit, c)
+			topics, err := h.getProjectTopics(tokenToUse, project, page, limit, c)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error":   "获取话题失败",
@@ -91,7 +102,7 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 		// 遍历所有项目，获取话题
 		for _, project := range projects {
 			if project.GitLabProjectID != nil {
-				topics, err := h.getProjectTopics(accessToken.(string), &project, 1, limit, c)
+				topics, err := h.getProjectTopics(tokenToUse, &project, 1, limit, c)
 				if err != nil {
 					// 如果某个项目获取失败，继续处理其他项目
 					continue

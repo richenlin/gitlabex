@@ -20,6 +20,7 @@ cd "$(dirname "$0")/.."
 BUILD_BACKEND=true
 BUILD_FRONTEND=true
 FORCE_REBUILD=false
+API_URL="/api"
 
 # 解析命令行参数
 while [[ $# -gt 0 ]]; do
@@ -38,19 +39,25 @@ while [[ $# -gt 0 ]]; do
             FORCE_REBUILD=true
             shift
             ;;
+        --api-url)
+            API_URL="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "用法: $0 [选项]"
             echo ""
             echo "选项:"
-            echo "  --backend-only   只构建后端镜像"
-            echo "  --frontend-only  只构建前端镜像"
-            echo "  --force          强制重新构建（不使用缓存）"
-            echo "  -h, --help       显示此帮助信息"
+            echo "  --backend-only       只构建后端镜像"
+            echo "  --frontend-only      只构建前端镜像"
+            echo "  --force              强制重新构建（不使用缓存）"
+            echo "  --api-url <url>      设置前端API地址（默认: /api）"
+            echo "  -h, --help           显示此帮助信息"
             echo ""
             echo "示例:"
-            echo "  $0                    # 构建所有镜像"
-            echo "  $0 --backend-only     # 只构建后端镜像"
-            echo "  $0 --force            # 强制重新构建所有镜像"
+            echo "  $0                           # 构建所有镜像"
+            echo "  $0 --backend-only            # 只构建后端镜像"
+            echo "  $0 --force                   # 强制重新构建所有镜像"
+            echo "  $0 --api-url http://api.example.com  # 设置自定义API地址"
             exit 0
             ;;
         *)

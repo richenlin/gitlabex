@@ -14,9 +14,21 @@ import type {
   PaginatedResponse
 } from '@/types'
 
+// 获取动态配置
+const getApiBaseUrl = (): string => {
+  // 尝试从全局配置获取API地址
+  const globalConfig = (window as any)._VBEN_ADMIN_PRO_APP_CONF_
+  if (globalConfig && globalConfig.VITE_GLOB_API_URL) {
+    return globalConfig.VITE_GLOB_API_URL + '/v1'
+  }
+  
+  // 回退到环境变量或默认值
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1'
+}
+
 // 创建 axios 实例
 const api: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1',
+  baseURL: getApiBaseUrl(),
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
