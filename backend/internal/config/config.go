@@ -35,6 +35,7 @@ type Config struct {
 	GitLabClientSecret string
 	GitLabRedirectURI  string
 	GitLabScopes       string
+	GitLabSystemToken  string
 
 	// JWT配置
 	JWTSecret          string
@@ -91,6 +92,7 @@ func Load() *Config {
 		GitLabClientSecret: getEnv("GITLAB_CLIENT_SECRET", ""),
 		GitLabRedirectURI:  getEnv("GITLAB_REDIRECT_URI", "http://localhost:3000/auth/gitlab/callback"),
 		GitLabScopes:       getEnv("SCOPES", "api read_api openid"),
+		GitLabSystemToken:  getEnv("GITLAB_SYSTEM_TOKEN", ""),
 
 		// JWT配置
 		JWTSecret:          getEnv("JWT_SECRET", "your_jwt_secret_key_here_please_change_in_production"),

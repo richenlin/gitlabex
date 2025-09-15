@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -2142,4 +2143,17 @@ func (s *GitLabService) MarkAllNotificationsAsRead(accessToken string) error {
 	// 在实际应用中，可以将已读状态存储在本地数据库中
 	fmt.Printf("标记所有通知为已读 (模拟操作)\n")
 	return nil
+}
+
+// GetSystemToken 获取系统配置的GitLab令牌（用于游客访问）
+func (s *GitLabService) GetSystemToken() string {
+	// 直接使用oauth.env中的GITLAB_ACCESS_TOKEN
+	// 这个令牌已经在配置加载时从oauth.env文件中读取
+	if token := os.Getenv("GITLAB_ACCESS_TOKEN"); token != "" {
+		return token
+	}
+
+	// 如果没有配置令牌，返回空字符串
+	// 这将导致热门话题接口返回空列表
+	return ""
 }

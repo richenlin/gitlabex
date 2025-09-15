@@ -722,15 +722,88 @@ func (h *TopicHandler) GetHotTopics(c *gin.Context) {
 		limit = 10
 	}
 
-	// 获取热门话题
-	topics, err := h.topicService.GetHotTopics(limit)
+	// 获取GitLab访问令牌（可选，支持游客访问）
+	accessToken, _ := c.Get("gitlab_access_token")
+
+	// 如果没有访问令牌，尝试使用系统配置的令牌（用于游客访问）
+	var tokenToUse string
+	if accessToken == nil {
+		// 尝试从GitLab服务获取系统令牌
+		systemToken := h.gitlabService.GetSystemToken()
+		if systemToken == "" {
+			// 如果没有系统令牌，返回空列表
+			c.JSON(http.StatusOK, gin.H{
+				"topics": []interface{}{},
+				"count":  0,
+			})
+			return
+		}
+		tokenToUse = systemToken
+	} else {
+		tokenToUse = accessToken.(string)
+	}
+
+	// 获取所有项目的话题并按热度排序
+	projects, _, err := h.researchService.GetAllProjects(100, 0, true, false) // 只获取公开项目
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取热门话题失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "获取项目列表失败",
+			"details": err.Error(),
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"topics": topics,
-		"count":  len(topics),
+	var allTopics []map[string]interface{}
+
+	// 遍历所有公开项目，获取话题
+	for _, project := range projects {
+		if project.GitLabProjectID != nil {
+			topics, err := h.getProjectTopics(tokenToUse, &project, 1, 20, c)
+			if err != nil {
+				// 如果某个项目获取失败，继续处理其他项目
+				continue
+			}
+			// 为每个话题添加项目信息
+			for i := range topics {
+				topics[i]["project_id"] = project.ID.String()
+				topics[i]["project"] = map[string]interface{}{
+					"id":   project.ID.String(),
+					"name": project.Name,
+				}
+			}
+			allTopics = append(allTopics, topics...)
+		}
+	}
+
+	// 按热度排序（点赞数 + 评论数）
+	sort.Slice(allTopics, func(i, j int) bool {
+		scoreI := getTopicHotScore(allTopics[i])
+		scoreJ := getTopicHotScore(allTopics[j])
+		if scoreI == scoreJ {
+			// 如果热度相同，按创建时间排序（最新的在前）
+			timeI, _ := time.Parse(time.RFC3339, allTopics[i]["created_at"].(string))
+			timeJ, _ := time.Parse(time.RFC3339, allTopics[j]["created_at"].(string))
+			return timeI.After(timeJ)
+		}
+		return scoreI > scoreJ
 	})
+
+	// 应用限制
+	if len(allTopics) > limit {
+		allTopics = allTopics[:limit]
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"topics": allTopics,
+		"count":  len(allTopics),
+	})
+}
+
+// getTopicHotScore 计算话题热度分数
+func getTopicHotScore(topic map[string]interface{}) int {
+	likeCount, _ := topic["like_count"].(int)
+	commentsCount, _ := topic["comments_count"].(int)
+
+	// 热度分数 = 点赞数 * 2 + 评论数
+	return likeCount*2 + commentsCount
 }
