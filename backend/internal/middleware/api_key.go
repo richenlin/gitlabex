@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -20,8 +21,12 @@ const (
 type APIKeyInfo struct {
 	Type        APIKeyType
 	Description string
-	MaxBatch    int  // 批量操作最大数量
-	CanAdmin    bool // 是否可以创建管理员
+	MaxBatch    int      // 批量操作最大数量
+	CanAdmin    bool     // 是否可以创建管理员
+	CanUpdate   bool     // 是否可以更新用户
+	CanQuery    bool     // 是否可以查询用户
+	Sources     []string // 允许的外部系统来源
+	RateLimit   int      // 每小时请求限制
 }
 
 // RequireAPIKey API密钥认证中间件
@@ -139,6 +144,10 @@ func validateAPIKey(apiKey string) (APIKeyInfo, bool) {
 			Description: "System Sync API Key",
 			MaxBatch:    100,
 			CanAdmin:    true,
+			CanUpdate:   true,
+			CanQuery:    true,
+			Sources:     []string{"*"}, // 允许所有来源
+			RateLimit:   1000,          // 每小时1000次请求
 		},
 		// 第三方密钥（受限权限）
 		os.Getenv("THIRD_PARTY_API_KEY"): {
@@ -146,20 +155,32 @@ func validateAPIKey(apiKey string) (APIKeyInfo, bool) {
 			Description: "Third Party API Key",
 			MaxBatch:    20,
 			CanAdmin:    false,
+			CanUpdate:   true,
+			CanQuery:    true,
+			Sources:     []string{"external_system_1", "external_system_2"}, // 限制特定来源
+			RateLimit:   300,                                                // 每小时300次请求
 		},
 		// 开发环境默认密钥（生产环境应移除）
-		"gitlabex_sync_api_key_2024": {
+		"gitlabex_sync_api_key_2024_secure_change_in_production": {
 			Type:        SyncAPIKey,
 			Description: "Development Sync Key",
 			MaxBatch:    100,
 			CanAdmin:    true,
+			CanUpdate:   true,
+			CanQuery:    true,
+			Sources:     []string{"*"},
+			RateLimit:   1000,
 		},
 		// 开发环境第三方密钥（生产环境应移除）
-		"gitlabex_third_party_api_key_2024": {
+		"gitlabex_third_party_api_key_2024_change_in_production": {
 			Type:        ThirdPartyAPIKey,
 			Description: "Development Third Party Key",
 			MaxBatch:    20,
 			CanAdmin:    false,
+			CanUpdate:   true,
+			CanQuery:    true,
+			Sources:     []string{"test_system", "dev_system"},
+			RateLimit:   300,
 		},
 	}
 
@@ -180,4 +201,127 @@ func GetAPIKeyInfo(c *gin.Context) (APIKeyInfo, bool) {
 		return APIKeyInfo{}, false
 	}
 	return keyInfo.(APIKeyInfo), true
+}
+
+// RequireUpdatePermission 要求更新权限的中间件
+func RequireUpdatePermission() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		keyInfo, exists := GetAPIKeyInfo(c)
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "服务器内部错误",
+				"error":   "无法获取API密钥信息",
+			})
+			c.Abort()
+			return
+		}
+
+		if !keyInfo.CanUpdate {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "权限不足",
+				"error":   "当前API密钥无更新权限",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// RequireQueryPermission 要求查询权限的中间件
+func RequireQueryPermission() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		keyInfo, exists := GetAPIKeyInfo(c)
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "服务器内部错误",
+				"error":   "无法获取API密钥信息",
+			})
+			c.Abort()
+			return
+		}
+
+		if !keyInfo.CanQuery {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "权限不足",
+				"error":   "当前API密钥无查询权限",
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// RequireSourcePermission 要求特定来源权限的中间件
+func RequireSourcePermission() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		keyInfo, exists := GetAPIKeyInfo(c)
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "服务器内部错误",
+				"error":   "无法获取API密钥信息",
+			})
+			c.Abort()
+			return
+		}
+
+		// 如果允许所有来源，直接通过
+		for _, source := range keyInfo.Sources {
+			if source == "*" {
+				c.Next()
+				return
+			}
+		}
+
+		// 检查请求中的外部系统来源
+		externalSource := c.Query("external_source")
+		if externalSource == "" {
+			// 从请求体中获取
+			var requestBody map[string]interface{}
+			if c.ShouldBindJSON(&requestBody) == nil {
+				if source, ok := requestBody["external_source"].(string); ok {
+					externalSource = source
+				}
+			}
+		}
+
+		if externalSource == "" {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "请求参数错误",
+				"error":   "缺少external_source参数",
+			})
+			c.Abort()
+			return
+		}
+
+		// 检查来源权限
+		hasPermission := false
+		for _, allowedSource := range keyInfo.Sources {
+			if allowedSource == externalSource {
+				hasPermission = true
+				break
+			}
+		}
+
+		if !hasPermission {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "权限不足",
+				"error":   fmt.Sprintf("当前API密钥无权访问来源: %s", externalSource),
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
 }

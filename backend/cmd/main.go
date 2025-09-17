@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,11 +69,14 @@ func main() {
 	// 初始化活动服务
 	activityService := services.NewActivityService(db)
 
+	// 初始化外部用户服务
+	externalUserService := services.NewExternalUserService(db, gitlabService, cfg)
+
 	// 初始化处理器
 	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
 	researchHandler := handlers.NewResearchHandler(researchService, userService, gitlabService)
 	topicHandler := handlers.NewTopicHandler(gitlabService, researchService, topicService)
-	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWT.Secret)
+	syncHandler := handlers.NewSyncHandler(userService, gitlabService, externalUserService, cfg.JWT.Secret)
 	activityHandler := handlers.NewActivityHandler(activityService)
 	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService, topicService)
 
@@ -457,18 +461,101 @@ func main() {
 	}
 
 	// 第三方系统同步API路由 (需要API密钥认证)
+	sync := api.Group("/sync")
+	sync.Use(middleware.RequireAPIKey())
 	{
-		sync := api.Group("/sync")
-		sync.Use(middleware.RequireAPIKey())
-
 		// 用户同步接口
 		sync.POST("/users", syncHandler.CreateUser)
-		sync.POST("/users/batch", syncHandler.BatchCreateUsers)
-		sync.PUT("/users/:id", syncHandler.UpdateUser)
-		sync.GET("/users/:id", func(c *gin.Context) {
-			// 可以添加获取用户信息的接口
-			c.JSON(200, gin.H{"message": "获取用户信息接口 - 待实现"})
+		sync.POST("/users/batch", middleware.RequireAPIKeyWithBatchLimit(), syncHandler.BatchCreateUsers)
+
+		// 用户更新接口 - 需要更新权限
+		syncUpdate := sync.Group("")
+		syncUpdate.Use(middleware.RequireUpdatePermission())
+		{
+			syncUpdate.PUT("/users/:external_id", syncHandler.UpdateUser)
+		}
+
+		// 用户查询接口 - 需要查询权限
+		syncQuery := sync.Group("")
+		syncQuery.Use(middleware.RequireQueryPermission())
+		{
+			syncQuery.GET("/users/:external_id", syncHandler.GetUser)
+		}
+
+		// 管理接口 - 需要系统API密钥
+		syncAdmin := sync.Group("/admin")
+		syncAdmin.Use(func(c *gin.Context) {
+			keyInfo, exists := middleware.GetAPIKeyInfo(c)
+			if !exists || keyInfo.Type != middleware.SyncAPIKey {
+				c.JSON(http.StatusForbidden, gin.H{
+					"success": false,
+					"message": "权限不足",
+					"error":   "需要系统管理员API密钥",
+				})
+				c.Abort()
+				return
+			}
+			c.Next()
 		})
+		{
+			// 外部系统统计信息
+			syncAdmin.GET("/stats", func(c *gin.Context) {
+				stats, err := externalUserService.GetExternalSystemStats()
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"success": false,
+						"message": "获取统计信息失败",
+						"error":   err.Error(),
+					})
+					return
+				}
+				c.JSON(http.StatusOK, gin.H{
+					"success": true,
+					"message": "获取统计信息成功",
+					"data":    stats,
+				})
+			})
+
+			// 同步日志
+			syncAdmin.GET("/logs", func(c *gin.Context) {
+				page := 1
+				pageSize := 20
+				externalSource := c.Query("external_source")
+
+				if p := c.Query("page"); p != "" {
+					if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+						page = parsed
+					}
+				}
+				if ps := c.Query("page_size"); ps != "" {
+					if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
+						pageSize = parsed
+					}
+				}
+
+				logs, total, err := externalUserService.GetSyncLogs(page, pageSize, externalSource)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"success": false,
+						"message": "获取同步日志失败",
+						"error":   err.Error(),
+					})
+					return
+				}
+
+				c.JSON(http.StatusOK, gin.H{
+					"success": true,
+					"message": "获取同步日志成功",
+					"data":    logs,
+					"pagination": gin.H{
+						"page":        page,
+						"page_size":   pageSize,
+						"total":       total,
+						"total_pages": (total + int64(pageSize) - 1) / int64(pageSize),
+					},
+				})
+			})
+		}
 	}
 
 	// 启动服务器

@@ -67,6 +67,9 @@ func autoMigrate(db *gorm.DB) error {
 		&models.Notification{},
 		&models.Announcement{},
 		&models.DocumentReview{},
+		// 第三方系统集成相关模型
+		&models.ExternalUser{},
+		&models.ExternalUserSyncLog{},
 		&models.AssignmentTemplate{},
 	}
 
