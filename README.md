@@ -76,6 +76,7 @@ gitlabex2/
 - **话题讨论** - 基于GitLab Issues的话题讨论功能
 - **文档管理** - 自动识别和管理项目中的文档文件
 - **作业系统** - 完整的作业发布、提交和批改流程
+- **第三方系统集成** - 支持外部系统用户同步和OAuth登录
 
 ### 用户角色
 - **管理员（Admin）** - 系统管理员，拥有所有权限
@@ -134,6 +135,37 @@ npm install
 npm run dev
 ```
 
+### 第三方系统集成快速开始
+
+如果您需要集成外部系统，可以使用我们的第三方API：
+
+1. **配置API密钥**
+```bash
+# 在环境变量中设置第三方API密钥
+export THIRD_PARTY_API_KEY="your_secure_api_key_here"
+export GITLAB_SYSTEM_TOKEN="your_gitlab_admin_token"
+```
+
+2. **创建用户示例**
+```bash
+curl -X POST "http://localhost:8080/api/v1/sync/users" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_secure_api_key_here" \
+  -d '{
+    "username": "john_doe",
+    "password": "SecurePass123!",
+    "email": "john.doe@example.com",
+    "name": "John Doe",
+    "role": "student"
+  }'
+```
+
+3. **用户登录流程**
+   - 用户访问GitLabEx登录页面
+   - 点击"通过GitLab登录"
+   - 使用创建的用户名和密码完成OAuth认证
+   - 自动登录到GitLabEx平台
+
 ### 环境配置
 
 创建 `.env` 文件并配置以下环境变量：
@@ -169,6 +201,10 @@ JWT_EXPIRATION_HOURS=24
 
 # 前端配置
 FRONTEND_URL=http://localhost:3000
+
+# 第三方系统集成配置
+THIRD_PARTY_API_KEY=your_secure_third_party_api_key_32_chars_minimum
+GITLAB_SYSTEM_TOKEN=your_gitlab_admin_token
 ```
 
 ## API文档
@@ -198,6 +234,12 @@ FRONTEND_URL=http://localhost:3000
 - `GET /api/v1/topics/:id` - 获取话题详情
 - `PUT /api/v1/topics/:id` - 更新话题
 - `DELETE /api/v1/topics/:id` - 删除话题
+
+### 第三方系统集成
+- `POST /api/v1/sync/users` - 创建用户（需要第三方API密钥）
+- `GET /api/v1/sync/users/:username` - 获取用户信息（需要第三方API密钥）
+
+详细的第三方系统集成文档请查看：[SYNC_USER.md](docs/SYNC_USER.md)
 
 ## 部署说明
 

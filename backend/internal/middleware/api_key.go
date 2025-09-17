@@ -136,51 +136,29 @@ func RequireAdminAPIKey() gin.HandlerFunc {
 
 // validateAPIKey 验证API密钥并返回权限信息
 func validateAPIKey(apiKey string) (APIKeyInfo, bool) {
-	// 定义所有有效的API密钥及其权限
+	// 定义所有有效的API密钥及其权限 - 精简版本，只保留第三方密钥
 	validKeys := map[string]APIKeyInfo{
-		// 系统同步密钥（最高权限）
-		os.Getenv("SYNC_API_KEY"): {
-			Type:        SyncAPIKey,
-			Description: "System Sync API Key",
-			MaxBatch:    100,
-			CanAdmin:    true,
-			CanUpdate:   true,
-			CanQuery:    true,
-			Sources:     []string{"*"}, // 允许所有来源
-			RateLimit:   1000,          // 每小时1000次请求
-		},
-		// 第三方密钥（受限权限）
+		// 第三方密钥
 		os.Getenv("THIRD_PARTY_API_KEY"): {
 			Type:        ThirdPartyAPIKey,
 			Description: "Third Party API Key",
-			MaxBatch:    20,
+			MaxBatch:    50,
 			CanAdmin:    false,
 			CanUpdate:   true,
 			CanQuery:    true,
-			Sources:     []string{"external_system_1", "external_system_2"}, // 限制特定来源
-			RateLimit:   300,                                                // 每小时300次请求
-		},
-		// 开发环境默认密钥（生产环境应移除）
-		"gitlabex_sync_api_key_2024_secure_change_in_production": {
-			Type:        SyncAPIKey,
-			Description: "Development Sync Key",
-			MaxBatch:    100,
-			CanAdmin:    true,
-			CanUpdate:   true,
-			CanQuery:    true,
-			Sources:     []string{"*"},
-			RateLimit:   1000,
+			Sources:     []string{"*"}, // 允许所有第三方系统
+			RateLimit:   500,           // 每小时500次请求
 		},
 		// 开发环境第三方密钥（生产环境应移除）
 		"gitlabex_third_party_api_key_2024_change_in_production": {
 			Type:        ThirdPartyAPIKey,
 			Description: "Development Third Party Key",
-			MaxBatch:    20,
+			MaxBatch:    50,
 			CanAdmin:    false,
 			CanUpdate:   true,
 			CanQuery:    true,
-			Sources:     []string{"test_system", "dev_system"},
-			RateLimit:   300,
+			Sources:     []string{"*"},
+			RateLimit:   500,
 		},
 	}
 
