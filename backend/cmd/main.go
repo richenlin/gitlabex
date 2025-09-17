@@ -14,16 +14,10 @@ import (
 	"gitlabex/internal/services"
 
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	"github.com/rs/cors"
 )
 
 func main() {
-	// 加载环境变量
-	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: .env file not found, using system environment variables")
-	}
-
 	// 初始化配置
 	cfg := config.Load()
 
@@ -86,24 +80,15 @@ func main() {
 	r := gin.Default()
 
 	// 配置CORS - 从配置文件读取AllowedOrigins
-	allowedOrigins := strings.Split(cfg.AllowedOrigins, ",")
-	// 添加FrontendURL到允许的源列表（如果不在配置中）
-	hasFrontendURL := false
-	for _, origin := range allowedOrigins {
-		if strings.TrimSpace(origin) == cfg.FrontendURL {
-			hasFrontendURL = true
-			break
-		}
-	}
-	if !hasFrontendURL {
-		allowedOrigins = append(allowedOrigins, cfg.FrontendURL)
-	}
+	allowedOrigins := strings.Split(cfg.Security.CORSAllowedOrigins, ",")
+	allowedMethods := strings.Split(cfg.Security.CORSAllowedMethods, ",")
+	allowedHeaders := strings.Split(cfg.Security.CORSAllowedHeaders, ",")
 
 	corsConfig := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
-		AllowCredentials: true,
+		AllowedMethods:   allowedMethods,
+		AllowedHeaders:   allowedHeaders,
+		AllowCredentials: cfg.Security.CORSAllowCredentials,
 	})
 
 	// 使用CORS中间件
@@ -493,7 +478,6 @@ func main() {
 	}
 
 	log.Printf("Server starting on %s:%s", cfg.ServerHost, port)
-	log.Printf("Frontend URL: %s", cfg.FrontendURL)
 	log.Printf("GitLab URL: %s", cfg.GitLabURL)
 
 	address := fmt.Sprintf("%s:%s", cfg.ServerHost, port)

@@ -1,0 +1,70 @@
+# GitLabEx 应用配置文件
+# 基础配置，可被环境特定配置和环境变量覆盖
+
+# 服务器配置
+server:
+  host: "0.0.0.0"
+  port: "8080"
+  environment: "production"
+  debug: false
+
+# 数据库配置
+database:
+  host: "192.168.1.10"
+  port: "5432"
+  user: "gitlabex"
+  password: "password123"
+  name: "gitlabex"
+
+# Redis配置
+redis:
+  host: "192.168.1.10"
+  port: "6379"
+  password: "password123"
+
+# GitLab配置
+gitlab:
+  url: "http://192.168.1.10:8081"
+  client_id: "fc429dba2f2475aa020a6c25837a0bef48bc7ab227f4f0d420c40da263cd82c6"
+  client_secret: "2eb883179c458d593b91dfc94d47520b3d731576c4bd12626d84424bca637904"
+  redirect_uri: "http://192.168.1.10:3000/auth/gitlab/callback"
+  scopes: "api read_api openid"
+  system_token: "glpat-Vz1zys2aUEfXUEcsu6dM"
+
+# JWT配置
+jwt:
+  secret: "gitlabex_super_secret_jwt_key_make_it_long_and_random_for_production_use"
+  expiration_hours: 24
+
+# MinIO对象存储配置
+minio:
+  endpoint: "minio:9000"
+  access_key: "admin"
+  secret_key: "password123"
+  use_ssl: false
+  region: "us-east-1"
+
+# 日志配置
+logging:
+  level: "info"
+  format: "json"
+
+# 文件上传配置
+upload:
+  allowed_file_types: "pdf,doc,docx,ppt,pptx,xls,xlsx,csv,txt,md"
+  max_size: "50MB"
+  path: "/app/uploads"
+
+# 安全配置
+security:
+  cors_allowed_origins: "http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.10:3000"
+  cors_allowed_methods: "GET,POST,PUT,DELETE,OPTIONS"
+  cors_allowed_headers: "Content-Type,Authorization,X-Requested-With"
+  cors_allow_credentials: true
+  rate_limit_rpm: 100
+  rate_limit_burst: 20
+
+# API密钥配置
+api_keys:
+  sync_api_key: "gitlabex_sync_api_key_2024_secure_change_in_production"
+  third_party_api_key: "gitlabex_third_party_api_key_2024"

@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
@@ -2147,9 +2146,8 @@ func (s *GitLabService) MarkAllNotificationsAsRead(accessToken string) error {
 
 // GetSystemToken 获取系统配置的GitLab令牌（用于游客访问）
 func (s *GitLabService) GetSystemToken() string {
-	// 直接使用oauth.env中的GITLAB_ACCESS_TOKEN
-	// 这个令牌已经在配置加载时从oauth.env文件中读取
-	if token := os.Getenv("GITLAB_ACCESS_TOKEN"); token != "" {
+	// 从配置中获取系统令牌
+	if token := s.Config.GitLabSystemToken; token != "" {
 		fmt.Printf("DEBUG: Found system token: %s\n", token[:10]+"...")
 		return token
 	}
