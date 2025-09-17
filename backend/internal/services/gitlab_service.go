@@ -1470,6 +1470,102 @@ func (s *GitLabService) AddProjectMember(accessToken string, projectID int64, us
 	return nil
 }
 
+// AddUserToGroup 将用户添加到GitLab用户组
+func (s *GitLabService) AddUserToGroup(accessToken string, groupID int64, userID int64, accessLevel int) error {
+	url := fmt.Sprintf("%s/api/v4/groups/%d/members", s.Config.GitLab.URL, groupID)
+
+	data := map[string]interface{}{
+		"user_id":      userID,
+		"access_level": accessLevel,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// 如果用户已经在组中，GitLab会返回409，这不是错误
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("添加用户到组失败: %s - %s", resp.Status, string(body))
+	}
+
+	return nil
+}
+
+// AssignUserToRoleGroup 根据角色将用户分配到相应的用户组
+func (s *GitLabService) AssignUserToRoleGroup(accessToken string, userID int64, role string) error {
+	// 根据角色确定用户组ID和权限级别
+	var groupID int64
+	var accessLevel int
+
+	switch role {
+	case "admin", "administrator", "系统管理员", "管理员":
+		// 管理员不需要加入特定组，因为他们是系统管理员
+		return nil
+	case "teacher", "instructor", "professor", "教师", "老师", "教授":
+		groupID = 10     // Teachers组ID
+		accessLevel = 40 // Maintainer权限
+	case "researcher", "research_assistant", "研究员", "研究助理":
+		groupID = 11     // Teaching Assistants组ID (研究员也归入助教组)
+		accessLevel = 30 // Developer权限
+	case "student", "undergraduate", "graduate", "学生", "本科生", "研究生":
+		groupID = 12     // Students组ID
+		accessLevel = 20 // Reporter权限
+	case "guest", "visitor", "游客", "访客":
+		groupID = 12     // Students组ID (游客也归入学生组，但权限更低)
+		accessLevel = 10 // Guest权限
+	default:
+		groupID = 12     // 默认加入学生组
+		accessLevel = 10 // Guest权限
+	}
+
+	// 将用户添加到相应的组
+	return s.AddUserToGroup(accessToken, groupID, userID, accessLevel)
+}
+
+// CheckUserInGroup 检查用户是否在指定的组中
+func (s *GitLabService) CheckUserInGroup(accessToken string, userID int64, groupID int64) (bool, error) {
+	url := fmt.Sprintf("%s/api/v4/groups/%d/members/%d", s.Config.GitLab.URL, groupID, userID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	// 如果用户在组中，返回200；如果不在组中，返回404
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	} else if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	} else {
+		body, _ := io.ReadAll(resp.Body)
+		return false, fmt.Errorf("检查用户组成员失败: %s - %s", resp.Status, string(body))
+	}
+}
+
 // RemoveProjectMember 移除GitLab项目成员
 func (s *GitLabService) RemoveProjectMember(accessToken string, projectID int64, userID int64) error {
 	url := fmt.Sprintf("%s/api/v4/projects/%d/members/%d", s.Config.GitLab.URL, projectID, userID)

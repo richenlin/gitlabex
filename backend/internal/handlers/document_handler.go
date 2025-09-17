@@ -20,12 +20,14 @@ import (
 // DocumentHandler 文档处理器
 type DocumentHandler struct {
 	documentService *services.DocumentService
+	gitlabService   *services.GitLabService
 }
 
 // NewDocumentHandler 创建文档处理器
-func NewDocumentHandler(documentService *services.DocumentService) *DocumentHandler {
+func NewDocumentHandler(documentService *services.DocumentService, gitlabService *services.GitLabService) *DocumentHandler {
 	return &DocumentHandler{
 		documentService: documentService,
+		gitlabService:   gitlabService,
 	}
 }
 
@@ -694,7 +696,19 @@ func (h *DocumentHandler) GetEditRequests(c *gin.Context) {
 		}
 	}
 
-	requests, total, err := h.documentService.GetEditRequests(status, reviewerID, pageSize, offset)
+	// 获取当前用户信息，用于权限过滤
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+		return
+	}
+
+	currentUserID := gitlabUserID.(int64)
+	isAdmin := h.CheckUserPermission(c, "admin")
+	isTeacher := h.CheckUserPermission(c, "teacher")
+
+	requests, total, err := h.documentService.GetEditRequestsWithPermissionFilter(
+		status, reviewerID, pageSize, offset, currentUserID, isAdmin, isTeacher)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取编辑请求失败"})
 		return
@@ -726,11 +740,39 @@ func (h *DocumentHandler) ReviewEditRequest(c *gin.Context) {
 
 	reviewerID := gitlabUserID.(int64)
 
-	// 检查审核权限：只有管理员和教师可以审核编辑请求
-	canReview := h.CheckUserPermission(c, "admin") || h.CheckUserPermission(c, "teacher")
-	if !canReview {
-		c.JSON(http.StatusForbidden, gin.H{"error": "权限不足，只有管理员和教师可以审核编辑请求"})
+	// 获取编辑请求信息以确定审核权限
+	editRequest, err := h.documentService.GetEditRequestByID(requestID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "编辑请求不存在"})
 		return
+	}
+
+	// 获取关联的文档信息
+	document, err := h.documentService.GetDocumentByID(editRequest.DocumentID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "关联文档不存在"})
+		return
+	}
+
+	// 检查审核权限
+	var canReview bool
+	if document.IsStandalone {
+		// 独立文档：创建者和管理员可以审核
+		isAdmin := h.CheckUserPermission(c, "admin")
+		isCreator := document.UploaderID == reviewerID
+		canReview = isAdmin || isCreator
+
+		if !canReview {
+			c.JSON(http.StatusForbidden, gin.H{"error": "权限不足，只有文档创建者和管理员可以审核独立文档的编辑请求"})
+			return
+		}
+	} else {
+		// 课题文档：只有管理员和教师可以审核编辑请求
+		canReview = h.CheckUserPermission(c, "admin") || h.CheckUserPermission(c, "teacher")
+		if !canReview {
+			c.JSON(http.StatusForbidden, gin.H{"error": "权限不足，只有管理员和教师可以审核编辑请求"})
+			return
+		}
 	}
 
 	var req struct {
@@ -931,39 +973,56 @@ func (h *DocumentHandler) CheckUserPermission(c *gin.Context, requiredRole strin
 		return true // 管理员拥有所有权限
 	}
 
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		return false
+	}
+
+	accessToken, exists := c.Get("gitlab_access_token")
+	if !exists {
+		return false
+	}
+
 	// 根据所需角色检查权限
 	switch requiredRole {
 	case "admin":
 		return isAdmin != nil && isAdmin.(bool)
 	case "teacher":
-		// 检查用户是否为教师（Maintainer或Owner级别）
-		// 这里需要项目上下文，暂时通过检查用户是否为文档上传者来判断
-		// 在实际应用中，应该通过GitLab API检查用户在项目中的访问级别
-		gitlabUserID, exists := c.Get("gitlab_user_id")
-		if !exists {
-			return false
-		}
-
-		// 获取文档ID并检查用户是否为文档上传者
-		documentIDStr := c.Param("id")
-		if documentIDStr == "" {
-			return false
-		}
-
-		documentID, err := uuid.Parse(documentIDStr)
+		// 检查用户是否在Teachers组中（教师角色）
+		hasTeacherRole, err := h.gitlabService.CheckUserInGroup(
+			accessToken.(string),
+			gitlabUserID.(int64),
+			10, // Teachers组ID
+		)
 		if err != nil {
+			fmt.Printf("检查教师权限时出错: %v\n", err)
 			return false
 		}
-
-		// 获取文档信息
-		document, err := h.documentService.GetDocumentByID(documentID)
+		return hasTeacherRole
+	case "researcher":
+		// 检查用户是否在Teaching Assistants组中（研究员角色）
+		hasResearcherRole, err := h.gitlabService.CheckUserInGroup(
+			accessToken.(string),
+			gitlabUserID.(int64),
+			11, // Teaching Assistants组ID
+		)
 		if err != nil {
+			fmt.Printf("检查研究员权限时出错: %v\n", err)
 			return false
 		}
-
-		// 检查用户是否为文档上传者（简化判断）
-		// 在实际应用中，应该检查用户在项目中的GitLab访问级别
-		return document.UploaderID == gitlabUserID.(int64)
+		return hasResearcherRole
+	case "student":
+		// 检查用户是否在Students组中（学生角色）
+		hasStudentRole, err := h.gitlabService.CheckUserInGroup(
+			accessToken.(string),
+			gitlabUserID.(int64),
+			12, // Students组ID
+		)
+		if err != nil {
+			fmt.Printf("检查学生权限时出错: %v\n", err)
+			return false
+		}
+		return hasStudentRole
 	default:
 		return false
 	}
@@ -997,9 +1056,37 @@ func (h *DocumentHandler) UpdateDocumentWithPermissionCheck(c *gin.Context) {
 		return
 	}
 
+	// 获取文档信息以检查是否为独立文档
+	document, err := h.documentService.GetDocumentByID(documentID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "文档不存在"})
+		return
+	}
+
 	// 检查用户权限
-	// 管理员/教师可以直接修改，研究员/学生需要提交审核请求
-	canDirectEdit := h.CheckUserPermission(c, "admin") || h.CheckUserPermission(c, "teacher")
+	var canDirectEdit bool
+
+	if document.IsStandalone {
+		// 独立文档：创建者和管理员可以直接修改
+		isAdmin := h.CheckUserPermission(c, "admin")
+		isCreator := document.UploaderID == gitlabUserID.(int64)
+		canDirectEdit = isAdmin || isCreator
+	} else {
+		// 课题文档：管理员/教师可以直接修改，研究员/学生需要提交审核请求
+		canDirectEdit = h.CheckUserPermission(c, "admin") || h.CheckUserPermission(c, "teacher")
+	}
+
+	// 如果不能直接编辑，检查是否有提交编辑请求的权限
+	if !canDirectEdit {
+		hasEditRequestPermission := h.CheckUserPermission(c, "researcher") ||
+			h.CheckUserPermission(c, "student") ||
+			(document.IsStandalone) // 独立文档的其他用户也可以提交编辑请求
+
+		if !hasEditRequestPermission {
+			c.JSON(http.StatusForbidden, gin.H{"error": "权限不足，无法修改文档"})
+			return
+		}
+	}
 
 	if canDirectEdit {
 		// 直接更新文档

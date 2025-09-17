@@ -184,6 +184,12 @@ func (s *ExternalUserService) SyncExternalUser(adminToken string, userData *Exte
 			return nil, err
 		}
 
+		// 根据角色将用户分配到相应的GitLab用户组
+		if err := s.gitlabService.AssignUserToRoleGroup(adminToken, gitlabUser.ID, userData.Role); err != nil {
+			// 用户组分配失败不应该阻止用户创建，只记录警告
+			fmt.Printf("警告：为用户 %d 分配用户组失败: %v\n", gitlabUser.ID, err)
+		}
+
 		syncLog.ExternalUserID = externalUser.ID
 	}
 

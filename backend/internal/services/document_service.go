@@ -521,6 +521,16 @@ func (s *DocumentService) SubmitEditRequest(documentID uuid.UUID, requesterID in
 	return editRequest, nil
 }
 
+// GetEditRequestByID 根据ID获取编辑请求
+func (s *DocumentService) GetEditRequestByID(requestID uuid.UUID) (*models.DocumentEditRequest, error) {
+	var editRequest models.DocumentEditRequest
+	err := s.DB.Preload("Document").First(&editRequest, requestID).Error
+	if err != nil {
+		return nil, err
+	}
+	return &editRequest, nil
+}
+
 // GetEditRequests 获取文档编辑请求列表
 func (s *DocumentService) GetEditRequests(status string, reviewerID *int64, limit, offset int) ([]models.DocumentEditRequest, int64, error) {
 	var requests []models.DocumentEditRequest
@@ -542,6 +552,66 @@ func (s *DocumentService) GetEditRequests(status string, reviewerID *int64, limi
 	// 获取分页数据
 	err := query.Preload("Document").
 		Order("created_at DESC").
+		Limit(limit).Offset(offset).
+		Find(&requests).Error
+
+	return requests, total, err
+}
+
+// GetEditRequestsWithPermissionFilter 获取带权限过滤的文档编辑请求列表
+func (s *DocumentService) GetEditRequestsWithPermissionFilter(status string, reviewerID *int64, limit, offset int, currentUserID int64, isAdmin, isTeacher bool) ([]models.DocumentEditRequest, int64, error) {
+	var requests []models.DocumentEditRequest
+	var total int64
+
+	query := s.DB.Model(&models.DocumentEditRequest{}).
+		Joins("JOIN documents ON documents.id = document_edit_requests.document_id")
+
+	// 权限过滤：
+	// 1. 管理员可以看到所有编辑请求
+	// 2. 教师可以看到课题文档的编辑请求
+	// 3. 独立文档的创建者可以看到自己文档的编辑请求
+	// 4. 用户可以看到自己提交的编辑请求
+	if !isAdmin {
+		var conditions []string
+		var args []interface{}
+
+		// 用户自己提交的编辑请求
+		conditions = append(conditions, "document_edit_requests.requester_id = ?")
+		args = append(args, currentUserID)
+
+		// 独立文档的创建者可以审核
+		conditions = append(conditions, "(documents.is_standalone = true AND documents.uploader_id = ?)")
+		args = append(args, currentUserID)
+
+		// 教师可以审核课题文档
+		if isTeacher {
+			conditions = append(conditions, "(documents.is_standalone = false)")
+		}
+
+		if len(conditions) > 0 {
+			query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
+		} else {
+			// 如果没有任何权限，返回空结果
+			return []models.DocumentEditRequest{}, 0, nil
+		}
+	}
+
+	// 状态过滤
+	if status != "" {
+		query = query.Where("document_edit_requests.status = ?", status)
+	}
+
+	// 审核者过滤
+	if reviewerID != nil {
+		query = query.Where("document_edit_requests.reviewer_id = ?", *reviewerID)
+	}
+
+	// 计算总数
+	query.Count(&total)
+
+	// 获取分页数据
+	err := query.Preload("Document").
+		Order("document_edit_requests.created_at DESC").
 		Limit(limit).Offset(offset).
 		Find(&requests).Error
 

@@ -255,7 +255,7 @@ func main() {
 
 	// 文档相关路由
 	documents := api.Group("/documents")
-	documentHandler := handlers.NewDocumentHandler(documentService)
+	documentHandler := handlers.NewDocumentHandler(documentService, gitlabService)
 	{
 		// 公开访问的路由（不需要认证）
 		documents.GET("", documentHandler.GetDocuments)                     // 文档列表（不是高频接口，移除缓存）

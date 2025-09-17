@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -120,6 +121,12 @@ func (h *SyncHandler) CreateUser(c *gin.Context) {
 			Error:   err.Error(),
 		})
 		return
+	}
+
+	// 根据角色将用户分配到相应的GitLab用户组
+	if err := h.gitlabService.AssignUserToRoleGroup(adminToken, gitlabUser.ID, req.Role); err != nil {
+		// 用户组分配失败不应该阻止用户创建，只记录警告
+		fmt.Printf("警告：为用户 %d 分配用户组失败: %v\n", gitlabUser.ID, err)
 	}
 
 	// 构建响应数据

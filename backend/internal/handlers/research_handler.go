@@ -63,6 +63,7 @@ func generateProjectPath(name string) string {
 }
 
 // hasProjectCreationPermission 检查用户是否有创建项目的权限
+// 只有管理员和教师可以创建课题
 func (h *ResearchHandler) hasProjectCreationPermission(accessToken string) bool {
 	// 通过GitLab API检查用户权限
 	// 检查用户是否可以获取自己的用户信息，如果可以获取说明token有效且用户有基本权限
@@ -180,23 +181,34 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
-	// 检查权限 - 根据GitLab权限机制进行权限控制
-	// 1. 系统管理员可以创建项目
-	// 2. 普通用户需要有足够的GitLab权限才能创建项目
+	// 检查权限 - 只有管理员和教师可以创建课题
 	isAdmin, _ := c.Get("is_admin")
 
+	// 获取用户信息来检查角色
+	accessTokenStr := accessToken.(string)
+	user, err := h.gitlabService.GetUser(accessTokenStr)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "无法获取用户信息",
+		})
+		return
+	}
+
+	// 检查是否为系统管理员
 	if isAdmin != nil && isAdmin.(bool) {
 		// 系统管理员，允许创建
 	} else {
-		// 普通用户，检查GitLab权限
-		// 获取用户的GitLab信息来验证是否有创建项目的权限
-		accessToken := c.MustGet("gitlab_access_token").(string)
+		// 检查用户是否在Teachers组中（教师角色）
+		hasTeacherPermission, err := h.gitlabService.CheckUserInGroup(accessTokenStr, user.ID, 10) // Teachers组ID为10
+		if err != nil {
+			fmt.Printf("检查用户组权限时出错: %v\n", err)
+		}
 
-		// 检查用户是否有创建项目的权限（通过尝试获取用户的命名空间信息）
-		if !h.hasProjectCreationPermission(accessToken) {
+		// 如果不是管理员也不是教师，拒绝创建
+		if !hasTeacherPermission {
 			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "权限不足：您没有创建研究项目的权限",
-				"message": "请联系管理员或确保您在GitLab中有足够的权限",
+				"error":   "权限不足：只有管理员和教师可以创建课题",
+				"message": "请联系管理员获取教师权限",
 			})
 			return
 		}
