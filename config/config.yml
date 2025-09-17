@@ -25,11 +25,11 @@ redis:
 # GitLab配置
 gitlab:
   url: "http://192.168.1.10:8081"
-  client_id: "fc429dba2f2475aa020a6c25837a0bef48bc7ab227f4f0d420c40da263cd82c6"
-  client_secret: "2eb883179c458d593b91dfc94d47520b3d731576c4bd12626d84424bca637904"
+  client_id: ""
+  client_secret: ""
   redirect_uri: "http://192.168.1.10:3000/auth/gitlab/callback"
   scopes: "api read_api openid"
-  system_token: "glpat-Vz1zys2aUEfXUEcsu6dM"
+  system_token: ""
 
 # JWT配置
 jwt:
