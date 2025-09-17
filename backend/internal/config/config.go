@@ -127,7 +127,7 @@ func loadFromYAML() *Config {
 	// 简化的配置文件路径，只支持两个位置
 	configPaths := []string{
 		"/app/config/config.yml", // Docker容器内路径
-		"./config/config.yml",    // 本地开发路径
+		"../config/config.yml",   // 本地开发路径（从backend目录运行）
 	}
 
 	for _, configPath := range configPaths {

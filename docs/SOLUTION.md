@@ -59,7 +59,7 @@ GitLabEx 是一个基于 GitLab 生态系统的教育协作平台，专为教学
 
 ### 3.1 用户管理
 - 用户信息完全从 GitLab API 实时获取
-- 支持四种角色：管理员(Owner)、教师(Maintainer)、研究员或学生(Developer)、普通用户（Reporter）、游客（Guest）
+- 支持多种角色：管理员(Owner)、教师(Maintainer)、研究员或学生(Developer)、普通用户（Reporter）、游客（Guest）
 - 用户可管理个人资料、SSH 密钥、GPG 密钥和账户设置
 - 管理员拥有完整的用户管理权限
 

@@ -11,8 +11,8 @@ services:
       - "8080:8080"
       - "9090:9090"  # Metrics port
     volumes:
-      # 单一YAML配置文件映射
-      - ./config/config.yml:/app/config/config.yml:ro
+      # 单一YAML配置文件映射 - 生产环境使用 config.prod.yml
+      - ./config/config.prod.yml:/app/config/config.yml:ro
       # 数据持久化
       - backend_uploads:/app/uploads
       - backend_logs:/app/logs

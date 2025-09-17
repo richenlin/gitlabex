@@ -1,13 +1,13 @@
-# GitLabEx 现代化配置文件
-# 生产环境配置，使用IP地址进行多机部署
+# GitLabEx 开发环境配置文件
+# 开发环境配置，用于本地开发和测试
 # 敏感信息通过环境变量加载
 
 # 服务器配置
 server:
   host: "0.0.0.0"
   port: "8080"
-  environment: "dev"
-  debug: false
+  environment: "development"
+  debug: true
 
 # 数据库配置 - 使用IP地址
 database:
@@ -29,11 +29,16 @@ redis:
 # GitLab配置 - 使用IP地址
 gitlab:
   url: "http://192.168.0.46:8081"
-  client_id: "fc429dba2f2475aa020a6c25837a0bef48bc7ab227f4f0d420c40da263cd82c6"  # 必须通过环境变量设置
-  client_secret: "2eb883179c458d593b91dfc94d47520b3d731576c4bd12626d84424bca637904"  # 必须通过环境变量设置
+  client_id: "537d8206b73fa931da99061f1564e97da72aa53fcd6eb3587d8f23b14ee6088e"  # 必须通过环境变量设置
+  client_secret: "7e48942204e3783d39dacd8f440b8444e6bd1f9687772ef10c615775eb33210a"  # 必须通过环境变量设置
   redirect_uri: "http://192.168.0.46:3000/auth/gitlab/callback"
   scopes: "api read_api openid"
-  system_token: "glpat-Vz1zys2aUEfXUEcsu6dM"  # 必须通过环境变量设置
+  system_token: "glpat-gcWAqg7EsbgaRPnKzVHb"  # 必须通过环境变量设置
+
+# JWT配置
+jwt:
+  secret: "gitlabex_jwt_secret_development_environment_2024_very_secure_key_32_chars_minimum"
+  expiration_hours: 24
 
 # MinIO对象存储配置 - 使用IP地址
 minio:
