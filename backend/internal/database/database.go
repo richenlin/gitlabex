@@ -16,14 +16,14 @@ import (
 func Initialize(cfg *config.Config) (*gorm.DB, error) {
 	// 配置GORM日志级别
 	var logLevel logger.LogLevel
-	if cfg.Debug {
+	if cfg.Server.Debug {
 		logLevel = logger.Info
 	} else {
 		logLevel = logger.Error
 	}
 
 	// 连接数据库
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
+	db, err := gorm.Open(postgres.Open(cfg.GetDatabaseURL()), &gorm.Config{
 		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {

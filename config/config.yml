@@ -1,5 +1,6 @@
-# GitLabEx 应用配置文件
-# 基础配置，可被环境特定配置和环境变量覆盖
+# GitLabEx 现代化配置文件
+# 生产环境配置，使用IP地址进行多机部署
+# 敏感信息通过环境变量加载
 
 # 服务器配置
 server:
@@ -8,39 +9,47 @@ server:
   environment: "production"
   debug: false
 
-# 数据库配置
+# 数据库配置 - 使用IP地址
 database:
-  host: "192.168.1.10"
+  host: "192.168.0.46"
   port: "5432"
   user: "gitlabex"
-  password: "password123"
+  password: "password123"  # 生产环境应通过环境变量设置
   name: "gitlabex"
+  ssl_mode: "disable"
+  timezone: "Asia/Shanghai"
 
-# Redis配置
+# Redis配置 - 使用IP地址
 redis:
-  host: "192.168.1.10"
+  host: "192.168.0.46"
   port: "6379"
-  password: "password123"
+  password: "password123"  # 生产环境应通过环境变量设置
+  db: 0
 
-# GitLab配置
+# GitLab配置 - 使用IP地址
 gitlab:
-  url: "http://192.168.1.10:8081"
-  client_id: ""
-  client_secret: ""
-  redirect_uri: "http://192.168.1.10:3000/auth/gitlab/callback"
+  url: "http://192.168.0.46:8081"
+  client_id: ""  # 必须通过环境变量设置
+  client_secret: ""  # 必须通过环境变量设置
+  redirect_uri: "http://192.168.0.46:3000/auth/gitlab/callback"
   scopes: "api read_api openid"
-  system_token: ""
+  system_token: ""  # 必须通过环境变量设置
 
 # JWT配置
 jwt:
-  secret: "gitlabex_super_secret_jwt_key_make_it_long_and_random_for_production_use"
+  secret: "gitlabex_super_secret_jwt_key_make_it_long_and_random_for_production_use_32_chars_minimum"
   expiration_hours: 24
 
-# MinIO对象存储配置
+# 应用配置 - 使用IP地址
+app:
+  frontend_url: "http://192.168.0.46:3000"
+  allowed_origins: "http://192.168.0.46:3000"
+
+# MinIO对象存储配置 - 使用IP地址
 minio:
-  endpoint: "minio:9000"
+  endpoint: "192.168.0.46:9000"
   access_key: "admin"
-  secret_key: "password123"
+  secret_key: "password123"  # 生产环境应通过环境变量设置
   use_ssl: false
   region: "us-east-1"
 
@@ -51,20 +60,35 @@ logging:
 
 # 文件上传配置
 upload:
-  allowed_file_types: "pdf,doc,docx,ppt,pptx,xls,xlsx,csv,txt,md"
-  max_size: "50MB"
+  allowed_file_types: "pdf,doc,docx,ppt,pptx,xls,xlsx,csv,txt,md,zip,rar,png,jpg,jpeg,gif"
+  max_size: "100MB"
   path: "/app/uploads"
 
 # 安全配置
 security:
-  cors_allowed_origins: "http://localhost:3000,http://127.0.0.1:3000,http://192.168.1.10:3000"
+  cors_allowed_origins: "http://192.168.0.46:3000,http://localhost:3000,http://127.0.0.1:3000"
   cors_allowed_methods: "GET,POST,PUT,DELETE,OPTIONS"
-  cors_allowed_headers: "Content-Type,Authorization,X-Requested-With"
+  cors_allowed_headers: "Content-Type,Authorization,X-Requested-With,X-API-Key"
   cors_allow_credentials: true
-  rate_limit_rpm: 100
-  rate_limit_burst: 20
+  rate_limit_rpm: 300
+  rate_limit_burst: 50
 
 # API密钥配置
 api_keys:
-  sync_api_key: "gitlabex_sync_api_key_2024_secure_change_in_production"
-  third_party_api_key: "gitlabex_third_party_api_key_2024"
+  sync_api_key: "gitlabex_sync_api_key_2024_secure_change_in_production_32_chars_minimum"
+  third_party_api_key: "gitlabex_third_party_api_key_2024_change_in_production_32_chars_minimum"
+
+# 生产环境部署说明：
+# 1. 所有敏感信息（密码、密钥、token）都应通过环境变量设置
+# 2. IP地址可以通过环境变量动态配置以适应不同的部署环境
+# 3. 使用 docker run 或 docker-compose 时设置相应的环境变量
+# 4. 关键环境变量：
+#    - DATABASE_PASSWORD
+#    - REDIS_PASSWORD
+#    - GITLAB_CLIENT_ID
+#    - GITLAB_CLIENT_SECRET
+#    - GITLAB_SYSTEM_TOKEN
+#    - JWT_SECRET
+#    - MINIO_SECRET_KEY
+#    - SYNC_API_KEY
+#    - THIRD_PARTY_API_KEY

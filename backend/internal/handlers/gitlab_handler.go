@@ -539,7 +539,7 @@ func (h *GitLabHandler) ValidateRepositoryAccess(c *gin.Context) {
 // GetGitLabConfig 获取GitLab配置信息
 func (h *GitLabHandler) GetGitLabConfig(c *gin.Context) {
 	config := map[string]interface{}{
-		"gitlab_url": h.gitlabService.Config.GitLabURL,
+		"gitlab_url": h.gitlabService.Config.GitLab.URL,
 	}
 	c.JSON(http.StatusOK, config)
 }

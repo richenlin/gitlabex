@@ -22,7 +22,7 @@ func main() {
 	cfg := config.Load()
 
 	// 设置Gin模式
-	if cfg.Environment == "production" {
+	if cfg.Server.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
@@ -33,7 +33,7 @@ func main() {
 	}
 
 	// 初始化Redis服务
-	redisService, err := services.NewRedisService(cfg.RedisHost, cfg.RedisPort, cfg.RedisPassword)
+	redisService, err := services.NewRedisService(cfg.Redis.Host, cfg.Redis.Port, cfg.Redis.Password)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize Redis service: %v", err)
 		log.Println("Continuing without Redis caching...")
@@ -45,11 +45,11 @@ func main() {
 
 	// 初始化MinIO服务
 	minioService, err := services.NewMinIOService(
-		cfg.MinIOEndpoint,
-		cfg.MinIOAccessKey,
-		cfg.MinIOSecretKey,
-		cfg.MinIOUseSSL,
-		cfg.MinIORegion,
+		cfg.MinIO.Endpoint,
+		cfg.MinIO.AccessKey,
+		cfg.MinIO.SecretKey,
+		cfg.MinIO.UseSSL,
+		cfg.MinIO.Region,
 	)
 	if err != nil {
 		log.Fatalf("Failed to initialize MinIO service: %v", err)
@@ -72,7 +72,7 @@ func main() {
 	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
 	researchHandler := handlers.NewResearchHandler(researchService, userService, gitlabService)
 	topicHandler := handlers.NewTopicHandler(gitlabService, researchService, topicService)
-	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWTSecret)
+	syncHandler := handlers.NewSyncHandler(userService, gitlabService, cfg.JWT.Secret)
 	activityHandler := handlers.NewActivityHandler(activityService)
 	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService, topicService)
 
@@ -472,15 +472,15 @@ func main() {
 	}
 
 	// 启动服务器
-	port := cfg.ServerPort
+	port := cfg.Server.Port
 	if port == "" {
 		port = "8080"
 	}
 
-	log.Printf("Server starting on %s:%s", cfg.ServerHost, port)
-	log.Printf("GitLab URL: %s", cfg.GitLabURL)
+	log.Printf("Server starting on %s:%s", cfg.Server.Host, port)
+	log.Printf("GitLab URL: %s", cfg.GitLab.URL)
 
-	address := fmt.Sprintf("%s:%s", cfg.ServerHost, port)
+	address := fmt.Sprintf("%s:%s", cfg.Server.Host, port)
 	if err := r.Run(address); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

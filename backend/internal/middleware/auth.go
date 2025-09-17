@@ -90,7 +90,7 @@ func RequireAuth(cfg *config.Config) gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
 			}
-			return []byte(cfg.JWTSecret), nil
+			return []byte(cfg.JWT.Secret), nil
 		})
 
 		if err != nil {
@@ -124,7 +124,7 @@ func RequireAuth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// 验证GitLab访问令牌并获取用户信息
-		gitlabUser, err := getGitLabUser(claims.GitLabAccessToken, cfg.GitLabURL)
+		gitlabUser, err := getGitLabUser(claims.GitLabAccessToken, cfg.GitLab.URL)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error":   "gitlab_auth_failed",
@@ -181,7 +181,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, jwt.ErrSignatureInvalid
 			}
-			return []byte(cfg.JWTSecret), nil
+			return []byte(cfg.JWT.Secret), nil
 		})
 
 		if err != nil || !token.Valid {
@@ -209,7 +209,7 @@ func OptionalAuth(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// 验证GitLab访问令牌并获取用户信息
-		gitlabUser, err := getGitLabUser(claims.GitLabAccessToken, cfg.GitLabURL)
+		gitlabUser, err := getGitLabUser(claims.GitLabAccessToken, cfg.GitLab.URL)
 		if err != nil {
 			// GitLab认证失败，设置为游客模式
 			c.Set("is_guest", true)

@@ -740,7 +740,7 @@ func (s *HomeworkService) GetSubmissionViewURL(submissionID uuid.UUID) (string, 
 	}
 
 	// 从配置中获取GitLab URL
-	gitlabBaseURL := s.GitLabService.Config.GitLabURL
+	gitlabBaseURL := s.GitLabService.Config.GitLab.URL
 	if gitlabBaseURL == "" {
 		return "", fmt.Errorf("GitLab URL未配置")
 	}

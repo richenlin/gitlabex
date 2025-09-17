@@ -70,11 +70,11 @@ func (h *AuthHandler) GitLabAuth(c *gin.Context) {
 
 	// 构建GitLab OAuth授权URL
 	// 将scope中的空格替换为加号，符合URL编码规范
-	scopes := strings.ReplaceAll(h.config.GitLabScopes, " ", "+")
+	scopes := strings.ReplaceAll(h.config.GitLab.Scopes, " ", "+")
 	authURL := fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=%s&state=%s",
-		h.config.GitLabURL,
-		h.config.GitLabClientID,
-		url.QueryEscape(h.config.GitLabRedirectURI),
+		h.config.GitLab.URL,
+		h.config.GitLab.ClientID,
+		url.QueryEscape(h.config.GitLab.RedirectURI),
 		scopes,
 		state)
 
@@ -161,7 +161,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 	// 解析JWT令牌（即使过期也要解析出用户信息）
 	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return []byte(h.config.JWTSecret), nil
+		return []byte(h.config.JWT.Secret), nil
 	})
 
 	var claims *JWTClaims
@@ -217,13 +217,13 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // exchangeCodeForToken 交换授权码获取访问令牌
 func (h *AuthHandler) exchangeCodeForToken(code string) (*GitLabOAuthResponse, error) {
 	data := url.Values{}
-	data.Set("client_id", h.config.GitLabClientID)
-	data.Set("client_secret", h.config.GitLabClientSecret)
+	data.Set("client_id", h.config.GitLab.ClientID)
+	data.Set("client_secret", h.config.GitLab.ClientSecret)
 	data.Set("code", code)
 	data.Set("grant_type", "authorization_code")
-	data.Set("redirect_uri", h.config.GitLabRedirectURI)
+	data.Set("redirect_uri", h.config.GitLab.RedirectURI)
 
-	req, err := http.NewRequest("POST", h.config.GitLabURL+"/oauth/token", strings.NewReader(data.Encode()))
+	req, err := http.NewRequest("POST", h.config.GitLab.URL+"/oauth/token", strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -255,12 +255,12 @@ func (h *AuthHandler) exchangeCodeForToken(code string) (*GitLabOAuthResponse, e
 // refreshGitLabToken 刷新GitLab访问令牌
 func (h *AuthHandler) refreshGitLabToken(refreshToken string) (*GitLabOAuthResponse, error) {
 	data := url.Values{}
-	data.Set("client_id", h.config.GitLabClientID)
-	data.Set("client_secret", h.config.GitLabClientSecret)
+	data.Set("client_id", h.config.GitLab.ClientID)
+	data.Set("client_secret", h.config.GitLab.ClientSecret)
 	data.Set("refresh_token", refreshToken)
 	data.Set("grant_type", "refresh_token")
 
-	req, err := http.NewRequest("POST", h.config.GitLabURL+"/oauth/token", strings.NewReader(data.Encode()))
+	req, err := http.NewRequest("POST", h.config.GitLab.URL+"/oauth/token", strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func (h *AuthHandler) generateJWT(gitlabAccessToken string) (string, error) {
 	claims := &JWTClaims{
 		GitLabAccessToken: gitlabAccessToken,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(h.config.JWTExpirationHours) * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(h.config.JWT.ExpirationHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    "gitlabex",
@@ -301,7 +301,7 @@ func (h *AuthHandler) generateJWT(gitlabAccessToken string) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(h.config.JWTSecret))
+	return token.SignedString([]byte(h.config.JWT.Secret))
 }
 
 // generateRandomState 生成随机状态参数

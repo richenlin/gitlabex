@@ -82,7 +82,7 @@ type AccessLevel struct {
 
 // ProtectBranch 保护分支
 func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *ProtectBranchRequest) (*ProtectedBranch, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches", s.Config.GitLab.URL, projectID)
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -125,7 +125,7 @@ func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *
 // GetProtectedBranch 获取受保护分支信息
 func (s *GitLabService) GetProtectedBranch(accessToken string, projectID int64, branchName string) (*ProtectedBranch, error) {
 	encodedBranch := url.PathEscape(branchName)
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches/%s", s.Config.GitLabURL, projectID, encodedBranch)
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches/%s", s.Config.GitLab.URL, projectID, encodedBranch)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -374,7 +374,7 @@ type GitLabWebhookPayload struct {
 
 // GetUser 获取当前用户信息
 func (s *GitLabService) GetUser(accessToken string) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/user", s.Config.GitLabURL)
+	url := fmt.Sprintf("%s/api/v4/user", s.Config.GitLab.URL)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -404,7 +404,7 @@ func (s *GitLabService) GetUser(accessToken string) (*GitLabAPIUser, error) {
 
 // GetAllUsers 获取所有用户列表 (管理员专用)
 func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users?page=%d&per_page=%d", s.Config.GitLabURL, page, perPage)
+	url := fmt.Sprintf("%s/api/v4/users?page=%d&per_page=%d", s.Config.GitLab.URL, page, perPage)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -435,7 +435,7 @@ func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*G
 // SearchUsers 搜索用户
 func (s *GitLabService) SearchUsers(accessToken string, search string, page, perPage int) ([]*GitLabAPIUser, error) {
 	url := fmt.Sprintf("%s/api/v4/users?search=%s&page=%d&per_page=%d",
-		s.Config.GitLabURL, url.QueryEscape(search), page, perPage)
+		s.Config.GitLab.URL, url.QueryEscape(search), page, perPage)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -465,7 +465,7 @@ func (s *GitLabService) SearchUsers(accessToken string, search string, page, per
 
 // GetUserByUsername 根据用户名获取用户信息
 func (s *GitLabService) GetUserByUsername(accessToken string, username string) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users?username=%s", s.Config.GitLabURL, url.QueryEscape(username))
+	url := fmt.Sprintf("%s/api/v4/users?username=%s", s.Config.GitLab.URL, url.QueryEscape(username))
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -499,7 +499,7 @@ func (s *GitLabService) GetUserByUsername(accessToken string, username string) (
 
 // CreateUser 创建用户 (管理员专用)
 func (s *GitLabService) CreateUser(accessToken string, userData *GitLabCreateUserData) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users", s.Config.GitLabURL)
+	url := fmt.Sprintf("%s/api/v4/users", s.Config.GitLab.URL)
 
 	jsonData, err := json.Marshal(userData)
 	if err != nil {
@@ -535,7 +535,7 @@ func (s *GitLabService) CreateUser(accessToken string, userData *GitLabCreateUse
 
 // UpdateUser 更新用户信息 (管理员专用)
 func (s *GitLabService) UpdateUser(accessToken string, userID int64, userData *GitLabUpdateUserData) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLabURL, userID)
+	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
 
 	jsonData, err := json.Marshal(userData)
 	if err != nil {
@@ -571,7 +571,7 @@ func (s *GitLabService) UpdateUser(accessToken string, userID int64, userData *G
 
 // DeleteUser 删除用户 (管理员专用)
 func (s *GitLabService) DeleteUser(accessToken string, userID int64) error {
-	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLabURL, userID)
+	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
 
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
@@ -597,7 +597,7 @@ func (s *GitLabService) DeleteUser(accessToken string, userID int64) error {
 // GetProjects 获取用户的项目列表
 func (s *GitLabService) GetProjects(accessToken string, page, perPage int) ([]*GitLabProject, error) {
 	url := fmt.Sprintf("%s/api/v4/projects?owned=true&page=%d&per_page=%d&order_by=last_activity_at",
-		s.Config.GitLabURL, page, perPage)
+		s.Config.GitLab.URL, page, perPage)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -627,7 +627,7 @@ func (s *GitLabService) GetProjects(accessToken string, page, perPage int) ([]*G
 
 // GetProject 获取特定项目信息
 func (s *GitLabService) GetProject(accessToken string, projectID int64) (*GitLabProject, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLab.URL, projectID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -669,7 +669,7 @@ func (s *GitLabService) GetProject(accessToken string, projectID int64) (*GitLab
 
 // CreateProject 创建新项目
 func (s *GitLabService) CreateProject(accessToken string, req *CreateProjectRequest) (*GitLabProject, error) {
-	url := fmt.Sprintf("%s/api/v4/projects", s.Config.GitLabURL)
+	url := fmt.Sprintf("%s/api/v4/projects", s.Config.GitLab.URL)
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -705,7 +705,7 @@ func (s *GitLabService) CreateProject(accessToken string, req *CreateProjectRequ
 
 // GetBranches 获取项目分支列表
 func (s *GitLabService) GetBranches(accessToken string, projectID int64) ([]*GitLabBranch, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -735,7 +735,7 @@ func (s *GitLabService) GetBranches(accessToken string, projectID int64) ([]*Git
 
 // CreateBranch 创建新分支
 func (s *GitLabService) CreateBranch(accessToken string, projectID int64, req *CreateBranchRequest) (*GitLabBranch, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -772,7 +772,7 @@ func (s *GitLabService) CreateBranch(accessToken string, projectID int64, req *C
 func (s *GitLabService) GetFileContent(accessToken string, projectID int64, filePath, ref string) (*GitLabFile, error) {
 	encodedPath := url.PathEscape(filePath)
 	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s?ref=%s",
-		s.Config.GitLabURL, projectID, encodedPath, ref)
+		s.Config.GitLab.URL, projectID, encodedPath, ref)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -804,7 +804,7 @@ func (s *GitLabService) GetFileContent(accessToken string, projectID int64, file
 func (s *GitLabService) CreateFile(accessToken string, projectID int64, filePath string, req *CreateFileRequest) error {
 	encodedPath := url.PathEscape(filePath)
 	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s",
-		s.Config.GitLabURL, projectID, encodedPath)
+		s.Config.GitLab.URL, projectID, encodedPath)
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -836,7 +836,7 @@ func (s *GitLabService) CreateFile(accessToken string, projectID int64, filePath
 func (s *GitLabService) UpdateFile(accessToken string, projectID int64, filePath string, req *CreateFileRequest) error {
 	encodedPath := url.PathEscape(filePath)
 	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s",
-		s.Config.GitLabURL, projectID, encodedPath)
+		s.Config.GitLab.URL, projectID, encodedPath)
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -867,7 +867,7 @@ func (s *GitLabService) UpdateFile(accessToken string, projectID int64, filePath
 // GetCommits 获取提交历史
 func (s *GitLabService) GetCommits(accessToken string, projectID int64, branch string, limit int) ([]*GitLabCommit, error) {
 	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&per_page=%d",
-		s.Config.GitLabURL, projectID, branch, limit)
+		s.Config.GitLab.URL, projectID, branch, limit)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -897,7 +897,7 @@ func (s *GitLabService) GetCommits(accessToken string, projectID int64, branch s
 
 // GetIssues 获取项目议题
 func (s *GitLabService) GetIssues(accessToken string, projectID int64, state string, labels []string) ([]*GitLabIssue, error) {
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLabURL, projectID)
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
 
 	params := url.Values{}
 	if state != "" {
@@ -939,7 +939,7 @@ func (s *GitLabService) GetIssues(accessToken string, projectID int64, state str
 
 // CreateIssue 创建新议题
 func (s *GitLabService) CreateIssue(accessToken string, projectID int64, title, description string, labels []string, assigneeID *int64) (*GitLabIssue, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
 
 	body := map[string]interface{}{
 		"title":       title,
@@ -984,7 +984,7 @@ func (s *GitLabService) CreateIssue(accessToken string, projectID int64, title, 
 
 // GetMergeRequests 获取合并请求
 func (s *GitLabService) GetMergeRequests(accessToken string, projectID int64, state string) ([]*GitLabMergeRequest, error) {
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/merge_requests", s.Config.GitLabURL, projectID)
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/merge_requests", s.Config.GitLab.URL, projectID)
 
 	params := url.Values{}
 	if state != "" {
@@ -1036,7 +1036,7 @@ func (s *GitLabService) GetUserProjectAccessLevel(accessToken string, projectID 
 	}
 
 	// 获取项目成员信息
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/members/all", s.Config.GitLabURL, projectID)
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/members/all", s.Config.GitLab.URL, projectID)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -1095,7 +1095,7 @@ func (s *GitLabService) GetUserProjectAccessLevel(accessToken string, projectID 
 func (s *GitLabService) GetRepositoryTree(accessToken string, projectID int64, path string, ref string) ([]map[string]interface{}, error) {
 	encodedPath := url.PathEscape(path)
 	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/tree?path=%s&ref=%s",
-		s.Config.GitLabURL, projectID, encodedPath, ref)
+		s.Config.GitLab.URL, projectID, encodedPath, ref)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -1148,7 +1148,7 @@ func (s *GitLabService) GetRepositoryTree(accessToken string, projectID int64, p
 func (s *GitLabService) getFileLastCommit(accessToken string, projectID int64, filePath string, ref string) (map[string]interface{}, error) {
 	encodedPath := url.PathEscape(filePath)
 	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?path=%s&ref_name=%s&per_page=1",
-		s.Config.GitLabURL, projectID, encodedPath, ref)
+		s.Config.GitLab.URL, projectID, encodedPath, ref)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -1183,7 +1183,7 @@ func (s *GitLabService) getFileLastCommit(accessToken string, projectID int64, f
 // SearchFiles 搜索仓库中的文件
 func (s *GitLabService) SearchFiles(accessToken string, projectID int64, search string) ([]map[string]interface{}, error) {
 	url := fmt.Sprintf("%s/api/v4/projects/%d/search?scope=blobs&search=%s",
-		s.Config.GitLabURL, projectID, url.QueryEscape(search))
+		s.Config.GitLab.URL, projectID, url.QueryEscape(search))
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1214,7 +1214,7 @@ func (s *GitLabService) SearchFiles(accessToken string, projectID int64, search 
 // GetProjectIssues 获取项目Issues列表
 func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64, page, perPage int) ([]GitLabIssue, error) {
 	url := fmt.Sprintf("%s/api/v4/projects/%d/issues?page=%d&per_page=%d",
-		s.Config.GitLabURL, projectID, page, perPage)
+		s.Config.GitLab.URL, projectID, page, perPage)
 
 	// 使用context控制请求超时，防止资源泄漏
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -1241,7 +1241,7 @@ func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64, pa
 
 // GetIssue 获取单个Issue
 func (s *GitLabService) GetIssue(accessToken string, projectID, issueIID int64) (*GitLabIssue, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d", s.Config.GitLabURL, projectID, issueIID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d", s.Config.GitLab.URL, projectID, issueIID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1271,7 +1271,7 @@ func (s *GitLabService) GetIssue(accessToken string, projectID, issueIID int64) 
 
 // GetProjectBranches 获取项目分支列表
 func (s *GitLabService) GetProjectBranches(accessToken string, projectID int64) ([]map[string]interface{}, error) {
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLabURL, projectID)
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -1302,7 +1302,7 @@ func (s *GitLabService) GetProjectBranches(accessToken string, projectID int64) 
 // GetBranchInfo 获取分支信息
 func (s *GitLabService) GetBranchInfo(accessToken string, projectID int64, branchName string) (map[string]interface{}, error) {
 	encodedBranch := url.PathEscape(branchName)
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches/%s", s.Config.GitLabURL, projectID, encodedBranch)
+	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches/%s", s.Config.GitLab.URL, projectID, encodedBranch)
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -1333,7 +1333,7 @@ func (s *GitLabService) GetBranchInfo(accessToken string, projectID int64, branc
 // GetBranchCommits 获取分支的提交历史
 func (s *GitLabService) GetBranchCommits(accessToken string, projectID int64, branchName string) ([]map[string]interface{}, error) {
 	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&per_page=20",
-		s.Config.GitLabURL, projectID, url.QueryEscape(branchName))
+		s.Config.GitLab.URL, projectID, url.QueryEscape(branchName))
 
 	req, err := http.NewRequest("GET", apiUrl, nil)
 	if err != nil {
@@ -1363,7 +1363,7 @@ func (s *GitLabService) GetBranchCommits(accessToken string, projectID int64, br
 
 // DeleteProject 删除GitLab项目
 func (s *GitLabService) DeleteProject(accessToken string, projectID int64) error {
-	url := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLab.URL, projectID)
 
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
@@ -1400,7 +1400,7 @@ type ProjectMember struct {
 
 // GetProjectMembers 获取GitLab项目成员列表
 func (s *GitLabService) GetProjectMembers(accessToken string, projectID int64) ([]ProjectMember, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLab.URL, projectID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1436,7 +1436,7 @@ func (s *GitLabService) AddProjectMember(accessToken string, projectID int64, us
 		return fmt.Errorf("获取用户信息失败: %v", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLab.URL, projectID)
 
 	data := map[string]interface{}{
 		"user_id":      user.ID, // 必须使用数字ID
@@ -1472,7 +1472,7 @@ func (s *GitLabService) AddProjectMember(accessToken string, projectID int64, us
 
 // RemoveProjectMember 移除GitLab项目成员
 func (s *GitLabService) RemoveProjectMember(accessToken string, projectID int64, userID int64) error {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/members/%d", s.Config.GitLabURL, projectID, userID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/members/%d", s.Config.GitLab.URL, projectID, userID)
 
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
@@ -1497,7 +1497,7 @@ func (s *GitLabService) RemoveProjectMember(accessToken string, projectID int64,
 
 // GetUserByID 根据用户ID获取GitLab用户信息
 func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLabURL, userID)
+	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1527,7 +1527,7 @@ func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*GitLabAP
 
 // CreateProjectIssue 创建项目Issue
 func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, title, description string, labels []string) (*GitLabIssue, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLabURL, projectID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
 
 	data := map[string]interface{}{
 		"title":       title,
@@ -1568,7 +1568,7 @@ func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, 
 // GetIssueNotes 获取Issue评论列表
 func (s *GitLabService) GetIssueNotes(accessToken string, projectID, issueIID int64, page, perPage int) ([]GitLabIssueNote, error) {
 	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes?page=%d&per_page=%d&sort=asc&order_by=created_at",
-		s.Config.GitLabURL, projectID, issueIID, page, perPage)
+		s.Config.GitLab.URL, projectID, issueIID, page, perPage)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1598,7 +1598,7 @@ func (s *GitLabService) GetIssueNotes(accessToken string, projectID, issueIID in
 
 // CreateIssueNote 创建Issue评论
 func (s *GitLabService) CreateIssueNote(accessToken string, projectID, issueIID int64, body string) (*GitLabIssueNote, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes", s.Config.GitLabURL, projectID, issueIID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes", s.Config.GitLab.URL, projectID, issueIID)
 
 	data := map[string]interface{}{
 		"body": body,
@@ -1638,7 +1638,7 @@ func (s *GitLabService) CreateIssueNote(accessToken string, projectID, issueIID 
 
 // GetIssueAwardEmojis 获取Issue的表情反应列表
 func (s *GitLabService) GetIssueAwardEmojis(accessToken string, projectID, issueIID int64) ([]GitLabAwardEmoji, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLabURL, projectID, issueIID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLab.URL, projectID, issueIID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1668,7 +1668,7 @@ func (s *GitLabService) GetIssueAwardEmojis(accessToken string, projectID, issue
 
 // AddIssueAwardEmoji 给Issue添加表情反应
 func (s *GitLabService) AddIssueAwardEmoji(accessToken string, projectID, issueIID int64, emojiName string) (*GitLabAwardEmoji, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLabURL, projectID, issueIID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLab.URL, projectID, issueIID)
 
 	data := map[string]interface{}{
 		"name": emojiName,
@@ -1708,7 +1708,7 @@ func (s *GitLabService) AddIssueAwardEmoji(accessToken string, projectID, issueI
 
 // RemoveIssueAwardEmoji 移除Issue表情反应
 func (s *GitLabService) RemoveIssueAwardEmoji(accessToken string, projectID, issueIID, emojiID int64) error {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji/%d", s.Config.GitLabURL, projectID, issueIID, emojiID)
+	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji/%d", s.Config.GitLab.URL, projectID, issueIID, emojiID)
 
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
@@ -1767,7 +1767,7 @@ type GitLabUpdateUserData struct {
 
 // GetSSHKeys 获取用户SSH密钥列表
 func (s *GitLabService) GetSSHKeys(accessToken string) ([]map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLabURL)
+	url := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLab.URL)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1797,7 +1797,7 @@ func (s *GitLabService) GetSSHKeys(accessToken string) ([]map[string]interface{}
 
 // AddSSHKey 添加SSH密钥
 func (s *GitLabService) AddSSHKey(accessToken string, title string, key string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLabURL)
+	url := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLab.URL)
 
 	data := map[string]string{
 		"title": title,
@@ -1838,7 +1838,7 @@ func (s *GitLabService) AddSSHKey(accessToken string, title string, key string) 
 
 // DeleteSSHKey 删除SSH密钥
 func (s *GitLabService) DeleteSSHKey(accessToken string, keyID int) error {
-	url := fmt.Sprintf("%s/api/v4/user/keys/%d", s.Config.GitLabURL, keyID)
+	url := fmt.Sprintf("%s/api/v4/user/keys/%d", s.Config.GitLab.URL, keyID)
 
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
@@ -1863,7 +1863,7 @@ func (s *GitLabService) DeleteSSHKey(accessToken string, keyID int) error {
 
 // ChangePassword 修改密码
 func (s *GitLabService) ChangePassword(accessToken string, currentPassword string, newPassword string) error {
-	url := fmt.Sprintf("%s/api/v4/user/password", s.Config.GitLabURL)
+	url := fmt.Sprintf("%s/api/v4/user/password", s.Config.GitLab.URL)
 
 	data := map[string]string{
 		"current_password": currentPassword,
@@ -1901,7 +1901,7 @@ func (s *GitLabService) ChangePassword(accessToken string, currentPassword strin
 // 注意：GitLab API v4没有标准的notifications端点，这里使用events API来模拟通知
 func (s *GitLabService) GetNotifications(accessToken string, page, perPage int) ([]map[string]interface{}, error) {
 	// 使用GitLab的events API来获取用户活动，作为通知的基础数据
-	url := fmt.Sprintf("%s/api/v4/events?page=%d&per_page=%d", s.Config.GitLabURL, page, perPage)
+	url := fmt.Sprintf("%s/api/v4/events?page=%d&per_page=%d", s.Config.GitLab.URL, page, perPage)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1946,7 +1946,7 @@ func (s *GitLabService) GetNotifications(accessToken string, page, perPage int) 
 			"project": map[string]interface{}{
 				"id":      event["project_id"],
 				"name":    event["project_name"],
-				"web_url": fmt.Sprintf("%s/%s", s.Config.GitLabURL, event["project_path"]),
+				"web_url": fmt.Sprintf("%s/%s", s.Config.GitLab.URL, event["project_path"]),
 			},
 		}
 		notifications = append(notifications, notification)
@@ -1973,7 +1973,7 @@ func (s *GitLabService) getMockNotifications(page, perPage int) []map[string]int
 			"project": map[string]interface{}{
 				"id":      1,
 				"name":    "示例项目",
-				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLabURL),
+				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLab.URL),
 			},
 		},
 		{
@@ -1991,7 +1991,7 @@ func (s *GitLabService) getMockNotifications(page, perPage int) []map[string]int
 			"project": map[string]interface{}{
 				"id":      1,
 				"name":    "示例项目",
-				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLabURL),
+				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLab.URL),
 			},
 		},
 		{
@@ -2009,7 +2009,7 @@ func (s *GitLabService) getMockNotifications(page, perPage int) []map[string]int
 			"project": map[string]interface{}{
 				"id":      1,
 				"name":    "示例项目",
-				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLabURL),
+				"web_url": fmt.Sprintf("%s/example/project", s.Config.GitLab.URL),
 			},
 		},
 	}
@@ -2072,7 +2072,7 @@ func (s *GitLabService) getEventTitle(event map[string]interface{}) string {
 
 // GetUserProjects 获取用户参与的项目列表
 func (s *GitLabService) GetUserProjects(accessToken string, userID int64) ([]*GitLabProject, error) {
-	url := fmt.Sprintf("%s/api/v4/users/%d/projects", s.Config.GitLabURL, userID)
+	url := fmt.Sprintf("%s/api/v4/users/%d/projects", s.Config.GitLab.URL, userID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -2147,7 +2147,7 @@ func (s *GitLabService) MarkAllNotificationsAsRead(accessToken string) error {
 // GetSystemToken 获取系统配置的GitLab令牌（用于游客访问）
 func (s *GitLabService) GetSystemToken() string {
 	// 从配置中获取系统令牌
-	if token := s.Config.GitLabSystemToken; token != "" {
+	if token := s.Config.GitLab.SystemToken; token != "" {
 		fmt.Printf("DEBUG: Found system token: %s\n", token[:10]+"...")
 		return token
 	}

@@ -44,8 +44,12 @@ WORKDIR /app
 COPY --from=builder /app/main .
 
 # 创建必要的目录
-RUN mkdir -p uploads config && \
+RUN mkdir -p uploads config logs && \
     chown -R appuser:appgroup /app
+
+# 创建配置文件的默认位置
+RUN touch /app/config/config.yml && \
+    chown appuser:appgroup /app/config/config.yml
 
 # 切换到非root用户
 USER appuser

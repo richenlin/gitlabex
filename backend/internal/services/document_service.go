@@ -341,7 +341,7 @@ func (s *DocumentService) createDocumentFromGitLabFile(projectID uuid.UUID, gitL
 // GetDocumentCategories 获取文档分类列表（基于配置的允许文件类型）
 func (s *DocumentService) GetDocumentCategories() ([]string, error) {
 	// 从配置中获取允许的文件类型
-	allowedFileTypes := strings.Split(s.Config.AllowedFileTypes, ",")
+	allowedFileTypes := strings.Split(s.Config.Upload.AllowedFileTypes, ",")
 
 	// 将文件扩展名映射到分类
 	categoryMap := make(map[string]bool)
@@ -990,10 +990,10 @@ func (s *DocumentService) GetDocumentDownloadURL(document *models.Document) stri
 	}
 
 	// 使用配置中的MinIO endpoint构建下载URL
-	minioEndpoint := s.Config.MinIOEndpoint
+	minioEndpoint := s.Config.MinIO.Endpoint
 	if !strings.HasPrefix(minioEndpoint, "http") {
 		// 如果没有协议前缀，添加http://
-		if s.Config.MinIOUseSSL {
+		if s.Config.MinIO.UseSSL {
 			minioEndpoint = "https://" + minioEndpoint
 		} else {
 			minioEndpoint = "http://" + minioEndpoint

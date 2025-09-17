@@ -1102,7 +1102,7 @@ func (h *ResearchHandler) GetGitLabIDEURL(c *gin.Context) {
 	}
 
 	// 构建GitLab IDE URL
-	gitlabURL := h.researchService.Config.GitLabURL
+	gitlabURL := h.researchService.Config.GitLab.URL
 	ideURL := fmt.Sprintf("%s/-/ide/project/%s/edit/%s/-/%s",
 		gitlabURL, projectPath, branch, filePath)
 

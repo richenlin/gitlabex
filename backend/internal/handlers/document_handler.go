@@ -245,7 +245,7 @@ func (h *DocumentHandler) validateFile(header *multipart.FileHeader) error {
 	ext = strings.TrimPrefix(ext, ".")
 
 	// 从配置中获取允许的文件类型
-	allowedFileTypes := strings.Split(h.documentService.Config.AllowedFileTypes, ",")
+	allowedFileTypes := strings.Split(h.documentService.Config.Upload.AllowedFileTypes, ",")
 	allowedExts := make(map[string]bool)
 
 	for _, fileType := range allowedFileTypes {

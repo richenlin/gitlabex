@@ -1,0 +1,96 @@
+# docker-compose.prod.yml - 生产环境配置
+# 支持多机部署，使用IP地址而非localhost
+
+services:
+  # GitLabEx 后端服务
+  backend:
+    image: gitlabex-backend:latest
+    container_name: gitlabex-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "9090:9090"  # Metrics port
+    volumes:
+      # 单一YAML配置文件映射
+      - ./config/config.yml:/app/config/config.yml:ro
+      # 数据持久化
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    environment:
+      # 设置环境为生产环境
+      - APP_ENV=production
+      # 支持通过环境变量覆盖关键配置
+      - DATABASE_HOST=${DATABASE_HOST:-192.168.0.46}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_USER=${DATABASE_USER:-gitlabex}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-password123}
+      - DATABASE_NAME=${DATABASE_NAME:-gitlabex}
+      - REDIS_HOST=${REDIS_HOST:-192.168.0.46}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
+      - GITLAB_URL=${GITLAB_URL:-http://192.168.0.46:8081}
+      - GITLAB_REDIRECT_URI=${GITLAB_REDIRECT_URI:-http://192.168.0.46:3000/auth/gitlab/callback}
+      - FRONTEND_URL=${FRONTEND_URL:-http://192.168.0.46:3000}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://192.168.0.46:3000}
+      # MinIO配置（支持外部MinIO服务）
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-192.168.0.46:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-password123}
+      - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
+      # 敏感信息配置（生产环境必须设置）
+      - JWT_SECRET=${JWT_SECRET:-}
+      - GITLAB_CLIENT_ID=${GITLAB_CLIENT_ID:-}
+      - GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET:-}
+      - GITLAB_SYSTEM_TOKEN=${GITLAB_SYSTEM_TOKEN:-}
+      - SYNC_API_KEY=${SYNC_API_KEY:-}
+      - THIRD_PARTY_API_KEY=${THIRD_PARTY_API_KEY:-}
+    networks:
+      - gitlabex-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # GitLabEx 前端服务
+  frontend:
+    image: gitlabex-frontend:latest
+    container_name: gitlabex-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    environment:
+      # 前端API地址配置
+      - VITE_API_BASE_URL=${BACKEND_URL:-http://192.168.0.46:8080}
+      - VITE_GITLAB_URL=${GITLAB_URL:-http://192.168.0.46:8081}
+    networks:
+      - gitlabex-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  backend_uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKEND_UPLOADS_PATH:-./data/uploads}
+  backend_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKEND_LOGS_PATH:-./data/logs}
+
+networks:
+  gitlabex-network:
+    driver: bridge
+    # 支持外部网络连接
+    external: false
