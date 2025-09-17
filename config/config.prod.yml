@@ -1,39 +1,36 @@
-# GitLabEx 现代化配置文件
-# 生产环境配置，使用IP地址进行多机部署
-# 敏感信息通过环境变量加载
+# GitLabEx 开发环境配置文件
+# 覆盖基础配置中的开发环境特定设置
 
 # 服务器配置
 server:
-  host: "0.0.0.0"
-  port: "8080"
-  environment: "dev"
-  debug: false
+  environment: "development"
+  debug: true
 
-# 数据库配置 - 使用IP地址
+# 数据库配置
 database:
   host: "192.168.0.46"
   port: "5432"
   user: "gitlabex"
-  password: "password123"  # 生产环境应通过环境变量设置
+  password: ""  # 生产环境应通过环境变量设置
   name: "gitlabex"
   ssl_mode: "disable"
   timezone: "Asia/Shanghai"
 
-# Redis配置 - 使用IP地址
+# Redis配置
 redis:
   host: "192.168.0.46"
   port: "6379"
-  password: "password123"  # 生产环境应通过环境变量设置
+  password: ""  # 生产环境应通过环境变量设置
   db: 0
 
-# GitLab配置 - 使用IP地址
+# GitLab配置
 gitlab:
   url: "http://192.168.0.46:8081"
-  client_id: "fc429dba2f2475aa020a6c25837a0bef48bc7ab227f4f0d420c40da263cd82c6"  # 必须通过环境变量设置
-  client_secret: "2eb883179c458d593b91dfc94d47520b3d731576c4bd12626d84424bca637904"  # 必须通过环境变量设置
+  client_id: ""  # 必须通过环境变量设置
+  client_secret: ""  # 必须通过环境变量设置
   redirect_uri: "http://192.168.0.46:3000/auth/gitlab/callback"
   scopes: "api read_api openid"
-  system_token: "glpat-Vz1zys2aUEfXUEcsu6dM"  # 必须通过环境变量设置
+  system_token: ""  # 必须通过环境变量设置
 
 # MinIO对象存储配置 - 使用IP地址
 minio:
@@ -66,3 +63,18 @@ security:
 # API密钥配置
 api_keys:
   third_party_api_key: "gitlabex_third_party_api_key_2024_change_in_production_32_chars_minimum"
+
+# 生产环境部署说明：
+# 1. 所有敏感信息（密码、密钥、token）都应通过环境变量设置
+# 2. IP地址可以通过环境变量动态配置以适应不同的部署环境
+# 3. 使用 docker run 或 docker-compose 时设置相应的环境变量
+# 4. 关键环境变量：
+#    - DATABASE_PASSWORD
+#    - REDIS_PASSWORD
+#    - GITLAB_CLIENT_ID
+#    - GITLAB_CLIENT_SECRET
+#    - GITLAB_SYSTEM_TOKEN
+#    - JWT_SECRET
+#    - MINIO_SECRET_KEY
+#    - SYNC_API_KEY
+#    - THIRD_PARTY_API_KEY

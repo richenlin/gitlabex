@@ -82,7 +82,6 @@ cd frontend && npm run dev
 # 自定义服务地址
 API_BASE_URL=http://localhost:8080 \
 GITLAB_URL=http://localhost:8081 \
-FRONTEND_URL=http://localhost:3000 \
 ./scripts/init-test-data-api.sh
 ```
 

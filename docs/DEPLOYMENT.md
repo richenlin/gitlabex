@@ -61,7 +61,6 @@ export GITLAB_URL="http://localhost:8081"
 export GITLAB_CLIENT_ID="your_client_id"
 export GITLAB_CLIENT_SECRET="your_client_secret"
 export JWT_SECRET="your_jwt_secret"
-export FRONTEND_URL="http://localhost:3000"
 
 ./bin/main
 
@@ -238,8 +237,6 @@ GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET}
 JWT_SECRET=${JWT_SECRET}
 JWT_EXPIRATION_HOURS=24
 
-# 前端配置
-FRONTEND_URL=https://yourdomain.com
 
 # API 密钥
 SYNC_API_KEY=${SYNC_API_KEY}

@@ -15,7 +15,6 @@ NC='\033[0m' # No Color
 # 配置参数
 API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
 GITLAB_URL="${GITLAB_URL:-http://localhost:8081}"
-FRONTEND_URL="${FRONTEND_URL:-http://localhost:3000}"
 
 # 测试数据配置
 declare -A TEST_USERS=(
@@ -634,7 +633,6 @@ show_statistics() {
     echo "   学生: student_001 / Kx9#mP2$vL8@nQ5!"
     echo ""
     echo "🌐 访问地址："
-    echo "   前端应用: $FRONTEND_URL"
     echo "   后端API: $API_BASE_URL"
     echo "   GitLab: $GITLAB_URL"
     echo ""

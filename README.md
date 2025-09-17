@@ -199,9 +199,6 @@ GITLAB_REDIRECT_URI=http://localhost:3000/auth/gitlab/callback
 JWT_SECRET=your_jwt_secret_key_here_please_change_in_production
 JWT_EXPIRATION_HOURS=24
 
-# 前端配置
-FRONTEND_URL=http://localhost:3000
-
 # 第三方系统集成配置
 THIRD_PARTY_API_KEY=your_secure_third_party_api_key_32_chars_minimum
 GITLAB_SYSTEM_TOKEN=your_gitlab_admin_token

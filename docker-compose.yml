@@ -190,7 +190,6 @@ services:
   #     - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
   #     - GITLAB_URL=${GITLAB_URL:-http://192.168.0.46:8081}
   #     - GITLAB_REDIRECT_URI=${GITLAB_REDIRECT_URI:-http://192.168.0.46:3000/auth/gitlab/callback}
-  #     - FRONTEND_URL=${FRONTEND_URL:-http://192.168.0.46:3000}
   #     - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://192.168.0.46:3000}
   #     # MinIO配置
   #     - MINIO_ENDPOINT=${MINIO_ENDPOINT:-192.168.0.46:9000}
@@ -202,7 +201,6 @@ services:
   #     - GITLAB_CLIENT_ID=${GITLAB_CLIENT_ID:-}
   #     - GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET:-}
   #     - GITLAB_SYSTEM_TOKEN=${GITLAB_SYSTEM_TOKEN:-}
-  #     - SYNC_API_KEY=${SYNC_API_KEY:-}
   #     - THIRD_PARTY_API_KEY=${THIRD_PARTY_API_KEY:-}
   #   networks:
   #     - gitlabex-network

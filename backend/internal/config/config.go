@@ -16,7 +16,6 @@ type Config struct {
 	Redis    RedisConfig    `yaml:"redis" validate:"required"`
 	GitLab   GitLabConfig   `yaml:"gitlab" validate:"required"`
 	JWT      JWTConfig      `yaml:"jwt" validate:"required"`
-	App      AppConfig      `yaml:"app" validate:"required"`
 	MinIO    MinIOConfig    `yaml:"minio" validate:"required"`
 	Logging  LoggingConfig  `yaml:"logging" validate:"required"`
 	Upload   UploadConfig   `yaml:"upload" validate:"required"`
@@ -67,12 +66,6 @@ type JWTConfig struct {
 	ExpirationHours int    `yaml:"expiration_hours" validate:"required,min=1,max=168" default:"24"`
 }
 
-// AppConfig 应用配置
-type AppConfig struct {
-	FrontendURL    string `yaml:"frontend_url" validate:"required,url"`
-	AllowedOrigins string `yaml:"allowed_origins" validate:"required"`
-}
-
 // MinIOConfig MinIO配置
 type MinIOConfig struct {
 	Endpoint  string `yaml:"endpoint" validate:"required"`
@@ -107,7 +100,6 @@ type SecurityConfig struct {
 
 // APIKeysConfig API密钥配置
 type APIKeysConfig struct {
-	SyncAPIKey       string `yaml:"sync_api_key" validate:"required,min=32"`
 	ThirdPartyAPIKey string `yaml:"third_party_api_key" validate:"required,min=32"`
 }
 
@@ -231,16 +223,6 @@ func applyEnvironmentOverrides(cfg *Config) {
 		cfg.JWT.ExpirationHours = getEnvAsInt("JWT_EXPIRATION_HOURS", 24)
 	}
 
-	// 应用配置
-	if v := os.Getenv("FRONTEND_URL"); v != "" {
-		cfg.App.FrontendURL = v
-		log.Printf("环境变量覆盖: FRONTEND_URL=%s", v)
-	}
-	if v := os.Getenv("CORS_ALLOWED_ORIGINS"); v != "" {
-		cfg.Security.CORSAllowedOrigins = v
-		log.Printf("环境变量覆盖: CORS_ALLOWED_ORIGINS=%s", v)
-	}
-
 	// MinIO配置
 	if v := os.Getenv("MINIO_ENDPOINT"); v != "" {
 		cfg.MinIO.Endpoint = v
@@ -260,9 +242,6 @@ func applyEnvironmentOverrides(cfg *Config) {
 	}
 
 	// API密钥配置
-	if v := os.Getenv("SYNC_API_KEY"); v != "" {
-		cfg.APIKeys.SyncAPIKey = v
-	}
 	if v := os.Getenv("THIRD_PARTY_API_KEY"); v != "" {
 		cfg.APIKeys.ThirdPartyAPIKey = v
 	}
@@ -287,9 +266,6 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.GitLab.ClientID == "" || cfg.GitLab.ClientSecret == "" {
 		return fmt.Errorf("GitLab OAuth配置不完整")
-	}
-	if cfg.APIKeys.SyncAPIKey == "" || len(cfg.APIKeys.SyncAPIKey) < 32 {
-		return fmt.Errorf("同步API密钥长度必须至少32个字符")
 	}
 	if cfg.APIKeys.ThirdPartyAPIKey == "" || len(cfg.APIKeys.ThirdPartyAPIKey) < 32 {
 		return fmt.Errorf("第三方API密钥长度必须至少32个字符")
