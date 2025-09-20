@@ -20,6 +20,10 @@ COPY . .
 # 设置生产环境变量
 ENV NODE_ENV=production
 
+# 支持构建时配置API地址（默认使用相对路径）
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
 # 构建应用
 RUN pnpm run build
 
@@ -32,8 +36,9 @@ RUN apk --no-cache add curl wget
 # 复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# 复制nginx配置文件
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# 复制入口脚本
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # 创建应用配置文件
 RUN echo 'window._VBEN_ADMIN_PRO_APP_CONF_={"VITE_GLOB_API_URL":"/api"};Object.freeze(window._VBEN_ADMIN_PRO_APP_CONF_);Object.defineProperty(window,"_VBEN_ADMIN_PRO_APP_CONF_",{configurable:false,writable:false,});' > /usr/share/nginx/html/_app.config.js
@@ -45,5 +50,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 # 暴露端口
 EXPOSE 80
 
-# 启动 nginx
-CMD ["nginx", "-g", "daemon off;"]
+# 使用动态入口脚本
+ENTRYPOINT ["/docker-entrypoint.sh"]

@@ -13,6 +13,15 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
+# 检查网络连接
+echo "🌐 检查网络连接..."
+if ! ping -c 1 registry.cn-hangzhou.aliyuncs.com > /dev/null 2>&1; then
+    echo "⚠️  警告: 无法连接到阿里云镜像仓库，构建可能会失败"
+    echo "   建议检查网络连接或配置Docker镜像加速器"
+    echo "   阿里云镜像加速器配置: https://cr.console.aliyun.com/cn-hangzhou/instances/mirrors"
+    echo ""
+fi
+
 # 切换到项目根目录
 cd "$(dirname "$0")/.."
 
@@ -56,8 +65,9 @@ while [[ $# -gt 0 ]]; do
             echo "示例:"
             echo "  $0                           # 构建所有镜像"
             echo "  $0 --backend-only            # 只构建后端镜像"
+            echo "  $0 --frontend-only           # 只构建前端镜像"
             echo "  $0 --force                   # 强制重新构建所有镜像"
-            echo "  $0 --api-url http://api.example.com  # 设置自定义API地址"
+            echo "  $0 --api-url /api            # 设置API地址为相对路径"
             exit 0
             ;;
         *)
@@ -121,7 +131,12 @@ if [ "$BUILD_FRONTEND" = true ]; then
     fi
     
     echo "   📦 构建 gitlabex-frontend:latest..."
-    if docker build $BUILD_ARGS -t gitlabex-frontend:latest frontend/; then
+    echo "   🔧 API配置: $API_URL"
+    
+    # 构建前端镜像，传递构建参数
+    if docker build $BUILD_ARGS \
+        --build-arg VITE_GLOB_API_URL="$API_URL" \
+        -t gitlabex-frontend:latest frontend/; then
         echo "   ✅ 前端镜像构建成功"
         
         # 显示镜像信息

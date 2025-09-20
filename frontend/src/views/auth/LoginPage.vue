@@ -4,7 +4,7 @@
       <div class="login-form-wrapper">
         <div class="login-header">
           <h1>欢迎来到协同创新社区</h1>
-          <p>使用GitLab账号登录，开始您的教育协作之旅</p>
+          <p>使用GitLab账号登录，开始您的社区之旅</p>
         </div>
         
         <div class="oauth-login">
@@ -31,7 +31,7 @@
       <div class="login-info">
         <div class="info-content">
           <h2>协同创新社区</h2>
-          <p>基于GitLab的教育协作平台，专为教学场景设计的现代化教育管理系统。</p>
+          <p>聚焦太空交通与航天器智能化管控领域的专业平台，通过整合关键单位研究人员及数据资源，促进跨领域深度协作与技术创新，以推动领域的技术突破与发展。</p>
           
           <div class="features">
             <div class="feature">

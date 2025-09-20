@@ -1,5 +1,5 @@
-# docker-compose.yml - 开发环境配置
-# 包含所有服务的多机部署配置
+# docker-compose.prod.yml - 生产环境配置
+# 支持多机部署，使用IP地址而非localhost
 
 services:
   # GitLab CE服务
@@ -9,8 +9,8 @@ services:
     restart: unless-stopped
     hostname: 'gitlab'
     ports:
-      - "8081:8081"
-      - "2222:2222"
+      - "8081:80"
+      - "2222:22"
     depends_on:
       postgres:
         condition: service_healthy
@@ -25,32 +25,32 @@ services:
     environment:
       GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:-b75hZ0qcwLKD}
       GITLAB_OMNIBUS_CONFIG: |
-        external_url '${GITLAB_EXTERNAL_URL:-http://192.168.0.46:8081}'
+        external_url '${GITLAB_EXTERNAL_URL:-http://192.168.170.172:8081}'
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
         gitlab_rails['initial_root_password'] = ENV['GITLAB_ROOT_PASSWORD']
         gitlab_rails['gitlab_signup_enabled'] = true
         nginx['listen_port'] = 80
         nginx['redirect_http_to_https'] = false
         # 支持多机部署的网络配置
-        gitlab_rails['gitlab_host'] = '${GITLAB_HOST:-192.168.0.46}'
+        gitlab_rails['gitlab_host'] = '${GITLAB_HOST:-192.168.170.172}'
         gitlab_rails['gitlab_port'] = ${GITLAB_PORT:-8081}
         gitlab_rails['gitlab_https'] = false
         
-        # 禁用内置PostgreSQL
+        # 禁用内置PostgreSQL，使用外部PostgreSQL
         postgresql['enable'] = false
-        gitlab_rails['db_adapter'] = '192.168.0.46'
+        gitlab_rails['db_adapter'] = 'postgresql'
         gitlab_rails['db_encoding'] = 'utf8'
-        gitlab_rails['db_host'] = '${DATABASE_HOST:-192.168.0.46}'
-        gitlab_rails['db_port'] = ${DATABASE_PORT:-5432}
-        gitlab_rails['db_username'] = '${DATABASE_USER:-gitlab}'
-        gitlab_rails['db_password'] = '${DATABASE_PASSWORD:-password123}'
-        gitlab_rails['db_database'] = '${DATABASE_NAME:-gitlab}'
+        gitlab_rails['db_host'] = 'gitlabex-postgres'
+        gitlab_rails['db_port'] = 5432
+        gitlab_rails['db_username'] = 'gitlab'
+        gitlab_rails['db_password'] = 'password123'
+        gitlab_rails['db_database'] = 'gitlab'
         
-        # 禁用内置Redis，支持外部Redis
+        # 禁用内置Redis，使用外部Redis
         redis['enable'] = false
-        gitlab_rails['redis_host'] = '${REDIS_HOST:-192.168.0.46}'
-        gitlab_rails['redis_port'] = ${REDIS_PORT:-6379}
-        gitlab_rails['redis_password'] = '${REDIS_PASSWORD:-password123}'
+        gitlab_rails['redis_host'] = 'gitlabex-redis'
+        gitlab_rails['redis_port'] = 6379
+        gitlab_rails['redis_password'] = 'password123'
     networks:
       - gitlabex-network
     healthcheck:
@@ -152,82 +152,62 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-
   # GitLabEx 后端服务
-  # backend:
-  #   image: gitlabex-backend:latest
-  #   container_name: gitlabex-backend
-  #   restart: unless-stopped
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     minio:
-  #       condition: service_healthy
-  #     gitlab:
-  #       condition: service_healthy
-  #   ports:
-  #     - "8080:8080"
-  #     - "9090:9090"  # Metrics port
-  #   volumes:
-  #     # 单一YAML配置文件映射
-  #     - ./config/config.yml:/app/config/config.yml:ro
-  #     # 数据持久化
-  #     - backend_uploads:/app/uploads
-  #     - backend_logs:/app/logs
-  #   environment:
-  #     # 设置生产环境
-  #     - APP_ENV=production
-  #     # 支持通过环境变量覆盖YAML配置
-  #     - DATABASE_HOST=${DATABASE_HOST:-192.168.0.46}
-  #     - DATABASE_PORT=${DATABASE_PORT:-5432}
-  #     - DATABASE_USER=${DATABASE_USER:-gitlabex}
-  #     - DATABASE_PASSWORD=${DATABASE_PASSWORD:-password123}
-  #     - DATABASE_NAME=${DATABASE_NAME:-gitlabex}
-  #     - REDIS_HOST=${REDIS_HOST:-192.168.0.46}
-  #     - REDIS_PORT=${REDIS_PORT:-6379}
-  #     - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
-  #     - GITLAB_URL=${GITLAB_URL:-http://192.168.0.46:8081}
-  #     - GITLAB_REDIRECT_URI=${GITLAB_REDIRECT_URI:-http://192.168.0.46:3000/auth/gitlab/callback}
-  #     - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://192.168.0.46:3000}
-  #     # MinIO配置
-  #     - MINIO_ENDPOINT=${MINIO_ENDPOINT:-192.168.0.46:9000}
-  #     - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin}
-  #     - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-password123}
-  #     - MINIO_USE_SSL=${MINIO_USE_SSL:-false}
-  #     # 敏感信息配置（生产环境必须设置）
-  #     - JWT_SECRET=${JWT_SECRET:-}
-  #     - GITLAB_CLIENT_ID=${GITLAB_CLIENT_ID:-}
-  #     - GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET:-}
-  #     - GITLAB_SYSTEM_TOKEN=${GITLAB_SYSTEM_TOKEN:-}
-  #     - THIRD_PARTY_API_KEY=${THIRD_PARTY_API_KEY:-}
-  #   networks:
-  #     - gitlabex-network
-  #   healthcheck:
-  #     test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 30s
+  backend:
+    image: gitlabex-backend:latest
+    container_name: gitlabex-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "9090:9090"  # Metrics port
+    volumes:
+      # 单一YAML配置文件映射 - 生产环境使用 config.prod.yml
+      - ./config/config.yml:/app/config/config.yml:ro
+      # 数据持久化
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    environment:
+      # 设置环境为生产环境
+      - APP_ENV=production
+      # 敏感信息配置（生产环境必须通过环境变量设置）
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-password123}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
+      - JWT_SECRET=${JWT_SECRET:-gitlabex_jwt_secret_development_environment_2024_very_secure_key_32_chars_minimum}
+      - GITLAB_CLIENT_ID=${GITLAB_CLIENT_ID:-4974b83c75443bb0f6b76188580f171123cae6d7dc3a815a117eaeb9c22451c0}
+      - GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET:-b8fc9a1a35443daecdf5cc1b9fe365b2b64f215a80ef98a7e1646222576bc08a}
+      - GITLAB_SYSTEM_TOKEN=${GITLAB_SYSTEM_TOKEN:-glpat-VBzcWeTjdxvjxWBrFC5X}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-password123}
+      - THIRD_PARTY_API_KEY=${THIRD_PARTY_API_KEY:-gitlabex_jwt_secret_development_environment_2024_very_secure_key_32_chars_minimum}
+    networks:
+      - gitlabex-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
-  # # GitLabEx 前端服务
-  # frontend:
-  #   image: gitlabex-frontend:latest
-  #   container_name: gitlabex-frontend
-  #   restart: unless-stopped
-  #   depends_on:
-  #     - backend
-  #   ports:
-  #     - "3000:80"
-  #   networks:
-  #     - gitlabex-network
-  #   healthcheck:
-  #     test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 10s
+  # GitLabEx 前端服务
+  frontend:
+    image: gitlabex-frontend:latest
+    container_name: gitlabex-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    environment:
+      # 前端API地址配置 - 用于nginx代理和后端API访问
+      - BACKEND_URL=${BACKEND_URL:-http://192.168.170.172:8080}
+      - VITE_GLOB_API_URL=${BACKEND_URL:-/api}
+    networks:
+      - gitlabex-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   gitlab_config:
@@ -237,9 +217,21 @@ volumes:
   redis_data:
   minio_data:
   gitlab_oauth_config:
-  # backend_uploads:
-  # backend_logs:
+  backend_uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKEND_UPLOADS_PATH:-./data/uploads}
+  backend_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${BACKEND_LOGS_PATH:-./data/logs}
 
 networks:
   gitlabex-network:
     driver: bridge
+    # 支持外部网络连接
+    external: false

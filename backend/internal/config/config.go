@@ -145,61 +145,20 @@ func loadFromYAML() *Config {
 	return nil
 }
 
-// applyEnvironmentOverrides 应用环境变量覆盖 - 完整的覆盖支持
+// applyEnvironmentOverrides 应用环境变量覆盖 - 只覆盖必需的敏感信息
 func applyEnvironmentOverrides(cfg *Config) {
-	// 服务器配置
-	if v := os.Getenv("SERVER_HOST"); v != "" {
-		cfg.Server.Host = v
-		log.Printf("环境变量覆盖: SERVER_HOST=%s", v)
-	}
-	if v := os.Getenv("SERVER_PORT"); v != "" {
-		cfg.Server.Port = v
-	}
+	// 应用环境设置
 	if v := os.Getenv("APP_ENV"); v != "" {
 		cfg.Server.Environment = v
 		log.Printf("环境变量覆盖: APP_ENV=%s", v)
 	}
-	if v := os.Getenv("DEBUG"); v != "" {
-		cfg.Server.Debug = getEnvAsBool("DEBUG", false)
-	}
 
-	// 数据库配置
-	if v := os.Getenv("DATABASE_HOST"); v != "" {
-		cfg.Database.Host = v
-		log.Printf("环境变量覆盖: DATABASE_HOST=%s", v)
-	}
-	if v := os.Getenv("DATABASE_PORT"); v != "" {
-		cfg.Database.Port = v
-	}
-	if v := os.Getenv("DATABASE_USER"); v != "" {
-		cfg.Database.User = v
-	}
+	// 敏感信息配置（必须通过环境变量设置）
 	if v := os.Getenv("DATABASE_PASSWORD"); v != "" {
 		cfg.Database.Password = v
 	}
-	if v := os.Getenv("DATABASE_NAME"); v != "" {
-		cfg.Database.Name = v
-	}
-
-	// Redis配置
-	if v := os.Getenv("REDIS_HOST"); v != "" {
-		cfg.Redis.Host = v
-		log.Printf("环境变量覆盖: REDIS_HOST=%s", v)
-	}
-	if v := os.Getenv("REDIS_PORT"); v != "" {
-		cfg.Redis.Port = v
-	}
 	if v := os.Getenv("REDIS_PASSWORD"); v != "" {
 		cfg.Redis.Password = v
-	}
-	if v := os.Getenv("REDIS_DB"); v != "" {
-		cfg.Redis.DB = getEnvAsInt("REDIS_DB", 0)
-	}
-
-	// GitLab配置
-	if v := os.Getenv("GITLAB_URL"); v != "" {
-		cfg.GitLab.URL = v
-		log.Printf("环境变量覆盖: GITLAB_URL=%s", v)
 	}
 	if v := os.Getenv("GITLAB_CLIENT_ID"); v != "" {
 		cfg.GitLab.ClientID = v
@@ -207,51 +166,17 @@ func applyEnvironmentOverrides(cfg *Config) {
 	if v := os.Getenv("GITLAB_CLIENT_SECRET"); v != "" {
 		cfg.GitLab.ClientSecret = v
 	}
-	if v := os.Getenv("GITLAB_REDIRECT_URI"); v != "" {
-		cfg.GitLab.RedirectURI = v
-		log.Printf("环境变量覆盖: GITLAB_REDIRECT_URI=%s", v)
-	}
 	if v := os.Getenv("GITLAB_SYSTEM_TOKEN"); v != "" {
 		cfg.GitLab.SystemToken = v
 	}
-
-	// JWT配置
 	if v := os.Getenv("JWT_SECRET"); v != "" {
 		cfg.JWT.Secret = v
-	}
-	if v := os.Getenv("JWT_EXPIRATION_HOURS"); v != "" {
-		cfg.JWT.ExpirationHours = getEnvAsInt("JWT_EXPIRATION_HOURS", 24)
-	}
-
-	// MinIO配置
-	if v := os.Getenv("MINIO_ENDPOINT"); v != "" {
-		cfg.MinIO.Endpoint = v
-		log.Printf("环境变量覆盖: MINIO_ENDPOINT=%s", v)
-	}
-	if v := os.Getenv("MINIO_ACCESS_KEY"); v != "" {
-		cfg.MinIO.AccessKey = v
 	}
 	if v := os.Getenv("MINIO_SECRET_KEY"); v != "" {
 		cfg.MinIO.SecretKey = v
 	}
-	if v := os.Getenv("MINIO_USE_SSL"); v != "" {
-		cfg.MinIO.UseSSL = getEnvAsBool("MINIO_USE_SSL", false)
-	}
-	if v := os.Getenv("MINIO_REGION"); v != "" {
-		cfg.MinIO.Region = v
-	}
-
-	// API密钥配置
 	if v := os.Getenv("THIRD_PARTY_API_KEY"); v != "" {
 		cfg.APIKeys.ThirdPartyAPIKey = v
-	}
-
-	// 日志配置
-	if v := os.Getenv("LOG_LEVEL"); v != "" {
-		cfg.Logging.Level = v
-	}
-	if v := os.Getenv("LOG_FORMAT"); v != "" {
-		cfg.Logging.Format = v
 	}
 }
 
