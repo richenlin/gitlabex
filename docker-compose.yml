@@ -152,62 +152,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-  # GitLabEx 后端服务
-  backend:
-    image: gitlabex-backend:latest
-    container_name: gitlabex-backend
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-      - "9090:9090"  # Metrics port
-    volumes:
-      # 单一YAML配置文件映射 - 生产环境使用 config.prod.yml
-      - ./config/config.yml:/app/config/config.yml:ro
-      # 数据持久化
-      - backend_uploads:/app/uploads
-      - backend_logs:/app/logs
-    environment:
-      # 设置环境为生产环境
-      - APP_ENV=production
-      # 敏感信息配置（生产环境必须通过环境变量设置）
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-password123}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-password123}
-      - JWT_SECRET=${JWT_SECRET:-gitlabex_jwt_secret_development_environment_2024_very_secure_key_32_chars_minimum}
-      - GITLAB_CLIENT_ID=${GITLAB_CLIENT_ID:-4974b83c75443bb0f6b76188580f171123cae6d7dc3a815a117eaeb9c22451c0}
-      - GITLAB_CLIENT_SECRET=${GITLAB_CLIENT_SECRET:-b8fc9a1a35443daecdf5cc1b9fe365b2b64f215a80ef98a7e1646222576bc08a}
-      - GITLAB_SYSTEM_TOKEN=${GITLAB_SYSTEM_TOKEN:-glpat-VBzcWeTjdxvjxWBrFC5X}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-password123}
-      - THIRD_PARTY_API_KEY=${THIRD_PARTY_API_KEY:-gitlabex_jwt_secret_development_environment_2024_very_secure_key_32_chars_minimum}
-    networks:
-      - gitlabex-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  # GitLabEx 前端服务
-  frontend:
-    image: gitlabex-frontend:latest
-    container_name: gitlabex-frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "3000:80"
-    environment:
-      # 前端API地址配置 - 用于nginx代理和后端API访问
-      - BACKEND_URL=${BACKEND_URL:-http://192.168.170.172:8080}
-      - VITE_GLOB_API_URL=${BACKEND_URL:-/api}
-    networks:
-      - gitlabex-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
 volumes:
   gitlab_config:
@@ -217,18 +161,6 @@ volumes:
   redis_data:
   minio_data:
   gitlab_oauth_config:
-  backend_uploads:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${BACKEND_UPLOADS_PATH:-./data/uploads}
-  backend_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${BACKEND_LOGS_PATH:-./data/logs}
 
 networks:
   gitlabex-network:

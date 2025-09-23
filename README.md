@@ -32,12 +32,13 @@ GitLabEx 是一个基于 GitLab 的教育协作平台，专为教学场景设计
 
 ### 集成服务
 - **GitLab CE** - 版本控制和协作
+- **MinIO** - 对象存储服务
 - **Docker** - 容器化部署
 
 ## 项目结构
 
 ```
-gitlabex2/
+gitlabex/
 ├── backend/                 # 后端Go服务
 │   ├── cmd/                # 应用入口
 │   ├── internal/           # 内部包
@@ -46,26 +47,49 @@ gitlabex2/
 │   │   ├── handlers/      # HTTP处理器
 │   │   ├── middleware/    # 中间件
 │   │   ├── models/        # 数据模型
-│   │   └── services/      # 业务逻辑
+│   │   ├── services/      # 业务逻辑
+│   │   └── types/         # 类型定义
 │   ├── Dockerfile         # Docker构建文件
 │   ├── go.mod            # Go模块文件
 │   └── go.sum            # 依赖校验
 ├── frontend/               # 前端Vue应用
 │   ├── src/               # 源代码
+│   │   ├── assets/        # 静态资源
 │   │   ├── components/    # Vue组件
-│   │   ├── views/        # 页面视图
-│   │   ├── router/       # 路由配置
-│   │   ├── stores/       # 状态管理
-│   │   └── services/     # API服务
-│   ├── package.json      # npm配置
+│   │   ├── composables/   # 组合式函数
+│   │   ├── router/        # 路由配置
+│   │   ├── services/      # API服务
+│   │   ├── stores/        # 状态管理
+│   │   ├── types/         # 类型定义
+│   │   └── views/         # 页面视图
+│   ├── package.json       # npm配置
 │   └── vite.config.ts    # Vite配置
+├── config/                 # 配置文件
+│   ├── config.yml         # 开发环境配置
+│   ├── config.prod.yml    # 生产环境配置
+│   ├── .env.dev           # 开发环境变量
+│   ├── .env.prod          # 生产环境变量
+│   └── init-postgres.sql  # 数据库初始化脚本
+├── scripts/                # 脚本文件
+│   ├── start-services-dev.sh  # 开发环境启动脚本
+│   ├── configure-oauth.sh    # OAuth配置脚本
+│   ├── init-test-data.sh     # 测试数据初始化
+│   └── build-images.sh       # Docker镜像构建
 ├── design/                 # 原型设计
 │   ├── css/               # 样式文件
 │   ├── js/                # 交互脚本
 │   └── *.html            # 原型页面
+├── docs/                   # 文档
+│   ├── SOLUTION.md        # 需求规格说明书
+│   ├── SYNC_USER.md       # 第三方集成指南
+│   └── TEST_DATA.md       # 测试数据说明
+├── data/                   # 数据目录
+│   ├── logs/              # 日志文件
+│   └── uploads/           # 上传文件
+├── docker-compose.yml      # 生产环境配置
 ├── docker-compose.dev.yml  # 开发环境配置
 ├── README.md              # 项目说明
-└── SOLUTION.md           # 详细设计文档
+└── .gitignore            # Git忽略文件
 ```
 
 ## 功能特性
@@ -97,111 +121,79 @@ gitlabex2/
 - PostgreSQL 15+
 - Redis 7+
 - GitLab CE/EE
+- Docker 和 Docker Compose（推荐）
 
-### 安装步骤
-
-1. **克隆项目**
-```bash
-git clone <repository-url>
-cd gitlabex2
-```
-
-2. **配置环境变量**
-```bash
-# 复制环境变量模板
-cp .env.example .env
-
-# 编辑配置文件
-vim .env
-```
-
-3. **启动数据库服务**
+### 开发环境快速启动
+1. **启动基础服务**
 ```bash
 # 使用Docker Compose启动开发环境
-docker-compose -f docker-compose.dev.yml up -d
+docker-compose up -d
 ```
 
-4. **启动后端服务**
+1. **配置GitLab OAuth应用**
+```bash
+# 运行OAuth配置向导配置Oauth以及system token
+./scripts/configure-oauth.sh
+```
+
+1. **启动后端服务**
 ```bash
 cd backend
 go mod tidy
 go run cmd/main.go
 ```
 
-5. **启动前端服务**
+1. **启动前端服务**
 ```bash
 cd frontend
-npm install
-npm run dev
+pnpm install
+pnpm run dev
 ```
 
-### 第三方系统集成快速开始
+### 访问地址
 
-如果您需要集成外部系统，可以使用我们的第三方API：
-
-1. **配置API密钥**
-```bash
-# 在环境变量中设置第三方API密钥
-export THIRD_PARTY_API_KEY="your_secure_api_key_here"
-export GITLAB_SYSTEM_TOKEN="your_gitlab_admin_token"
-```
-
-2. **创建用户示例**
-```bash
-curl -X POST "http://localhost:8080/api/v1/sync/users" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: your_secure_api_key_here" \
-  -d '{
-    "username": "john_doe",
-    "password": "SecurePass123!",
-    "email": "john.doe@example.com",
-    "name": "John Doe",
-    "role": "student"
-  }'
-```
-
-3. **用户登录流程**
-   - 用户访问GitLabEx登录页面
-   - 点击"通过GitLab登录"
-   - 使用创建的用户名和密码完成OAuth认证
-   - 自动登录到GitLabEx平台
+启动成功后访问：
+- **前端应用**: http://localhost:3000
+- **GitLab管理**: http://localhost:8081 (用户名: root, 密码: b75hZ0qcwLKD)
+- **MinIO控制台**: http://localhost:9001 (用户名: admin, 密码: password123)
+- **后端API**: http://localhost:8080
 
 ### 环境配置
 
-创建 `.env` 文件并配置以下环境变量：
+创建配置文件并设置环境变量：
+
+#### 开发环境配置
+```bash
+
+# 编辑配置文件
+vim config/config.yml
+```
+
+#### 生产环境配置
+```bash
+
+# 编辑生产环境配置
+vim config/config.prod.yml
+```
+
+### 生产环境部署
 
 ```bash
-# 服务器配置
-SERVER_HOST=0.0.0.0
-SERVER_PORT=8080
-APP_ENV=development
-APP_DEBUG=true
+# 构建镜像
+./scripts/build-images.sh
 
-# 数据库配置
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=gitlab
-DB_PASSWORD=password123
-DB_NAME=gitlabex
+# 推送到生产环境仓库
+docker push gitlabex-backend:latest
+docker push gitlabex-frontend:latest
+# 或者
+# 导出、导入镜像
+docker save -o gitlabex-backend:latest gitlabex-backend.tar
+docker save -o gitlabex-frontend:latest gitlabex-frontend.tar
+docker load -i gitlabex-backend.tar
+docker load -i gitlabex-frontend.tar
 
-# Redis配置
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=password123
-
-# GitLab配置
-GITLAB_URL=http://localhost:8081
-GITLAB_CLIENT_ID=your_gitlab_client_id
-GITLAB_CLIENT_SECRET=your_gitlab_client_secret
-GITLAB_REDIRECT_URI=http://localhost:3000/auth/gitlab/callback
-
-# JWT配置
-JWT_SECRET=your_jwt_secret_key_here_please_change_in_production
-JWT_EXPIRATION_HOURS=24
-
-# 第三方系统集成配置
-THIRD_PARTY_API_KEY=your_secure_third_party_api_key_32_chars_minimum
-GITLAB_SYSTEM_TOKEN=your_gitlab_admin_token
+# 启动生产环境
+docker-compose  -f docker-compose.prod.yml up -d
 ```
 
 ## API文档
@@ -232,65 +224,43 @@ GITLAB_SYSTEM_TOKEN=your_gitlab_admin_token
 - `PUT /api/v1/topics/:id` - 更新话题
 - `DELETE /api/v1/topics/:id` - 删除话题
 
+### 文档管理
+- `GET /api/v1/documents` - 获取文档列表
+- `GET /api/v1/documents/:id` - 获取文档详情
+- `POST /api/v1/documents` - 上传文档
+- `PUT /api/v1/documents/:id` - 更新文档
+- `DELETE /api/v1/documents/:id` - 删除文档
+- `GET /api/v1/documents/:id/download` - 下载文档
+
+### 作业管理
+- `GET /api/v1/homework` - 获取作业列表
+- `POST /api/v1/homework` - 创建作业
+- `GET /api/v1/homework/:id` - 获取作业详情
+- `PUT /api/v1/homework/:id` - 更新作业
+- `DELETE /api/v1/homework/:id` - 删除作业
+- `POST /api/v1/homework/:id/submissions` - 提交作业
+- `PUT /api/v1/submissions/:id` - 批改作业
+
 ### 第三方系统集成
 - `POST /api/v1/sync/users` - 创建用户（需要第三方API密钥）
 - `GET /api/v1/sync/users/:username` - 获取用户信息（需要第三方API密钥）
 
 详细的第三方系统集成文档请查看：[SYNC_USER.md](docs/SYNC_USER.md)
 
-## 部署说明
+完整的API文档请查看项目源代码中的详细注释。
 
-### Docker部署
-```bash
-# 构建镜像
-docker build -t gitlabex-backend ./backend
-docker build -t gitlabex-frontend ./frontend
-
-# 运行容器
-docker-compose up -d
-```
-
-### 生产环境配置
-1. 设置环境变量为生产模式
-2. 配置HTTPS证书
-3. 设置防火墙规则
-4. 配置监控和日志
-
-## 开发指南
-
-### 代码规范
-- Go代码遵循gofmt格式化
-- TypeScript使用ESLint+Prettier
-- 提交信息遵循Conventional Commits
-
-### 测试
-```bash
-# 后端测试
-cd backend
-go test ./...
-
-# 前端测试
-cd frontend
-npm run test
-```
 
 ## 贡献指南
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 创建Pull Request
+1. **Fork 项目**
+2. **创建功能分支** (`git checkout -b feature/amazing-feature`)
+3. **提交更改** (`git commit -m 'Add amazing feature'`)
+4. **推送到分支** (`git push origin feature/amazing-feature`)
+5. **创建Pull Request**
 
 ## 许可证
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 联系方式
-
-- 项目维护者：[维护者名称]
-- 邮箱：[邮箱地址]
-- 项目主页：[项目URL]
 
 ## 更新日志
 

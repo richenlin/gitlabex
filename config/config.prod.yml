@@ -1,50 +1,55 @@
-# GitLabEx 生产环境配置文件
-# 生产环境专用配置，使用IP地址进行多机部署
+# GitLabEx 开发环境配置文件
+# 开发环境配置，用于本地开发和测试
 # 敏感信息通过环境变量加载
 
 # 服务器配置
 server:
   host: "0.0.0.0"
   port: "8080"
-  environment: "production"
-  debug: false
+  environment: "development"
+  debug: true
 
-# 数据库配置
+# 数据库配置 - 使用IP地址
 database:
-  host: "192.168.140.171"
+  host: "192.168.170.172"
   port: "5432"
   user: "gitlabex"
-  password: ""  # 必须通过环境变量设置
+  password: "password123"  # 生产环境应通过环境变量设置
   name: "gitlabex"
   ssl_mode: "disable"
   timezone: "Asia/Shanghai"
 
-# Redis配置
+# Redis配置 - 使用IP地址
 redis:
-  host: "192.168.140.171"
+  host: "192.168.170.172"
   port: "6379"
-  password: ""  # 必须通过环境变量设置
+  password: "password123"  # 生产环境应通过环境变量设置
   db: 0
 
-# GitLab配置
+# GitLab配置 - 使用IP地址
 gitlab:
-  url: "http://192.168.140.171:8081"
-  client_id: ""  # 必须通过环境变量设置
-  client_secret: ""  # 必须通过环境变量设置
-  redirect_uri: "http://192.168.140.171:3000/auth/gitlab/callback"
+  # 获取方式: 访问 http://localhost:8081/admin/applications
+  # 权限范围: api read_api openid
+  url: "http://192.168.170.172:8081"
+  client_id: "537d8206b73fa931da99061f1564e97da72aa53fcd6eb3587d8f23b14ee6088e"  # 必须通过环境变量设置
+  client_secret: "7e48942204e3783d39dacd8f440b8444e6bd1f9687772ef10c615775eb33210a"  # 必须通过环境变量设置
+  redirect_uri: "http://192.168.170.172:3000/auth/gitlab/callback"
   scopes: "api read_api openid"
-  system_token: ""  # 必须通过环境变量设置
+  # GitLab 个人访问令牌 (用于数据初始化已经游客访问部分公开数据)
+  # 获取方式: 访问 http://localhost:8081/-/profile/personal_access_tokens
+  # 权限范围: api, read_api, read_user, read_repository, write_repository
+  system_token: "glpat-gcWAqg7EsbgaRPnKzVHb"  # 必须通过环境变量设置
 
 # JWT配置
 jwt:
-  secret: ""  # 必须通过环境变量设置
+  secret: "gitlabex_jwt_secret_development_environment_2024_very_secure_key_32_chars_minimum"
   expiration_hours: 24
 
 # MinIO对象存储配置 - 使用IP地址
 minio:
-  endpoint: "192.168.140.171:9000"
+  endpoint: "192.168.170.172:9000"
   access_key: "admin"
-  secret_key: "password123"  # 必须通过环境变量设置
+  secret_key: "password123"  # 生产环境应通过环境变量设置
   use_ssl: false
   region: "us-east-1"
 
@@ -61,7 +66,7 @@ upload:
 
 # 安全配置
 security:
-  cors_allowed_origins: "http://192.168.140.171:3000,http://localhost:3000,http://127.0.0.1:3000"
+  cors_allowed_origins: "http://192.168.170.172:3000,http://localhost:3000,http://127.0.0.1:3000"
   cors_allowed_methods: "GET,POST,PUT,DELETE,OPTIONS"
   cors_allowed_headers: "Content-Type,Authorization,X-Requested-With,X-API-Key"
   cors_allow_credentials: true
@@ -70,4 +75,4 @@ security:
 
 # API密钥配置
 api_keys:
-  third_party_api_key: "" # 必须通过环境变量设置
+  third_party_api_key: "gitlabex_third_party_api_key_2024_change_in_production_32_chars_minimum"
