@@ -1,80 +1,80 @@
 package models
 
-import (
-	"time"
-
-	"gorm.io/gorm"
-)
-
-// 教育角色枚举 - 基于GitLab权限映射
-type EducationRole int
+// GitLabRole GitLab角色枚举 - 基于GitLab权限映射
+type GitLabRole int
 
 const (
-	EduRoleGuest     EducationRole = 10 // GitLab Guest -> 访客
-	EduRoleStudent   EducationRole = 20 // GitLab Reporter -> 学生
-	EduRoleAssistant EducationRole = 30 // GitLab Developer -> 助教
-	EduRoleTeacher   EducationRole = 40 // GitLab Maintainer -> 教师
-	EduRoleAdmin     EducationRole = 50 // GitLab Owner -> 管理员
+	GitLabGuest      GitLabRole = 10 // GitLab Guest -> 访客
+	GitLabReporter   GitLabRole = 20 // GitLab Reporter -> 学生
+	GitLabDeveloper  GitLabRole = 30 // GitLab Developer -> 研究员
+	GitLabMaintainer GitLabRole = 40 // GitLab Maintainer -> 教师
+	GitLabOwner      GitLabRole = 50 // GitLab Owner -> 管理员
 )
 
-// String 返回角色的字符串表示
-func (r EducationRole) String() string {
+// GitLabUser GitLab用户信息 - 不存储在本地数据库，仅用于API传输
+type GitLabUser struct {
+	ID        int64      `json:"id"`
+	Username  string     `json:"username"`
+	Email     string     `json:"email"`
+	Name      string     `json:"name"`
+	AvatarURL string     `json:"avatar_url"`
+	IsAdmin   bool       `json:"is_admin"`
+	Role      GitLabRole `json:"role,omitempty"` // 在项目上下文中的角色
+}
+
+// GetEducationRole 获取教育角色名称
+func (r GitLabRole) GetEducationRole() string {
 	switch r {
-	case EduRoleGuest:
-		return "guest"
-	case EduRoleStudent:
-		return "student"
-	case EduRoleAssistant:
-		return "assistant"
-	case EduRoleTeacher:
-		return "teacher"
-	case EduRoleAdmin:
-		return "admin"
+	case GitLabOwner:
+		return "管理员"
+	case GitLabMaintainer:
+		return "教师"
+	case GitLabDeveloper:
+		return "研究员"
+	case GitLabReporter:
+		return "学生"
+	case GitLabGuest:
+		return "访客"
 	default:
-		return "unknown"
+		return "未知"
 	}
 }
 
-// User 极简用户模型 - 只存储GitLab用户映射信息
-type User struct {
-	ID         uint      `gorm:"primaryKey" json:"id"`
-	GitLabID   int       `gorm:"column:gitlab_id;unique;not null" json:"gitlab_id"`
-	Username   string    `gorm:"unique;not null" json:"username"`
-	Email      string    `gorm:"unique;not null" json:"email"`
-	Name       string    `gorm:"not null" json:"name"`
-	Avatar     string    `json:"avatar"`
-	Role       int       `gorm:"default:3" json:"role"` // 1:管理员, 2:老师, 3:学生, 4:访客
-	Active     bool      `gorm:"default:true" json:"is_active"`
-	LastSyncAt time.Time `gorm:"column:last_sync_at" json:"last_sync_at"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+// GetRoleString 获取角色字符串
+func (r GitLabRole) GetRoleString() string {
+	switch r {
+	case GitLabOwner:
+		return "owner"
+	case GitLabMaintainer:
+		return "maintainer"
+	case GitLabDeveloper:
+		return "developer"
+	case GitLabReporter:
+		return "reporter"
+	case GitLabGuest:
+		return "guest"
+	default:
+		return "guest"
+	}
 }
 
-// TableName 指定表名
-func (User) TableName() string {
-	return "users"
+// ParseGitLabRole 解析GitLab角色
+func ParseGitLabRole(accessLevel int) GitLabRole {
+	switch accessLevel {
+	case 50:
+		return GitLabOwner
+	case 40:
+		return GitLabMaintainer
+	case 30:
+		return GitLabDeveloper
+	case 20:
+		return GitLabReporter
+	case 10:
+		return GitLabGuest
+	default:
+		return GitLabGuest
+	}
 }
 
-// BeforeCreate GORM钩子 - 创建前
-func (u *User) BeforeCreate(tx *gorm.DB) error {
-	u.LastSyncAt = time.Now()
-	return nil
-}
-
-// BeforeUpdate GORM钩子 - 更新前
-func (u *User) BeforeUpdate(tx *gorm.DB) error {
-	u.LastSyncAt = time.Now()
-	return nil
-}
-
-// IsActive 检查用户是否活跃（最近同步时间在24小时内）
-func (u *User) IsActive() bool {
-	return time.Since(u.LastSyncAt) < 24*time.Hour
-}
-
-// GetDefaultEducationRole 获取默认教育角色（实际角色需要通过GitLab API获取）
-func (u *User) GetDefaultEducationRole() EducationRole {
-	// 这个方法的实际逻辑在 UserService 中实现
-	// 因为需要调用GitLab API获取用户在特定Group/Project中的权限
-	return EduRoleGuest
-}
+// 注意：完全移除本地User模型，用户信息完全从GitLab API获取
+// 所有用户相关的外键关系将使用GitLab用户ID (int64)而不是本地UUID

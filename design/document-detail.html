@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文档详情 - 协同创新社区</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/document-detail.css">
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <h1>协同创新社区</h1>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">首页</a></li>
+        <li><a href="scene.html">课题</a></li>
+        <li><a href="topic-list.html">话题</a></li>
+        <li><a href="documents.html" class="active">文档</a></li>
+      </ul>
+    </nav>
+    <div class="user-info">
+      <button class="announcement-icon">📢</button>
+      <span>当前用户</span>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/32" alt="用户头像">
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="breadcrumb">
+      <a href="documents.html">文档库</a> &gt; <span id="document-title">文档详情</span>
+    </div>
+
+    <div class="document-detail">
+      <div class="document-header">
+        <div class="document-icon">📄</div>
+        <h2 id="document-detail-title">卫星轨道计算研究论文</h2>
+        <div class="document-meta">
+          <div class="document-author">
+            <div class="avatar">
+              <img src="https://via.placeholder.com/32" alt="张三">
+            </div>
+            <span>张三</span>
+          </div>
+          <div class="document-stats">
+            <span>⬇️ 128 次下载</span>
+            <span>📅 2023-11-15 上传</span>
+            <span>📄 PDF • 2.4MB</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="document-preview">
+        <div class="preview-container">
+          <div class="preview-header">
+            <h3>文档预览</h3>
+            <div class="preview-controls">
+              <button class="preview-button">🔍 放大</button>
+              <button class="preview-button">📄 全屏</button>
+            </div>
+          </div>
+          <div class="preview-content">
+            <div class="preview-placeholder">
+              <p>这里是文档预览区域</p>
+              <p>对于PDF文档，将显示前几页的缩略图</p>
+              <p>对于Word/Excel文档，将显示文档内容预览</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="document-description">
+        <h3>文档描述</h3>
+        <p>本文详细分析了低地球轨道卫星的轨道计算方法，包括轨道参数计算、轨道预测和碰撞风险评估。研究基于2020-2023年的轨道观测数据，提出了改进的轨道预测算法，相比传统方法提高了15%的精度。</p>
+        <div class="document-tags">
+          <span class="tag">轨道计算</span>
+          <span class="tag">LEO</span>
+          <span class="tag">研究论文</span>
+        </div>
+      </div>
+
+      <div class="document-actions">
+        <button class="action-button primary-button">⬇️ 下载文档</button>
+        <button class="action-button">📤 分享</button>
+        <button class="action-button">📌 收藏</button>
+        <button class="action-button">✏️ 编辑信息</button>
+      </div>
+
+      <div class="document-comments">
+        <h3>评论 (5)</h3>
+        <div class="comments-list">
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-author">
+                <div class="avatar">
+                  <img src="https://via.placeholder.com/32" alt="李四">
+                </div>
+                <span class="comment-author-name">李四</span>
+              </div>
+              <div class="comment-date">2023-11-16 10:30</div>
+            </div>
+            <div class="comment-body">
+              <p>这篇论文的轨道预测算法非常实用，我已经在项目中应用了，效果很好！</p>
+            </div>
+            <div class="comment-actions">
+              <span class="comment-action">👍 8</span>
+              <span class="comment-action">� 回复</span>
+            </div>
+          </div>
+          
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-author">
+                <div class="avatar">
+                  <img src="https://via.placeholder.com/32" alt="王五">
+                </div>
+                <span class="comment-author-name">王五</span>
+              </div>
+              <div class="comment-date">2023-11-16 14:45</div>
+            </div>
+            <div class="comment-body">
+              <p>请问论文中提到的轨道参数计算方法是否适用于GEO卫星？</p>
+            </div>
+            <div class="comment-actions">
+              <span class="comment-action">👍 3</span>
+              <span class="comment-action">� 回复</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="comment-form">
+          <h4>发表评论</h4>
+          <div class="form-group">
+            <textarea placeholder="写下你的评论..."></textarea>
+            <div class="form-actions">
+              <div class="emoji-picker-trigger">😊 表情</div>
+              <button type="submit" class="submit-button">发表评论</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="related-documents">
+      <h3>相关文档</h3>
+      <div class="document-list">
+        <div class="document-item" onclick="location.href='document-detail.html?id=2'">
+          <div class="document-header">
+            <div class="document-icon">📊</div>
+            <h4 class="document-title">卫星通信数据分析表</h4>
+            <span class="document-downloads">⬇️ 89</span>
+          </div>
+          <div class="document-meta">
+            由 李四 上传于 2023-11-14 • Excel • 1.2MB
+          </div>
+        </div>
+        
+        <div class="document-item" onclick="location.href='document-detail.html?id=3'">
+          <div class="document-header">
+            <div class="document-icon">📑</div>
+            <h4 class="document-title">太空碎片监测报告</h4>
+            <span class="document-downloads">⬇️ 76</span>
+          </div>
+          <div class="document-meta">
+            由 王五 上传于 2023-11-13 • Word • 3.1MB
+          </div>
+        </div>
+        
+        <div class="document-item" onclick="location.href='document-detail.html?id=4'">
+          <div class="document-header">
+            <div class="document-icon">📋</div>
+            <h4 class="document-title">卫星能源系统设计规范</h4>
+            <span class="document-downloads">⬇️ 64</span>
+          </div>
+          <div class="document-meta">
+            由 赵六 上传于 2023-11-12 • PDF • 4.5MB
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>© 2023 协同创新社区. 保留所有权利.</p>
+  </footer>
+
+  <script src="js/documents.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const docId = urlParams.get('id');
+      
+      if (docId) {
+        // 这里可以添加根据ID加载文档详情的逻辑
+        document.getElementById('document-title').textContent = '文档详情';
+        document.getElementById('document-detail-title').textContent = '卫星轨道计算研究论文';
+        document.title = '卫星轨道计算研究论文 - 协同创新社区';
+      }
+    });
+  </script>
+</body>
+</html>

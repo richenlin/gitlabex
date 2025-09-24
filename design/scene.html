@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>课题列表 - 协同创新社区</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/scene.css">
+</head>
+
+<body>
+  <header>
+    <div class="logo">
+      <h1>协同创新社区</h1>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">首页</a></li>
+        <li><a href="scene.html" class="active">课题</a></li>
+        <li><a href="topic-list.html">话题</a></li>
+        <li><a href="documents.html">文档</a></li>
+      </ul>
+    </nav>
+    <div class="user-info">
+      <button class="announcement-icon">📢</button>
+      <span>当前用户</span>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/32" alt="用户头像">
+      </div>
+    </div>
+  </header>
+  </header>
+
+  <div class="container">
+    
+    <div class="main-content">
+      <div class="content-column">
+        <div class="scene-management">
+          <div class="scene-controls">
+            <h2>所有课题</h2>
+            <div class="search-box">
+              <input type="text" placeholder="搜索课题...">
+              <button class="search-button">🔍</button>
+            </div>
+            <div class="filter-dropdown">
+              <button class="filter-button">筛选</button>
+              <div class="filter-options">
+                <label><input type="checkbox" checked> 我的课题</label>
+                <label><input type="checkbox" checked> 公开课题</label>
+                <label><input type="checkbox" checked> 专有课题</label>
+              </div>
+            </div>
+            <button id="create-scene-button" class="primary-button">创建新课题</button>
+          </div>
+
+          <div class="scene-list">
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">Starlink星座分析</a></h3>
+              <div class="scene-meta">创建于 2023-11-14 • 256次访问 • <span class="tag public-tag">公开课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">LEO轨道碰撞预警</a></h3>
+              <div class="scene-meta">创建于 2023-11-13 • 189次访问 • <span class="tag private-tag">专有课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">卫星通信链路优化</a></h3>
+              <div class="scene-meta">创建于 2023-11-12 • 312次访问 • <span class="tag public-tag">公开课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">GEO卫星通信干扰分析</a></h3>
+              <div class="scene-meta">创建于 2023-11-11 • 178次访问 • <span class="tag private-tag">专有课题</span> <span class="tag owner-tag">我的课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">太空碎片追踪系统</a></h3>
+              <div class="scene-meta">创建于 2023-11-10 • 245次访问 • <span class="tag private-tag">专有课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">轨道机动计算器</a></h3>
+              <div class="scene-meta">创建于 2023-11-09 • 156次访问 • <span class="tag public-tag">公开课题</span> <span class="tag owner-tag">我的课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">太空交通管制系统</a></h3>
+              <div class="scene-meta">创建于 2023-11-08 • 198次访问 • <span class="tag public-tag">公开课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">卫星星座部署模拟</a></h3>
+              <div class="scene-meta">创建于 2023-11-07 • 223次访问 • <span class="tag private-tag">专有课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">卫星姿态控制系统</a></h3>
+              <div class="scene-meta">创建于 2023-11-06 • 167次访问 • <span class="tag private-tag">专有课题</span> <span class="tag owner-tag">我的课题</span></div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html">卫星能源管理优化</a></h3>
+              <div class="scene-meta">创建于 2023-11-05 • 189次访问 • <span class="tag public-tag">公开课题</span></div>
+            </div>
+          </div>
+
+          <div class="pagination">
+            <button class="pagination-button">上一页</button>
+            <span class="pagination-info">1/5</span>
+            <button class="pagination-button">下一页</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar">
+        <div class="hot-scenes">
+          <h2>热门课题</h2>
+          <div class="hot-scene-list" id="hot-scenes">
+            <a href="scene-detail.html" class="hot-scene-item">
+              <h4 class="hot-scene-title">Starlink星座分析</h4>
+              <div class="hot-scene-meta">256次访问</div>
+            </a>
+            <a href="scene-detail.html" class="hot-scene-item">
+              <h4 class="hot-scene-title">卫星通信链路优化</h4>
+              <div class="hot-scene-meta">312次访问</div>
+            </a>
+            <a href="scene-detail.html" class="hot-scene-item">
+              <h4 class="hot-scene-title">太空碎片追踪系统</h4>
+              <div class="hot-scene-meta">245次访问</div>
+            </a>
+            <a href="scene-detail.html" class="hot-scene-item">
+              <h4 class="hot-scene-title">太空交通管制系统</h4>
+              <div class="hot-scene-meta">198次访问</div>
+            </a>
+            <a href="scene-detail.html" class="hot-scene-item">
+              <h4 class="hot-scene-title">卫星星座部署模拟</h4>
+              <div class="hot-scene-meta">223次访问</div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>© 2023 协同创新社区. 保留所有权利.</p>
+  </footer>
+
+  <script src="js/scene-management.js"></script>
+  <script src="js/main.js"></script>
+</body>
+
+</html>

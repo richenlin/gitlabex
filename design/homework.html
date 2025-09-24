@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>作业管理 - 协同创新社区</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/homework.css">
+</head>
+
+<body>
+  <header>
+    <div class="logo">
+      <h1>协同创新社区</h1>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html">首页</a></li>
+        <li><a href="scene.html" class="active">课题</a></li>
+        <li><a href="topic-list.html">话题</a></li>
+        <li><a href="documents.html">文档</a></li>
+      </ul>
+    </nav>
+    <div class="user-info">
+      <button class="announcement-icon">📢</button>
+      <span>当前用户</span>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/32" alt="用户头像">
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    
+    <div class="main-content">
+      <div class="content-column">
+        <div class="homework-management"></div>
+          <div class="tabs">
+            <div class="tab-header">
+              <div class="tab active" data-tab="assigned">待完成作业</div>
+              <div class="tab" data-tab="submitted">已提交作业</div>
+              <div class="tab" data-tab="graded">已批阅作业</div>
+              <div class="tab" data-tab="create">创建作业</div>
+            </div>
+            
+            <div class="tab-content">
+              <div class="tab-pane active" id="assigned">
+                <div class="homework-list">
+                  <div class="homework-item">
+                    <div class="homework-status pending">待提交</div>
+                    <div class="homework-info">
+                      <h3 class="homework-title">场景渲染优化实践</h3>
+                      <div class="homework-meta">
+                        <span>截止日期: 2023-06-15</span>
+                        <span>分值: 100分</span>
+                      </div>
+                      <div class="homework-description">
+                        请根据课程内容，选择一个场景进行渲染优化，并提交优化报告和优化后的场景文件。
+                      </div>
+                    </div>
+                    <div class="homework-actions">
+                      <button class="submit-homework-button">提交作业</button>
+                    </div>
+                  </div>
+                  
+                  <div class="homework-item">
+                    <div class="homework-status urgent">即将截止</div>
+                    <div class="homework-info">
+                      <h3 class="homework-title">光照模型分析</h3>
+                      <div class="homework-meta">
+                        <span>截止日期: 2023-06-05</span>
+                        <span>分值: 80分</span>
+                      </div>
+                      <div class="homework-description">
+                        分析三种不同的光照模型的优缺点，并在示例场景中进行对比展示。
+                      </div>
+                    </div>
+                    <div class="homework-actions">
+                      <button class="submit-homework-button">提交作业</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="tab-pane" id="submitted">
+                <div class="homework-list">
+                  <div class="homework-item">
+                    <div class="homework-status submitted">已提交</div>
+                    <div class="homework-info">
+                      <h3 class="homework-title">场景资源管理方案</h3>
+                      <div class="homework-meta">
+                        <span>提交日期: 2023-05-28</span>
+                        <span>分值: 90分</span>
+                      </div>
+                      <div class="homework-description">
+                        设计一个高效的场景资源管理方案，包括资源加载、卸载和缓存策略。
+                      </div>
+                    </div>
+                    <div class="homework-actions">
+                      <button class="view-submission-button">查看提交</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="tab-pane" id="graded">
+                <div class="homework-list">
+                  <div class="homework-item">
+                    <div class="homework-status graded">已批阅</div>
+                    <div class="homework-info">
+                      <h3 class="homework-title">场景交互设计</h3>
+                      <div class="homework-meta">
+                        <span>得分: 85/100</span>
+                        <span>批阅日期: 2023-05-20</span>
+                      </div>
+                      <div class="homework-description">
+                        设计并实现一个具有良好用户体验的场景交互系统。
+                      </div>
+                      <div class="homework-feedback">
+                        <h4>教师评语:</h4>
+                        <p>交互设计思路清晰，实现完整。可以进一步优化移动端的交互体验。</p>
+                      </div>
+                    </div>
+                    <div class="homework-actions">
+                      <button class="view-details-button">查看详情</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="tab-pane" id="create">
+                <div class="create-homework-form">
+                  <h3>创建新作业</h3>
+                  
+                  <div class="form-group">
+                    <label for="homework-title">作业标题</label>
+                    <input type="text" id="homework-title" placeholder="输入作业标题">
+                  </div>
+                  
+                  <div class="form-group">
+                    <label for="homework-description">作业描述</label>
+                    <textarea id="homework-description" placeholder="输入作业描述和要求"></textarea>
+                  </div>
+                  
+                  <div class="form-row">
+                    <div class="form-group half">
+                      <label for="homework-deadline">截止日期</label>
+                      <input type="date" id="homework-deadline">
+                    </div>
+                    
+                    <div class="form-group half">
+                      <label for="homework-points">分值</label>
+                      <input type="number" id="homework-points" min="0" max="100" value="100">
+                    </div>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label for="homework-attachments">附件</label>
+                    <div class="file-upload-container">
+                      <button type="button" class="file-upload-trigger">选择文件</button>
+                      <input type="file" id="homework-attachments" multiple style="display: none;">
+                    </input>
+                    </div>
+                  </div>
+                  
+                  <div class="form-actions">
+                    <button type="button" class="cancel-button">取消</button>
+                    <button type="submit" class="submit-button">创建作业</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="sidebar">
+        <div class="homework-statistics">
+          <h3>作业统计</h3>
+          <div class="statistics-grid">
+            <div class="statistic-item">
+              <div class="statistic-value">3</div>
+              <div class="statistic-label">待完成作业</div>
+            </div>
+            
+            <div class="statistic-item">
+              <div class="statistic-value">1</div>
+              <div class="statistic-label">已提交作业</div>
+            </div>
+            
+            <div class="statistic-item">
+              <div class="statistic-value">5</div>
+              <div class="statistic-label">已批阅作业</div>
+            </div>
+            
+            <div class="statistic-item">
+              <div class="statistic-value">85%</div>
+              <div class="statistic-label">平均得分</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>© 2023 协同创新社区. 保留所有权利.</p>
+  </footer>
+
+  <!-- 引入JavaScript文件 -->
+  <script src="js/tabs.js"></script>
+  <script src="js/file-upload.js"></script>
+  <script src="js/homework.js"></script>
+  <script src="js/main.js"></script>
+</body>
+
+</html>

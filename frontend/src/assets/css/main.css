@@ -1,0 +1,173 @@
+/* 导入所有样式文件 */
+@import './variables.css';
+@import './global.css';
+
+/* Element Plus 主题覆盖 */
+:root {
+  --el-color-primary: var(--primary-color);
+  --el-color-success: var(--success-color);
+  --el-color-warning: var(--warning-color);
+  --el-color-danger: var(--danger-color);
+  --el-color-info: var(--info-color);
+  
+  --el-bg-color: var(--card-background);
+  --el-bg-color-page: var(--background-color);
+  --el-bg-color-overlay: var(--card-background);
+  
+  --el-text-color-primary: var(--text-color);
+  --el-text-color-regular: var(--light-text);
+  --el-text-color-secondary: var(--lighter-text);
+  
+  --el-border-color: var(--border-color);
+  --el-border-color-light: rgba(48, 48, 96, 0.5);
+  --el-border-color-lighter: rgba(48, 48, 96, 0.3);
+  
+  --el-fill-color: var(--card-background);
+  --el-fill-color-light: rgba(26, 26, 74, 0.7);
+  --el-fill-color-lighter: rgba(26, 26, 74, 0.5);
+  --el-fill-color-blank: var(--card-background);
+  
+  --el-border-radius-base: var(--border-radius-sm);
+  --el-border-radius-small: var(--border-radius-sm);
+  --el-border-radius-round: var(--border-radius-md);
+  
+  --el-font-size-base: var(--font-size-sm);
+  --el-font-size-small: var(--font-size-xs);
+  --el-font-size-large: var(--font-size-md);
+}
+
+/* Element Plus 暗色主题覆盖 */
+.el-button {
+  border-radius: var(--border-radius-sm);
+}
+
+.el-button--primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.el-button--primary:hover {
+  background-color: var(--secondary-color);
+  border-color: var(--secondary-color);
+}
+
+.el-input__wrapper {
+  background-color: var(--card-background);
+  border-color: var(--border-color);
+  border-radius: var(--border-radius-sm);
+}
+
+.el-input__wrapper:hover {
+  border-color: var(--primary-color);
+}
+
+.el-input__wrapper.is-focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(77, 121, 255, 0.2);
+}
+
+.el-card {
+  background-color: var(--card-background);
+  border-color: var(--border-color);
+  border-radius: var(--border-radius-md);
+}
+
+.el-dialog {
+  background-color: var(--card-background);
+  border-radius: var(--border-radius-md);
+}
+
+.el-menu {
+  background-color: var(--card-background);
+  border-color: var(--border-color);
+}
+
+.el-menu-item {
+  color: var(--text-color);
+}
+
+.el-menu-item:hover {
+  background-color: rgba(77, 121, 255, 0.1);
+}
+
+.el-menu-item.is-active {
+  background-color: rgba(77, 121, 255, 0.2);
+  color: var(--primary-color);
+}
+
+.el-table {
+  background-color: var(--card-background);
+  color: var(--text-color);
+}
+
+.el-table th {
+  background-color: rgba(26, 26, 74, 0.8);
+  color: var(--text-color);
+}
+
+.el-table tr {
+  background-color: var(--card-background);
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td {
+  background-color: rgba(26, 26, 74, 0.5);
+}
+
+.el-pagination {
+  background-color: transparent;
+}
+
+.el-pagination .btn-prev,
+.el-pagination .btn-next,
+.el-pagination .el-pager li {
+  background-color: var(--card-background);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+.el-pagination .el-pager li.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.el-tag {
+  background-color: rgba(77, 121, 255, 0.2);
+  color: var(--primary-color);
+  border-color: rgba(77, 121, 255, 0.3);
+}
+
+.el-tag--success {
+  background-color: rgba(0, 200, 83, 0.2);
+  color: var(--success-color);
+  border-color: rgba(0, 200, 83, 0.3);
+}
+
+.el-tag--warning {
+  background-color: rgba(255, 171, 0, 0.2);
+  color: var(--warning-color);
+  border-color: rgba(255, 171, 0, 0.3);
+}
+
+.el-tag--danger {
+  background-color: rgba(255, 61, 0, 0.2);
+  color: var(--danger-color);
+  border-color: rgba(255, 61, 0, 0.3);
+}
+
+/* 自定义滚动条样式 */
+.el-scrollbar__wrap::-webkit-scrollbar {
+  width: 8px;
+}
+
+.el-scrollbar__wrap::-webkit-scrollbar-track {
+  background: var(--background-color);
+}
+
+.el-scrollbar__wrap::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+.el-scrollbar__wrap::-webkit-scrollbar-thumb:hover {
+  background: var(--lighter-text);
+}

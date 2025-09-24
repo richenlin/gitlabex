@@ -1,273 +1,253 @@
-# GitLabEx Community System
+# GitLabEx 教育协作平台
 
-基于GitLab API + Webhook构建的教育社区系统，采用Go后端 + Vue前端的技术架构。
+## 概述
 
-## 项目概述
+GitLabEx 是一个基于 GitLab 的教育协作平台，专为教学场景设计的现代化教育管理系统。通过深度集成 GitLab 生态系统，提供完整的教育场景解决方案。
 
-本系统提供以下核心功能：
-- 🔐 **GitLab集成认证** - 完全基于GitLab的用户认证和权限管理
-- 📝 **课题管理** - 教师创建课题，学生通过课题代码参与
-- 📋 **作业管理** - 教师管理课题作业，学生提交作业和查看评审
-- 📊 **数据统计** - 教师查看课题统计，学生查看个人统计
-- 📚 **知识文档管理** - 基于GitLab Wiki的文档管理系统
-- ✏️ **在线协作编辑** - 集成OnlyOffice的实时文档编辑
-- 💬 **话题讨论** - 基于GitLab Issues的讨论管理
-- 🚀 **互动开发环境** - 在线代码编辑器和实时协作开发
+### 核心理念
 
-## 技术架构
-
-### 后端技术栈
-- **语言**: Go 1.21+
-- **框架**: Gin
-- **数据库**: PostgreSQL 15+
-- **缓存**: Redis 7+
-- **ORM**: GORM
-
-### 前端技术栈
-- **框架**: Vue 3.4+
-- **构建工具**: Vite
-- **UI组件**: Element Plus
-- **文档编辑**: OnlyOffice Document Server
-
-### 基础设施
-- **版本控制**: GitLab CE
-- **容器化**: Docker & Docker Compose
-- **文档服务**: OnlyOffice Document Server
-
-## 快速开始
-
-### 环境要求
-
-- Docker 20.10+
-- Docker Compose 2.0+
-- 至少 4GB 内存
-- 至少 10GB 可用磁盘空间
-
-### 部署步骤
-
-#### 1. 克隆项目
-```bash
-git clone <repository-url>
-cd gitlabex
-```
-
-#### 2. 启动测试环境
-```bash
-# 使用部署脚本启动所有服务
-./scripts/deploy.sh
-```
-
-#### 3. 等待服务启动
-- GitLab 首次启动需要 5-10 分钟
-- OnlyOffice 需要 2-3 分钟
-- PostgreSQL 和 Redis 通常在 1 分钟内启动
-
-#### 4. 访问服务
-- **GitLab**: http://localhost
-- **OnlyOffice**: http://localhost:8000
-- **PostgreSQL**: localhost:5432
-- **Redis**: localhost:6379
-
-### 默认账号
-
-| 服务 | 用户名 | 密码 |
-|------|--------|------|
-| GitLab | root | password123 |
-| PostgreSQL | gitlabex | password123 |
-| Redis | - | password123 |
-
-## 管理命令
-
-### 监控系统状态
-```bash
-# 完整系统检查
-./scripts/monitor.sh
-
-# 快速健康检查
-./scripts/monitor.sh quick
-
-# 检查容器状态
-./scripts/monitor.sh containers
-
-# 检查服务健康
-./scripts/monitor.sh health
-
-# 检查资源使用
-./scripts/monitor.sh resources
-```
-
-### Docker Compose 命令
-```bash
-# 查看所有服务状态
-docker-compose ps
-
-# 查看服务日志
-docker-compose logs [service-name]
-
-# 重启特定服务
-docker-compose restart [service-name]
-
-# 停止所有服务
-docker-compose down
-
-# 重新构建并启动
-docker-compose up --build -d
-```
-
-### 常用服务操作
-```bash
-# 进入PostgreSQL
-docker-compose exec postgres psql -U gitlabex -d gitlabex
-
-# 进入Redis
-docker-compose exec redis redis-cli -a password123
-
-# 查看GitLab日志
-docker-compose logs gitlab
-
-# 查看OnlyOffice日志
-docker-compose logs onlyoffice
-```
-
-## 开发环境配置
-
-### 后端开发
-```bash
-cd backend
-
-# 安装依赖
-go mod tidy
-
-# 运行开发服务器
-go run main.go
-
-# 运行测试
-go test ./...
-```
-
-### 前端开发
-```bash
-cd frontend
-
-# 安装依赖
-npm install
-
-# 运行开发服务器
-npm run dev
-
-# 构建生产版本
-npm run build
-```
-
-## 配置说明
-
-### 环境变量配置
-配置文件位于 `config/app.env`，包含以下主要配置：
-
-```bash
-# 服务器配置
-SERVER_HOST=0.0.0.0
-SERVER_PORT=8080
-
-# 数据库配置
-DATABASE_URL=postgres://gitlabex:password123@localhost:5432/gitlabex
-
-# GitLab配置
-GITLAB_URL=http://localhost
-GITLAB_CLIENT_ID=your-gitlab-client-id
-GITLAB_CLIENT_SECRET=your-gitlab-client-secret
-
-# OnlyOffice配置
-ONLYOFFICE_URL=http://localhost:8000
-ONLYOFFICE_JWT_SECRET=gitlabex-jwt-secret-2024
-```
-
-### GitLab 集成设置
-
-1. 登录 GitLab (http://localhost, root/password123)
-2. 创建新的应用程序：
-   - 进入 Admin Area → Applications
-   - 创建新应用，设置回调URL: `http://localhost:8080/auth/callback`
-   - 获取 Client ID 和 Client Secret
-3. 更新配置文件中的 GitLab 凭据
-
-## 故障排除
-
-### 常见问题
-
-#### 1. GitLab 启动缓慢
-GitLab 首次启动需要初始化，请耐心等待 5-10 分钟。
-
-#### 2. OnlyOffice 无法访问
-检查容器是否正常启动：
-```bash
-docker-compose logs onlyoffice
-```
-
-#### 3. 数据库连接失败
-确保 PostgreSQL 容器正常运行：
-```bash
-docker-compose exec postgres pg_isready -U gitlabex
-```
-
-#### 4. 端口冲突
-如果遇到端口冲突，修改 `docker-compose.yml` 中的端口映射。
-
-### 日志查看
-```bash
-# 查看所有服务日志
-docker-compose logs
-
-# 查看特定服务日志
-docker-compose logs [service-name]
-
-# 实时查看日志
-docker-compose logs -f [service-name]
-```
-
-### 数据备份
-```bash
-# 备份PostgreSQL数据
-docker-compose exec postgres pg_dump -U gitlabex gitlabex > backup.sql
-
-# 备份GitLab数据
-docker-compose exec gitlab gitlab-backup create
-```
+- 🔗 **最大化复用GitLab能力** - 用户管理、团队协作、权限控制、项目管理完全依赖GitLab
+- 📚 **教育场景优化** - 针对教学流程的专业功能设计
+- 🎯 **简化操作流程** - 为教师和学生提供直观易用的界面
+- 🚀 **企业级安全** - 完整的OAuth认证和API安全机制
+- 🌐 **第三方集成** - 完善的第三方系统集成能力
 
 ## 项目结构
 
 ```
 gitlabex/
-├── backend/                 # Go后端代码
+├── backend/                 # 后端Go服务
 │   ├── cmd/                # 应用入口
-│   ├── internal/           # 内部模块
+│   ├── internal/           # 内部包
+│   │   ├── config/        # 配置管理
+│   │   ├── database/      # 数据库连接
+│   │   ├── handlers/      # HTTP处理器
+│   │   ├── middleware/    # 中间件
 │   │   ├── models/        # 数据模型
 │   │   ├── services/      # 业务逻辑
-│   │   ├── handlers/      # HTTP处理器
-│   │   └── config/        # 配置管理
-│   └── pkg/               # 公共包
-├── frontend/               # Vue前端代码
-│   ├── src/
-│   │   ├── components/    # 组件
-│   │   ├── views/         # 页面
+│   │   └── types/         # 类型定义
+│   ├── Dockerfile         # Docker构建文件
+│   ├── go.mod            # Go模块文件
+│   └── go.sum            # 依赖校验
+├── frontend/               # 前端Vue应用
+│   ├── src/               # 源代码
+│   │   ├── assets/        # 静态资源
+│   │   ├── components/    # Vue组件
+│   │   ├── composables/   # 组合式函数
+│   │   ├── router/        # 路由配置
+│   │   ├── services/      # API服务
 │   │   ├── stores/        # 状态管理
-│   │   └── services/      # API服务
-│   └── public/
+│   │   ├── types/         # 类型定义
+│   │   └── views/         # 页面视图
+│   ├── package.json       # npm配置
+│   └── vite.config.ts    # Vite配置
 ├── config/                 # 配置文件
-├── scripts/                # 部署脚本
+│   ├── config.yml         # 开发环境配置
+│   ├── config.prod.yml    # 生产环境配置
+│   ├── .env.dev           # 开发环境变量
+│   ├── .env.prod          # 生产环境变量
+│   └── init-postgres.sql  # 数据库初始化脚本
+├── scripts/                # 脚本文件
+│   ├── start-services-dev.sh  # 开发环境启动脚本
+│   ├── configure-oauth.sh    # OAuth配置脚本
+│   ├── init-test-data.sh     # 测试数据初始化
+│   └── build-images.sh       # Docker镜像构建
+├── design/                 # 原型设计
+│   ├── css/               # 样式文件
+│   ├── js/                # 交互脚本
+│   └── *.html            # 原型页面
 ├── docs/                   # 文档
-└── docker-compose.yml      # Docker编排文件
+│   ├── SOLUTION.md        # 需求规格说明书
+│   ├── SYNC_USER.md       # 第三方集成指南
+│   └── TEST_DATA.md       # 测试数据说明
+├── data/                   # 数据目录
+│   ├── logs/              # 日志文件
+│   └── uploads/           # 上传文件
+├── docker-compose.yml      # 生产环境配置
+├── docker-compose.dev.yml  # 开发环境配置
+├── README.md              # 项目说明
+└── .gitignore            # Git忽略文件
 ```
+
+## 功能特性
+
+### 核心功能
+- **社区首页** - 展示热门课题、快速访问和通知公告
+- **研究课题管理** - 基于GitLab项目的课题创建和管理
+- **话题讨论** - 基于GitLab Issues的话题讨论功能
+- **文档管理** - 自动识别和管理项目中的文档文件
+- **作业系统** - 完整的作业发布、提交和批改流程
+- **第三方系统集成** - 支持外部系统用户同步和OAuth登录
+
+### 用户角色
+- **管理员（Admin）** - 系统管理员，拥有所有权限
+- **教师（Teacher）** - 可以创建和管理课题、作业，查看所有学生提交
+- **研究员（Assistant）** - 可以参与课题开发，协助教学
+- **学生（Student）** - 可以参与课题，提交作业，查看个人统计
+
+### 权限系统
+- 基于GitLab权限的自动映射
+- 细粒度的资源级权限控制
+- 支持公开课题和专有课题
+
+## 快速开始
+
+### 环境要求
+- Go 1.23+
+- Node.js 18+
+- PostgreSQL 15+
+- Redis 7+
+- GitLab CE/EE
+- Docker 和 Docker Compose（推荐）
+
+### 开发环境快速启动
+1. **启动基础服务**
+```bash
+# 生成compose配置
+./scripts/configure-compose.sh
+# 使用Docker Compose启动开发环境基础服务
+docker-compose up -d
+```
+
+2. **配置GitLab OAuth应用**
+```bash
+# gitlab启动成功后运行配置向导配置Oauth以及system token
+./scripts/configure-oauth.sh
+```
+
+3. **启动后端服务**
+```bash
+cd backend
+go mod tidy
+go run cmd/main.go
+```
+
+4. **启动前端服务**
+```bash
+cd frontend
+pnpm install
+pnpm run dev
+```
+
+### 访问地址
+
+启动成功后访问：
+- **前端应用**: http://localhost:3000
+- **GitLab管理**: http://localhost:8081 (用户名: root, 密码: b75hZ0qcwLKD)
+- **MinIO控制台**: http://localhost:9001 (用户名: admin, 密码: password123)
+- **后端API**: http://localhost:8080
+
+### 环境配置
+
+#### 开发环境配置
+```bash
+
+# 编辑配置文件
+vim config/config.yml
+```
+
+#### 生产环境配置
+```bash
+
+# 编辑生产环境配置
+vim config/config.prod.yml
+```
+
+### 生产环境部署
+
+```bash
+# 构建镜像
+./scripts/build-images.sh
+
+# 推送到生产环境仓库
+#docker push gitlabex-backend:latest
+#docker push gitlabex-frontend:latest
+# 或者导出、导入镜像
+docker save -o gitlabex-backend:latest gitlabex-backend.tar
+docker save -o gitlabex-frontend:latest gitlabex-frontend.tar
+docker load -i gitlabex-backend.tar
+docker load -i gitlabex-frontend.tar
+
+
+# 生成compose配置
+./scripts/configure-compose.sh
+
+# 启动生产环境基础服务
+docker-compose  -f docker-compose.prod.yml up -d postgres redis minio gitlab
+
+# gitlab启动成功后运行配置向导配置Oauth以及system token
+./scripts/configure-oauth.sh
+
+# 启动后端/前端服务
+docker-compose -f docker-compose.prod.yml up -d backend frontend
+```
+
+## API文档
+
+### 认证端点
+- `GET /api/v1/auth/gitlab` - GitLab OAuth登录
+- `GET /api/v1/auth/gitlab/callback` - OAuth回调
+- `POST /api/v1/auth/refresh` - 刷新Token
+- `POST /api/v1/auth/logout` - 用户登出
+
+### 用户管理
+- `GET /api/v1/users/me` - 获取当前用户信息
+- `PUT /api/v1/users/me` - 更新当前用户信息
+- `GET /api/v1/users` - 获取用户列表
+- `GET /api/v1/users/:id` - 获取指定用户信息
+
+### 研究课题
+- `GET /api/v1/research-projects` - 获取课题列表
+- `POST /api/v1/research-projects` - 创建新课题
+- `GET /api/v1/research-projects/:id` - 获取课题详情
+- `PUT /api/v1/research-projects/:id` - 更新课题信息
+- `DELETE /api/v1/research-projects/:id` - 删除课题
+
+### 话题管理
+- `GET /api/v1/topics` - 获取话题列表
+- `POST /api/v1/topics` - 创建新话题
+- `GET /api/v1/topics/:id` - 获取话题详情
+- `PUT /api/v1/topics/:id` - 更新话题
+- `DELETE /api/v1/topics/:id` - 删除话题
+
+### 文档管理
+- `GET /api/v1/documents` - 获取文档列表
+- `GET /api/v1/documents/:id` - 获取文档详情
+- `POST /api/v1/documents` - 上传文档
+- `PUT /api/v1/documents/:id` - 更新文档
+- `DELETE /api/v1/documents/:id` - 删除文档
+- `GET /api/v1/documents/:id/download` - 下载文档
+
+### 作业管理
+- `GET /api/v1/homework` - 获取作业列表
+- `POST /api/v1/homework` - 创建作业
+- `GET /api/v1/homework/:id` - 获取作业详情
+- `PUT /api/v1/homework/:id` - 更新作业
+- `DELETE /api/v1/homework/:id` - 删除作业
+- `POST /api/v1/homework/:id/submissions` - 提交作业
+- `PUT /api/v1/submissions/:id` - 批改作业
+
+### 第三方系统集成
+- `POST /api/v1/sync/users` - 创建用户（需要第三方API密钥）
+- `GET /api/v1/sync/users/:username` - 获取用户信息（需要第三方API密钥）
+
+详细的第三方系统集成文档请查看：[SYNC_USER.md](docs/SYNC_USER.md)
+
+完整的API文档请查看项目源代码中的详细注释。
+
 
 ## 贡献指南
 
-1. Fork 项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 打开 Pull Request
+1. **Fork 项目**
+2. **创建功能分支** (`git checkout -b feature/amazing-feature`)
+3. **提交更改** (`git commit -m 'Add amazing feature'`)
+4. **推送到分支** (`git push origin feature/amazing-feature`)
+5. **创建Pull Request**
 
 ## 许可证
 
-本项目采用 MIT 许可证。详情请参见 [LICENSE](LICENSE) 文件。
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
 
+## 更新日志
+
+查看 [CHANGELOG.md](CHANGELOG.md) 了解版本更新历史。

@@ -1,0 +1,461 @@
+/* 文档列表页面样式 - 太空主题 */
+
+/* 文档管理容器 */
+.document-management {
+  margin-bottom: 30px;
+}
+
+/* 文档控制区域 */
+.document-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+  background-color: rgba(30, 41, 59, 0.8);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+  box-shadow: 0 0 10px rgba(100, 149, 237, 0.2);
+}
+
+.document-controls h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #7dd3fc;
+  text-shadow: 0 0 5px rgba(125, 211, 252, 0.3);
+}
+
+/* 搜索框样式 - 太空主题 */
+.search-box {
+  display: flex;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: #1e293b;
+}
+
+.search-box input {
+  padding: 8px 12px;
+  border: none;
+  background-color: transparent;
+  color: #e2e8f0;
+  width: 200px;
+}
+
+.search-box input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(56, 182, 255, 0.5);
+}
+
+.search-button {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.search-button:hover {
+  background-color: #2563eb;
+  box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
+}
+
+/* 筛选下拉菜单 - 太空主题 */
+.filter-dropdown {
+  position: relative;
+}
+
+.filter-button {
+  padding: 8px 15px;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.filter-button:hover {
+  background-color: #334155;
+  box-shadow: 0 0 5px rgba(100, 149, 237, 0.3);
+}
+
+.filter-options {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 10px;
+  margin-top: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+  display: none;
+}
+
+.filter-dropdown:hover .filter-options {
+  display: block;
+}
+
+.filter-options label {
+  display: block;
+  padding: 5px 0;
+  cursor: pointer;
+  color: #e2e8f0;
+}
+
+.filter-options input {
+  margin-right: 8px;
+}
+
+/* 上传文档按钮 - 太空主题 */
+#upload-document-button {
+  padding: 8px 15px;
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+#upload-document-button:hover {
+  background-color: #2563eb;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+}
+
+/* 文档列表样式 - 太空主题 */
+.document-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.document-item {
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 15px;
+  transition: all 0.3s;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.document-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 12px rgba(100, 149, 237, 0.3);
+  border-color: #3b82f6;
+}
+
+.document-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.document-icon {
+  font-size: 24px;
+  margin-right: 10px;
+  color: #7dd3fc;
+}
+
+.document-title {
+  margin: 0;
+  font-size: 18px;
+  color: #e2e8f0;
+  flex: 1;
+}
+
+.document-downloads {
+  font-size: 14px;
+  color: #7dd3fc;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.document-meta {
+  font-size: 14px;
+  color: #94a3b8;
+  margin-bottom: 10px;
+  padding-left: 34px; /* 对齐图标 */
+}
+
+.document-summary {
+  margin-bottom: 10px;
+  line-height: 1.5;
+  font-size: 14px;
+  color: #cbd5e1;
+  padding-left: 34px;
+}
+
+.document-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 34px;
+}
+
+.tag {
+  background-color: rgba(30, 64, 175, 0.3);
+  color: #7dd3fc;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #334155;
+}
+
+/* 分页控制 - 太空主题 */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 30px;
+  gap: 15px;
+}
+
+.pagination-button {
+  padding: 8px 15px;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.pagination-button:hover {
+  background-color: #334155;
+  box-shadow: 0 0 5px rgba(100, 149, 237, 0.3);
+}
+
+.pagination-info {
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+/* 文档分类侧边栏 - 太空主题 */
+.document-categories {
+  background-color: #1e293b;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid #334155;
+}
+
+.document-categories h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 16px;
+  color: #7dd3fc;
+}
+
+.category-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.category-list li {
+  margin-bottom: 8px;
+}
+
+.category-list a {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 4px;
+  color: #e2e8f0;
+  text-decoration: none;
+  transition: all 0.3s;
+}
+
+.category-list a:hover {
+  background-color: #334155;
+  box-shadow: 0 0 5px rgba(100, 149, 237, 0.2);
+}
+
+.category-list a.active {
+  background-color: #3b82f6;
+  color: white;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+}
+
+/* 活跃上传者侧边栏 - 太空主题 */
+.popular-uploaders {
+  background-color: #1e293b;
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid #334155;
+}
+
+.popular-uploaders h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 16px;
+  color: #7dd3fc;
+}
+
+.uploader-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.uploader-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 6px;
+  transition: all 0.3s;
+}
+
+.uploader-item:hover {
+  background-color: #334155;
+  box-shadow: 0 0 5px rgba(100, 149, 237, 0.2);
+}
+
+.uploader-item .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid #3b82f6;
+}
+
+.uploader-item .avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.uploader-info {
+  flex: 1;
+}
+
+.uploader-name {
+  font-weight: 500;
+  margin-bottom: 2px;
+  color: #e2e8f0;
+}
+
+.uploader-stats {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* 上传文档模态框 - 太空主题 */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 100;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(5px);
+}
+
+.modal-content {
+  background-color: #1e293b;
+  margin: 10% auto;
+  padding: 25px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  width: 500px;
+  max-width: 90%;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  position: relative;
+}
+
+.close-modal {
+  position: absolute;
+  right: 15px;
+  top: 15px;
+  font-size: 24px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: color 0.3s;
+}
+
+.close-modal:hover {
+  color: #e2e8f0;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  color: #7dd3fc;
+  margin-bottom: 20px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.form-group input[type="text"],
+.form-group textarea,
+.form-group input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  background-color: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-size: 14px;
+}
+
+.form-group textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-top: 10px;
+}
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.checkbox-group input {
+  margin-right: 8px;
+}
+
+.primary-button {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.primary-button:hover {
+  background-color: #2563eb;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+}

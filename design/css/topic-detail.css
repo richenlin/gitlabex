@@ -1,0 +1,366 @@
+/* 话题详情页样式 */
+
+.topic-detail-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* 话题头部 */
+.topic-header {
+  margin-bottom: 25px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.topic-title {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: var(--primary-color);
+  font-size: 1.8em;
+}
+
+.topic-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.topic-author-info {
+  display: flex;
+  align-items: center;
+}
+
+.topic-author-info img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.author-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.author-name {
+  font-weight: 500;
+}
+
+.post-time {
+  font-size: 0.85em;
+  color: var(--lighter-text);
+}
+
+.topic-stats {
+  display: flex;
+  gap: 15px;
+  color: var(--lighter-text);
+  font-size: 0.9em;
+}
+
+.topic-tags {
+  display: flex;
+  gap: 8px;
+}
+
+.topic-tag {
+  padding: 3px 10px;
+  border-radius: 15px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.question-tag {
+  background-color: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.discussion-tag {
+  background-color: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+}
+
+.announcement-tag {
+  background-color: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+}
+
+.help-tag {
+  background-color: rgba(155, 89, 182, 0.2);
+  color: #9b59b6;
+}
+
+.resource-tag {
+  background-color: rgba(241, 196, 15, 0.2);
+  color: #f1c40f;
+}
+
+/* 话题内容 */
+.topic-content {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 25px;
+  overflow: hidden;
+}
+
+.post-content {
+  padding: 25px;
+  line-height: 1.6;
+}
+
+.post-content p {
+  margin-bottom: 15px;
+}
+
+.post-content ol,
+.post-content ul {
+  margin-bottom: 15px;
+  padding-left: 20px;
+}
+
+.post-content li {
+  margin-bottom: 8px;
+}
+
+.post-image {
+  margin: 20px 0;
+}
+
+.post-image img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+.image-caption {
+  text-align: center;
+  font-size: 0.9em;
+  color: var(--lighter-text);
+  margin-top: 8px;
+}
+
+.post-attachments {
+  padding: 15px 25px;
+  background-color: var(--secondary-background);
+  border-top: 1px solid var(--border-color);
+}
+
+.post-attachments h4 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 1em;
+}
+
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: var(--card-background);
+  border-radius: 4px;
+}
+
+.attachment-icon {
+  margin-right: 10px;
+  font-size: 1.2em;
+  color: var(--accent-color);
+}
+
+.attachment-name {
+  flex-grow: 1;
+}
+
+.attachment-size {
+  color: var(--lighter-text);
+  font-size: 0.85em;
+  margin-right: 15px;
+}
+
+.small-button {
+  padding: 4px 10px;
+  font-size: 0.85em;
+}
+
+.post-actions {
+  padding: 15px 25px;
+  border-top: 1px solid var(--border-color);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 15px;
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--lighter-text);
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background-color: var(--secondary-background);
+  color: var(--accent-color);
+}
+
+.action-icon {
+  font-size: 1.1em;
+}
+
+/* 回复区域 */
+.replies-section {
+  margin-top: 30px;
+}
+
+.replies-title {
+  margin-bottom: 20px;
+  font-size: 1.3em;
+  color: var(--primary-color);
+}
+
+.reply-item {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  padding: 20px;
+}
+
+.reply-author {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.reply-author img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.author-tag {
+  background-color: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  margin-left: 10px;
+}
+
+.reply-content {
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.reply-content pre {
+  background-color: var(--secondary-background);
+  padding: 15px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 15px 0;
+}
+
+.reply-content code {
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.reply-actions {
+  display: flex;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+/* 回复表单 */
+.reply-form {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 25px;
+  margin-top: 30px;
+}
+
+.reply-form h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 1.2em;
+  color: var(--primary-color);
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group textarea {
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-background);
+  color: var(--text-color);
+  resize: vertical;
+  min-height: 120px;
+}
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(77, 121, 255, 0.2);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.form-tools {
+  display: flex;
+  gap: 10px;
+}
+
+.tool-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tool-btn:hover {
+  background-color: var(--secondary-background);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .topic-meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .form-tools {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

@@ -1,17 +1,17 @@
 # 构建阶段
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
-# 设置工作目录
-WORKDIR /app
-
-# 安装依赖
-RUN apk add --no-cache git
+# 安装必要的工具
+RUN apk add --no-cache git ca-certificates tzdata
 
 # 设置Go代理为中国镜像源
 ENV GOPROXY=https://goproxy.cn,direct
 ENV GOSUMDB=sum.golang.google.cn
 
-# 复制go.mod和go.sum
+# 设置工作目录
+WORKDIR /app
+
+# 复制 go mod 文件
 COPY go.mod go.sum ./
 
 # 下载依赖
@@ -21,23 +21,45 @@ RUN go mod download
 COPY . .
 
 # 构建应用
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/main.go
 
-# 生产阶段
-FROM alpine:latest
+# 运行阶段
+FROM alpine:3.19
 
+# 安装必要的运行时依赖
+RUN apk --no-cache add ca-certificates wget curl tzdata
+
+# 设置时区
+RUN cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
+# 创建非root用户
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S appuser -G appgroup
+
+# 设置工作目录
 WORKDIR /app
 
-# 从构建阶段复制二进制文件和启动脚本
+# 从构建阶段复制二进制文件
 COPY --from=builder /app/main .
-COPY --from=builder /app/start.sh .
 
-# 也直接复制一份以确保存在
-COPY start.sh ./start.sh
-RUN chmod +x start.sh
+# 创建必要的目录
+RUN mkdir -p uploads config logs && \
+    chown -R appuser:appgroup /app
+
+# 创建配置文件的默认位置
+RUN touch /app/config/config.yml && \
+    chown appuser:appgroup /app/config/config.yml
+
+# 切换到非root用户
+USER appuser
 
 # 暴露端口
-EXPOSE 8080
+EXPOSE 8080 9090
 
-# 使用启动脚本运行应用
-CMD ["./start.sh"] 
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+# 启动应用
+CMD ["./main"]

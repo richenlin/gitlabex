@@ -3,281 +3,480 @@ package main
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-
 	"gitlabex/internal/config"
+	"gitlabex/internal/database"
 	"gitlabex/internal/handlers"
 	"gitlabex/internal/middleware"
-	"gitlabex/internal/models"
 	"gitlabex/internal/services"
+
+	"github.com/gin-gonic/gin"
+	"github.com/rs/cors"
 )
 
 func main() {
-	// 加载配置
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+	// 初始化配置
+	cfg := config.Load()
+
+	// 设置Gin模式
+	if cfg.Server.Environment == "production" {
+		gin.SetMode(gin.ReleaseMode)
 	}
 
 	// 初始化数据库
-	db, err := initDatabase(cfg)
+	db, err := database.Initialize(cfg)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// 初始化服务
-	gitlabService, err := services.NewGitLabService(cfg, nil, db) // Redis传nil
+	// 初始化Redis服务
+	redisService, err := services.NewRedisService(cfg.Redis.Host, cfg.Redis.Port, cfg.Redis.Password)
 	if err != nil {
-		log.Printf("Failed to initialize GitLab service: %v", err)
-	}
-	permissionService := services.NewPermissionService(db, gitlabService)
-	userService := services.NewUserService(db, gitlabService, permissionService)
-
-	// 调试：输出GitLab配置
-	clientIDPreview := "empty"
-	secretPreview := "empty"
-
-	if cfg.GitLab.ClientID != "" {
-		clientIDPreview = cfg.GitLab.ClientID
-		if len(clientIDPreview) > 10 {
-			clientIDPreview = clientIDPreview[:10] + "..."
-		}
+		log.Printf("Warning: Failed to initialize Redis service: %v", err)
+		log.Println("Continuing without Redis caching...")
+		redisService = nil
 	}
 
-	if cfg.GitLab.ClientSecret != "" {
-		secretPreview = cfg.GitLab.ClientSecret
-		if len(secretPreview) > 10 {
-			secretPreview = secretPreview[:10] + "..."
-		}
+	// 初始化服务
+	gitlabService := services.NewGitLabService(cfg)
+
+	// 初始化MinIO服务
+	minioService, err := services.NewMinIOService(
+		cfg.MinIO.Endpoint,
+		cfg.MinIO.AccessKey,
+		cfg.MinIO.SecretKey,
+		cfg.MinIO.UseSSL,
+		cfg.MinIO.Region,
+	)
+	if err != nil {
+		log.Fatalf("Failed to initialize MinIO service: %v", err)
 	}
 
-	log.Printf("GitLab Configuration:")
-	log.Printf("  URL: %s", cfg.GitLab.URL)
-	log.Printf("  ClientID: %s", clientIDPreview)
-	log.Printf("  ClientSecret: %s", secretPreview)
+	userService := services.NewUserService(db, gitlabService, cfg)
+	researchService := services.NewResearchService(db, gitlabService)
+	topicService := services.NewTopicService(db, gitlabService)
+	documentService := services.NewDocumentService(db, gitlabService, minioService)
+	homeworkService := services.NewHomeworkService(db, gitlabService)
+	notificationService := services.NewNotificationService(db)
 
-	authService := services.NewAuthService(db, cfg)
-	projectService := services.NewProjectService(db, permissionService, gitlabService)
-	assignmentService := services.NewAssignmentService(db, permissionService, gitlabService, projectService)
+	// 初始化文档扫描服务
+	documentScannerService := services.NewDocumentScannerService(minioService, documentService)
 
-	log.Printf("GitLab Service Status:")
-	if gitlabService != nil {
-		log.Printf("  GitLab Client: connected")
-	} else {
-		log.Printf("  GitLab Client: not connected")
-	}
+	// 初始化活动服务
+	activityService := services.NewActivityService(db)
 
 	// 初始化处理器
-	userHandler := handlers.NewUserHandler(userService)
-	projectHandler := handlers.NewProjectHandler(projectService, permissionService)
-	assignmentHandler := handlers.NewAssignmentHandler(assignmentService, userService)
+	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
+	researchHandler := handlers.NewResearchHandler(researchService, userService, gitlabService)
+	topicHandler := handlers.NewTopicHandler(gitlabService, researchService, topicService)
+	syncHandler := handlers.NewSyncHandler(gitlabService)
+	activityHandler := handlers.NewActivityHandler(activityService)
+	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService, topicService)
 
-	// 初始化OAuth中间件
-	oauthMiddleware := middleware.NewOAuthMiddleware(cfg, db, userService)
+	// 创建Gin路由器
+	r := gin.Default()
 
-	// 创建一个简化的notification handler（临时方案）
-	notificationHandler := &handlers.NotificationHandler{}
+	// 配置CORS - 从配置文件读取AllowedOrigins
+	allowedOrigins := strings.Split(cfg.Security.CORSAllowedOrigins, ",")
+	allowedMethods := strings.Split(cfg.Security.CORSAllowedMethods, ",")
+	allowedHeaders := strings.Split(cfg.Security.CORSAllowedHeaders, ",")
 
-	// 初始化重构后的第三方API Handler
-	thirdPartyHandler := handlers.NewThirdPartyAPIHandler(
-		userHandler, projectHandler, assignmentHandler, notificationHandler,
-		oauthMiddleware, gitlabService)
+	corsConfig := cors.New(cors.Options{
+		AllowedOrigins:   allowedOrigins,
+		AllowedMethods:   allowedMethods,
+		AllowedHeaders:   allowedHeaders,
+		AllowCredentials: cfg.Security.CORSAllowCredentials,
+	})
 
-	// 设置Gin模式
-	gin.SetMode(cfg.Server.Mode)
+	// 使用CORS中间件
+	r.Use(func(c *gin.Context) {
+		corsConfig.HandlerFunc(c.Writer, c.Request)
+		c.Next()
+	})
 
-	// 初始化路由
-	router := setupRoutes(authService, permissionService,
-		userHandler, projectHandler, assignmentHandler, thirdPartyHandler)
-
-	// 启动服务器
-	addr := cfg.GetServerAddr()
-	log.Printf("Server starting on %s", addr)
-
-	srv := &http.Server{
-		Addr:           addr,
-		Handler:        router,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+	// 使用XSS防护中间件
+	// 跳过某些不需要XSS检查的路径
+	skipPaths := []string{
+		"/health",
+		"/api/v1/auth/gitlab",
+		"/api/v1/auth/gitlab/callback",
 	}
+	r.Use(middleware.XSSWhitelistMiddleware(skipPaths))
 
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Failed to start server: %v", err)
-	}
-}
-
-// initDatabase 初始化数据库连接
-func initDatabase(cfg *config.Config) (*gorm.DB, error) {
-	dsn := cfg.GetDatabaseDSN()
-
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
-	}
-
-	// 设置连接池参数
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database instance: %w", err)
-	}
-
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(time.Hour)
-
-	// 自动迁移数据库表
-	if err := autoMigrate(db); err != nil {
-		return nil, fmt.Errorf("failed to migrate database: %w", err)
-	}
-
-	log.Println("Database connected and migrated successfully")
-	return db, nil
-}
-
-// autoMigrate 自动迁移数据库表
-func autoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
-		// 用户管理相关
-		&models.User{},
-
-		// 课题管理相关
-		&models.Project{},
-		&models.ProjectMember{},
-
-		// 作业管理相关
-		&models.Assignment{},
-		&models.AssignmentSubmission{},
-		&models.Review{},
-
-		// 通知系统相关
-		&models.Notification{},
-
-		// 文档管理相关
-		&models.Document{},
-		&models.DocumentHistory{},
-		&models.DocumentAttachment{},
-
-		// 话题讨论相关
-		&models.Discussion{},
-		&models.DiscussionReply{},
-		&models.DiscussionView{},
-		&models.DiscussionLike{},
-	)
-}
-
-// setupRoutes 设置路由
-func setupRoutes(authService *services.AuthService, permissionService *services.PermissionService,
-	userHandler *handlers.UserHandler, projectHandler *handlers.ProjectHandler,
-	assignmentHandler *handlers.AssignmentHandler, thirdPartyHandler *handlers.ThirdPartyAPIHandler) *gin.Engine {
-	router := gin.New()
-
-	// 中间件
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
-	router.Use(corsMiddleware())
-
-	// API路由组
-	api := router.Group("/api")
-	{
-		// 添加调试中间件
-		api.Use(func(c *gin.Context) {
-			fmt.Printf("DEBUG: API request to %s\n", c.Request.URL.Path)
-			c.Next()
-		})
-
-		// 健康检查
-		api.GET("/health", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"status":    "ok",
-				"service":   "gitlabex-backend",
-				"version":   "1.0.0",
-				"timestamp": time.Now().Unix(),
-			})
-		})
-
-		// 测试路由
-		api.GET("/test", func(c *gin.Context) {
-			fmt.Printf("DEBUG: Test route called\n")
-			c.JSON(http.StatusOK, gin.H{
-				"message": "Test route works",
-			})
-		})
-
-		// 认证相关路由
-		auth := api.Group("/auth")
-		{
-			auth.GET("/gitlab", func(c *gin.Context) {
-				// 生成随机state以防止CSRF攻击
-				state := fmt.Sprintf("%d-%d", time.Now().UnixNano(), rand.Int63())
-
-				// 直接使用配置的外部URL生成OAuth URL
-				url := authService.GetGitLabOAuthURL(state)
-
-				// 直接重定向到GitLab OAuth页面
-				c.Redirect(302, url)
-			})
-			auth.GET("/gitlab/callback", authService.HandleGitLabCallback)
-			auth.POST("/gitlab/callback", authService.HandleGitLabCallback)
-			auth.POST("/logout", authService.Logout)
-		}
-
-		// 用户管理路由
-		users := api.Group("/users")
-		users.Use(authService.AuthMiddleware())    // JWT认证中间件
-		users.Use(permissionService.RequireAuth()) // 权限认证中间件
-		{
-			users.GET("/active", userHandler.ListActiveUsers)
-			users.GET("/current", userHandler.GetCurrentUser)
-			users.GET("/:id", userHandler.GetUserByID)
-			users.PUT("/current", userHandler.UpdateUser)
-			users.GET("/dashboard", userHandler.GetUserDashboard)
-			users.POST("/sync/:gitlab_id", userHandler.SyncUserFromGitLab)
-		}
-
-		// 课题管理路由（需要认证）
-		projectsAuth := api.Group("")
-		projectsAuth.Use(authService.AuthMiddleware())
-		projectsAuth.Use(permissionService.RequireAuth())
-		projectHandler.RegisterRoutes(projectsAuth, permissionService)
-
-		// 作业管理路由
-		assignmentHandler.RegisterRoutes(api)
-
-		// 第三方API路由
-		thirdPartyHandler.RegisterRoutes(api)
-	}
-
-	// 根路径
-	router.GET("/", func(c *gin.Context) {
+	// 健康检查端点
+	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"message": "GitLabEx API Server",
+			"status":  "ok",
+			"service": "gitlabex-backend",
 			"version": "1.0.0",
-			"status":  "running",
 		})
 	})
 
-	return router
-}
+	// API路由组
+	api := r.Group("/api/v1")
 
-// corsMiddleware CORS中间件
-func corsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization")
+	// 认证相关路由
+	auth := api.Group("/auth")
+	authHandler := handlers.NewAuthHandler(userService, gitlabService, cfg, redisService)
+	{
+		auth.GET("/gitlab", authHandler.GitLabAuth)
+		auth.GET("/gitlab/callback", authHandler.GitLabCallback)
+		auth.POST("/refresh", authHandler.RefreshToken)
+		auth.POST("/logout", middleware.RequireAuth(cfg), authHandler.Logout)
+	}
 
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
+	// 用户相关路由
+	users := api.Group("/users")
+	userHandler := handlers.NewUserHandler(userService)
+	users.Use(middleware.RequireAuth(cfg))
+	{
+		// 用户资料 - 不需要缓存（不是高频接口）
+		users.GET("/me", userHandler.GetCurrentUser)
+		users.PUT("/me", userHandler.UpdateCurrentUser)
+
+		// 个人资料页面统计 - 高频接口，添加缓存
+		users.GET("/me/stats", middleware.CacheMiddleware(redisService, 15*time.Minute, "cache:user_stats"), userHandler.GetUserPersonalStats)
+
+		// SSH密钥管理
+		users.GET("/me/ssh-keys", userHandler.GetSSHKeys)
+		users.POST("/me/ssh-keys", userHandler.AddSSHKey)
+		users.DELETE("/me/ssh-keys/:id", userHandler.DeleteSSHKey)
+
+		// 密码管理
+		users.PUT("/me/password", userHandler.ChangePassword)
+
+		// 通知获取 - 高频接口，添加缓存
+		users.GET("/me/notifications", middleware.CacheMiddleware(redisService, 2*time.Minute, "cache:notifications"), userHandler.GetNotifications)
+		users.POST("/me/notifications/:id/read", userHandler.MarkNotificationAsRead)
+		users.POST("/me/notifications/read-all", userHandler.MarkAllNotificationsAsRead)
+
+		// 用户列表
+		users.GET("", userHandler.GetUsers)
+		users.GET("/:id", userHandler.GetUserByID)
+	}
+
+	// 管理员用户管理路由
+	adminUsers := api.Group("/admin/users")
+	adminUserHandler := handlers.NewAdminUserHandler(userService)
+	adminUsers.Use(middleware.RequireAuth(cfg))
+	{
+		adminUsers.GET("", adminUserHandler.GetUsers)                              // 获取用户列表
+		adminUsers.POST("", adminUserHandler.CreateUser)                           // 创建用户
+		adminUsers.GET("/:id", adminUserHandler.GetUserDetails)                    // 获取用户详情
+		adminUsers.PUT("/:id", adminUserHandler.UpdateUser)                        // 更新用户信息
+		adminUsers.DELETE("/:id", adminUserHandler.DeleteUser)                     // 删除用户
+		adminUsers.PUT("/:id/roles", adminUserHandler.UpdateUserRoles)             // 更新用户角色
+		adminUsers.GET("/:id/project-roles", adminUserHandler.GetUserProjectRoles) // 获取用户项目角色
+		adminUsers.GET("/stats", adminUserHandler.GetUserStats)                    // 获取用户统计
+	}
+
+	// 权限检查相关路由
+	permissions := api.Group("/permissions")
+	permissions.Use(middleware.RequireAuth(cfg))
+	{
+		permissions.POST("/check", permissionHandler.CheckPermission)              // 通用权限检查
+		permissions.GET("/projects/:id", permissionHandler.CheckProjectPermission) // 项目权限检查
+		permissions.GET("/user", permissionHandler.GetUserPermissions)             // 获取用户权限列表
+	}
+
+	// 研究课题相关路由
+	research := api.Group("/research-projects")
+	{
+		// 公开访问的路由（游客可访问）
+		researchPublic := research.Group("")
+		researchPublic.Use(middleware.OptionalAuth(cfg))
+		{
+			researchPublic.GET("", researchHandler.GetResearchProjects) // 课题列表 - 游客可访问（不是高频接口，移除缓存）
 		}
 
-		c.Next()
+		// 热门项目 - 高频接口，添加缓存
+		research.GET("/hot", middleware.CacheMiddleware(redisService, 10*time.Minute, "cache:hot_projects"), researchHandler.GetHotProjects)
+
+		// 需要认证的路由
+		researchAuth := research.Group("")
+		researchAuth.Use(middleware.RequireAuth(cfg))
+		{
+			researchAuth.GET("/:id", researchHandler.GetResearchProjectByID) // 课题详情（不是高频接口，移除缓存）
+			researchAuth.POST("", researchHandler.CreateResearchProject)     // 创建课题不需要项目权限检查
+			researchAuth.PUT("/:id", researchHandler.UpdateResearchProject)
+			researchAuth.DELETE("/:id", researchHandler.DeleteResearchProject)
+		}
+
+		// 成员管理 - 需要认证
+		researchAuth.GET("/:id/members", researchHandler.GetMembers)
+		researchAuth.POST("/:id/members", researchHandler.AddMember)
+		researchAuth.DELETE("/:id/members/:userId", researchHandler.RemoveMember)
+
+		// 话题管理（基于GitLab Issues）- 需要认证
+		researchAuth.GET("/:id/issues", researchHandler.GetIssues)
+		researchAuth.POST("/:id/issues", researchHandler.CreateIssue)
+		researchAuth.GET("/:id/issues/:issueId", researchHandler.GetIssue)
+		researchAuth.GET("/:id/issues/:issueId/discussions", researchHandler.GetDiscussions)
+		researchAuth.POST("/:id/issues/:issueId/discussions", researchHandler.CreateDiscussion)
+
+		// GitLab IDE URL
+		researchAuth.GET("/:id/ide-url", researchHandler.GetGitLabIDEURL)
+
+		// 作业管理 - 需要认证
+		researchAuth.GET("/:id/homework", researchHandler.GetHomework)
+		researchAuth.POST("/:id/homework", researchHandler.CreateHomework)
+	}
+
+	// 话题相关路由
+	topics := api.Group("/topics")
+	{
+		// 热门话题 - 高频接口，添加缓存
+		topics.GET("/hot", middleware.CacheMiddleware(redisService, 10*time.Minute, "cache:hot_topics"), topicHandler.GetHotTopics)
+
+		// 公开访问的路由（游客可访问）
+		topicsPublic := topics.Group("")
+		topicsPublic.Use(middleware.OptionalAuth(cfg))
+		{
+			topicsPublic.GET("", topicHandler.GetTopics) // 话题列表 - 游客可访问（不是高频接口，移除缓存）
+		}
+
+		// 需要认证的路由
+		topicsAuth := topics.Group("")
+		topicsAuth.Use(middleware.RequireAuth(cfg))
+		{
+			topicsAuth.GET("/:id", topicHandler.GetTopicByID) // 话题详情 - 需要登录访问
+			topicsAuth.POST("", topicHandler.CreateTopic)
+			topicsAuth.POST("/:id/comments", topicHandler.CreateComment)
+			// 话题浏览点赞反对回复计数 - 高频接口，添加缓存
+			topicsAuth.POST("/:id/like", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topic_stats"), topicHandler.LikeTopic)
+			topicsAuth.DELETE("/:id/like", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topic_stats"), topicHandler.UnlikeTopic)
+			topicsAuth.POST("/:id/dislike", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topic_stats"), topicHandler.DislikeTopic)
+			topicsAuth.DELETE("/:id/dislike", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topic_stats"), topicHandler.UndislikeTopic)
+		}
+	}
+
+	// 文档相关路由
+	documents := api.Group("/documents")
+	documentHandler := handlers.NewDocumentHandler(documentService, gitlabService)
+	{
+		// 公开访问的路由（不需要认证）
+		documents.GET("", documentHandler.GetDocuments)                     // 文档列表（不是高频接口，移除缓存）
+		documents.GET("/:id", documentHandler.GetDocumentByID)              // 文档详情（不是高频接口，移除缓存）
+		documents.GET("/categories", documentHandler.GetDocumentCategories) // 文档分类（不是高频接口，移除缓存）
+		documents.GET("/search", documentHandler.SearchDocuments)           // 文档搜索
+
+		// 需要认证的路由
+		documentsAuth := documents.Group("")
+		documentsAuth.Use(middleware.RequireAuth(cfg))
+		{
+			documentsAuth.GET("/:id/download", documentHandler.DownloadDocument) // 文档下载 - 需要登录
+			documentsAuth.PUT("/:id", documentHandler.UpdateDocument)
+			documentsAuth.DELETE("/:id", documentHandler.DeleteDocument)
+			documentsAuth.GET("/stats", documentHandler.GetDocumentStats)
+			documentsAuth.POST("", documentHandler.UploadDocument)
+
+			// 自动文档索引路由 - 需要认证
+			documentsAuth.POST("/sync/:project_id", documentHandler.SyncDocuments)
+			documentsAuth.POST("/scan/:project_id", documentHandler.ScanProjectDocuments)
+
+			// 文档审核路由 - 需要认证
+			documentsAuth.POST("/:id/edit-request", documentHandler.SubmitEditRequest)
+			documentsAuth.GET("/edit-requests", documentHandler.GetEditRequests)
+			documentsAuth.PUT("/edit-requests/:id/review", documentHandler.ReviewEditRequest)
+			documentsAuth.GET("/:id/edit-history", documentHandler.GetDocumentEditHistory)
+
+			// 新增的文档管理路由 - 需要认证
+			documentsAuth.POST("/projects/:project_id/sync-to-minio", documentHandler.SyncProjectDocumentsToMinIO)
+			documentsAuth.POST("/standalone", documentHandler.CreateStandaloneDocument)
+			documentsAuth.GET("/categories/predefined", documentHandler.GetPredefinedCategories)
+			documentsAuth.GET("/:id/download-url", documentHandler.GetDocumentDownloadURL)
+			documentsAuth.PUT("/:id/with-permission-check", documentHandler.UpdateDocumentWithPermissionCheck)
+		}
+	}
+
+	// 文档管理路由（只保留查看和管理功能，移除手动扫描）
+	documentSync := api.Group("/document-management")
+	documentSync.Use(middleware.RequireAuth(cfg))
+	{
+		// 获取统计信息（管理员查看）
+		documentSync.GET("/stats", func(c *gin.Context) {
+			stats, err := documentScannerService.GetSyncStats()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "获取统计信息失败",
+					"details": err.Error(),
+				})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"message": "文档管理统计信息",
+				"data":    stats,
+			})
+		})
+
+		// MinIO文档管理（只读）
+		documentSync.GET("/minio/documents", func(c *gin.Context) {
+			prefix := c.Query("prefix")
+			recursive := c.Query("recursive") == "true"
+
+			documents, err := minioService.ListDocuments(prefix, recursive)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "列出MinIO文档失败",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"message": "MinIO文档列表",
+				"data":    documents,
+				"count":   len(documents),
+			})
+		})
+
+		documentSync.GET("/minio/stats", func(c *gin.Context) {
+			stats, err := minioService.GetDocumentStats()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":   "获取MinIO统计失败",
+					"details": err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"message": "MinIO存储统计",
+				"data":    stats,
+			})
+		})
+	}
+
+	// 作业相关路由
+	homework := api.Group("/homework")
+	homeworkHandler := handlers.NewHomeworkHandler(homeworkService, userService)
+	homework.Use(middleware.RequireAuth(cfg))
+	{
+		homework.GET("", homeworkHandler.GetHomeworkByProject)
+		homework.GET("/:id", homeworkHandler.GetHomeworkByID)
+		homework.POST("", homeworkHandler.CreateHomework)
+		homework.PUT("/:id", homeworkHandler.UpdateHomework)
+		homework.DELETE("/:id", homeworkHandler.DeleteHomework)
+		homework.GET("/:id/submissions", homeworkHandler.GetSubmissions)
+		homework.GET("/:id/my-submission", homeworkHandler.GetMySubmission)
+		homework.POST("/:id/submissions", homeworkHandler.SubmitHomework)
+		homework.PUT("/submissions/:id", homeworkHandler.GradeHomework)
+		homework.GET("/:id/grade-distribution", homeworkHandler.GetGradeDistribution)
+		homework.GET("/:id/export-grades", homeworkHandler.ExportGrades)
+		homework.GET("/:id/details", homeworkHandler.GetAssignmentDetails)
+		homework.POST("/bulk-create", homeworkHandler.BulkCreateHomework)
+		homework.PUT("/bulk-update-due-date", homeworkHandler.BulkUpdateDueDate)
+		homework.PUT("/:id/archive", homeworkHandler.ArchiveHomework)
+		homework.PUT("/:id/restore", homeworkHandler.RestoreHomework)
+		homework.GET("/user-submissions", homeworkHandler.GetUserSubmissions)
+		homework.GET("/pending-reviews", homeworkHandler.GetPendingReviews)
+		homework.GET("/student-progress", homeworkHandler.GetStudentProgress)
+		homework.GET("/homework-stats", homeworkHandler.GetHomeworkStats)
+		homework.GET("/generate-report", homeworkHandler.GenerateReport)
+
+		// 作业分支管理路由
+		homework.POST("/:id/create-branch", homeworkHandler.CreateStudentBranch)
+		homework.GET("/:id/branches", homeworkHandler.GetHomeworkBranches)
+		homework.POST("/:id/submit-to-branch", homeworkHandler.SubmitHomeworkToBranch)
+		homework.GET("/:id/branch-info", homeworkHandler.GetStudentBranchInfo)
+
+		// 获取作业提交的查看URL
+		homework.GET("/submissions/:submissionId/view-url", homeworkHandler.GetSubmissionViewURL)
+	}
+
+	// 作业模板相关路由
+	templates := api.Group("/assignment-templates")
+	templates.Use(middleware.RequireAuth(cfg))
+	{
+		templates.GET("", homeworkHandler.GetAssignmentTemplates)
+		templates.POST("", homeworkHandler.CreateAssignmentTemplate)
+		templates.GET("/:id", homeworkHandler.GetHomeworkByID)
+		templates.PUT("/:id", homeworkHandler.UpdateAssignmentTemplate)
+		templates.DELETE("/:id", homeworkHandler.DeleteAssignmentTemplate)
+		templates.POST("/:id/use", homeworkHandler.UseAssignmentTemplate)
+	}
+
+	// 通知相关路由
+	notifications := api.Group("/notifications")
+	notificationHandler := handlers.NewNotificationHandler(notificationService, userService)
+	notifications.Use(middleware.RequireAuth(cfg))
+	{
+		notifications.GET("", notificationHandler.GetNotifications)
+		notifications.GET("/unread-count", notificationHandler.GetUnreadCount)
+		notifications.PUT("/:id/read", notificationHandler.MarkAsRead)
+		notifications.PUT("/mark-all-read", notificationHandler.MarkAllAsRead)
+	}
+
+	// 公告相关路由
+	announcements := api.Group("/announcements")
+	announcements.Use(middleware.RequireAuth(cfg))
+	{
+		announcements.GET("", notificationHandler.GetAnnouncements)
+		announcements.POST("", notificationHandler.CreateAnnouncement)
+	}
+
+	// 活动相关路由
+	activities := api.Group("/activities")
+	{
+		// 公开访问的路由（游客可访问最近活动）
+		// 最新活动 - 高频接口，保留缓存
+		activities.GET("/recent", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:recent_activities"), activityHandler.GetRecentActivities)
+
+		// 需要认证的路由
+		activitiesAuth := activities.Group("")
+		activitiesAuth.Use(middleware.RequireAuth(cfg))
+		{
+			activitiesAuth.GET("/users/:userID", activityHandler.GetUserActivities) // 用户活动（不是高频接口，移除缓存）
+		}
+	}
+
+	// GitLab集成相关路由
+	gitlab := api.Group("/gitlab")
+	gitlab.Use(middleware.RequireAuth(cfg))
+	{
+		gitlab.GET("/config", gitlabHandler.GetGitLabConfig)
+		gitlab.GET("/user", gitlabHandler.GetCurrentUser)
+		gitlab.GET("/projects", gitlabHandler.GetProjects)
+		gitlab.GET("/projects/:id", gitlabHandler.GetProject)
+		gitlab.POST("/projects", gitlabHandler.CreateProject)
+		gitlab.GET("/projects/:id/branches", gitlabHandler.GetBranches)
+		gitlab.POST("/projects/:id/branches", gitlabHandler.CreateBranch)
+		gitlab.GET("/projects/:id/files/*path", gitlabHandler.GetFileContent)
+		gitlab.POST("/projects/:id/files/*path", gitlabHandler.CreateFile)
+		gitlab.PUT("/projects/:id/files/*path", gitlabHandler.UpdateFile)
+		gitlab.GET("/projects/:id/commits", gitlabHandler.GetCommits)
+		gitlab.GET("/projects/:id/issues", gitlabHandler.GetIssues)
+		gitlab.POST("/projects/:id/issues", gitlabHandler.CreateIssue)
+		gitlab.GET("/projects/:id/merge-requests", gitlabHandler.GetMergeRequests)
+		gitlab.GET("/projects/:id/tree", gitlabHandler.GetRepositoryTree)
+		gitlab.GET("/projects/:id/search", gitlabHandler.SearchFiles)
+		gitlab.GET("/projects/:id/validate", gitlabHandler.ValidateRepositoryAccess)
+	}
+
+	// 第三方系统同步API路由 - 精简版本，只保留THIRD_PARTY_API_KEY
+	sync := api.Group("/sync")
+	sync.Use(middleware.RequireAPIKey())
+	{
+		// 核心两个接口
+		sync.POST("/users", syncHandler.CreateUser)       // 创建用户
+		sync.GET("/users/:username", syncHandler.GetUser) // 获取用户信息
+		// 用户登录通过标准GitLab OAuth流程完成，无需专门API
+	}
+
+	// 启动服务器
+	port := cfg.Server.Port
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Server starting on %s:%s", cfg.Server.Host, port)
+	log.Printf("GitLab URL: %s", cfg.GitLab.URL)
+
+	address := fmt.Sprintf("%s:%s", cfg.Server.Host, port)
+	if err := r.Run(address); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
 	}
 }

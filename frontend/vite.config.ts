@@ -1,19 +1,17 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import path from 'path'
+import { resolve } from 'path'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': resolve(__dirname, 'src'),
     },
   },
   server: {
+    host: '0.0.0.0', // 允许外部访问
     port: 3000,
-  },
-  define: {
-    __APP_ENV__: JSON.stringify(process.env.NODE_ENV),
+    // 移除代理配置，前端直接调用后端API
   },
 })

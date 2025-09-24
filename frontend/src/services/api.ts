@@ -1,486 +1,644 @@
 import axios from 'axios'
+import type { AxiosInstance, AxiosResponse, AxiosError } from 'axios'
+import { ElMessage } from 'element-plus'
+import { useUserStore } from '@/stores/user'
+import type { 
+  User, 
+  Scene, 
+  Topic, 
+  Document, 
+  Homework, 
+  HomeworkSubmission, 
+  Notification,
+  ApiResponse,
+  PaginatedResponse
+} from '@/types'
 
-// 创建axios实例
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
-  timeout: 15000,
+// 获取动态配置
+const getApiBaseUrl = (): string => {
+  // 尝试从全局配置获取API地址
+  const globalConfig = (window as any)._VBEN_ADMIN_PRO_APP_CONF_
+  if (globalConfig && globalConfig.VITE_GLOB_API_URL) {
+    return globalConfig.VITE_GLOB_API_URL + '/v1'
+  }
+  
+  // 回退到环境变量或默认值
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1'
+}
+
+// 创建 axios 实例
+const api: AxiosInstance = axios.create({
+  baseURL: getApiBaseUrl(),
+  timeout: 10000,
   headers: {
-    'Content-Type': 'application/json',
-  },
+    'Content-Type': 'application/json'
+  }
 })
 
 // 请求拦截器
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('authToken')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    const userStore = useUserStore()
+    console.log('API请求拦截器 - URL:', config.url)
+    console.log('API请求拦截器 - Token:', userStore.token)
+    console.log('API请求拦截器 - User:', userStore.user)
+    
+    if (userStore.token) {
+      config.headers.Authorization = `Bearer ${userStore.token}`
+      console.log('API请求拦截器 - 已添加Authorization头')
+    } else {
+      console.warn('API请求拦截器 - 没有token，无法添加Authorization头')
     }
+    
+    console.log('API请求拦截器 - 最终headers:', config.headers)
     return config
   },
-  (error) => {
+  (error: AxiosError) => {
     return Promise.reject(error)
   }
 )
+
+// 获取错误消息的辅助函数
+const getErrorMessage = (error: AxiosError<any>): string => {
+  // 优先使用后端返回的错误消息
+  if (error.response?.data) {
+    // 尝试不同的错误消息字段
+    return error.response.data.message || 
+           error.response.data.error || 
+           error.response.data.msg ||
+           error.response.data.detail ||
+           `请求失败 (${error.response.status})`
+  }
+  
+  // 网络错误或其他错误
+  if (error.message) {
+    return error.message
+  }
+  
+  return '请求失败'
+}
 
 // 响应拦截器
 api.interceptors.response.use(
-  (response) => {
+  (response: AxiosResponse<any>) => {
+    // 对于blob响应（下载请求），返回完整的response对象
+    if (response.config.responseType === 'blob') {
+      return response
+    }
     return response.data
   },
-  (error) => {
-    if (error.response) {
-      switch (error.response.status) {
-        case 401:
-          // 未授权，清除token并跳转到登录页
-          localStorage.removeItem('authToken')
-          window.location.href = '/login'
-          break
-        case 403:
-          // 权限不足
-          console.error('权限不足')
-          break
-        case 404:
-          // 资源不存在
-          console.error('请求的资源不存在')
-          break
-        case 500:
-          // 服务器错误
-          console.error('服务器错误')
-          break
-        default:
-          console.error('请求失败:', error.response.data)
+  (error: AxiosError<ApiResponse<any>>) => {
+    const message = getErrorMessage(error)
+    
+    if (error.response?.status === 401) {
+      const userStore = useUserStore()
+      const url = error.config?.url || ''
+      
+      // 只有在用户已登录的情况下才自动退出登录
+      if (userStore.isLoggedIn) {
+        // 如果是GitLab相关的API调用失败，可能是GitLab token问题，不要自动退出登录
+        if (url.includes('/gitlab/')) {
+          console.warn('GitLab API authentication failed, but keeping user logged in:', url)
+          // 不退出登录，只记录警告，但显示具体错误信息
+          ElMessage.error(message)
+        } else {
+          // 其他API的401错误，说明JWT token真的过期了，需要退出登录
+          userStore.logout()
+          ElMessage.error('登录已过期，请重新登录')
+        }
+      } else {
+        // 用户未登录时，显示具体的认证错误信息
+        ElMessage.error(message)
       }
+    } else if (error.response?.status === 403) {
+      // 显示后端返回的具体权限错误信息
+      ElMessage.error(message)
+    } else if (error.response?.status === 404) {
+      // 404错误记录日志，但不自动显示提示（由组件决定是否显示）
+      console.warn('Resource not found:', error.config?.url, message)
+    } else if (error.response?.status === 400) {
+      // 400错误通常是参数错误，显示具体错误信息
+      ElMessage.error(message)
+    } else if (error.response && error.response.status >= 500) {
+      // 服务器错误显示具体错误信息
+      ElMessage.error(message)
+    } else if (error.response) {
+      // 其他HTTP错误，显示具体错误信息
+      ElMessage.error(message)
+    } else {
+      // 网络错误等
+      ElMessage.error(message)
     }
+    
     return Promise.reject(error)
   }
 )
 
-// API接口定义
-export interface User {
-  id: number
-  gitlab_id: number
-  username: string
-  email: string
-  name: string
-  avatar: string
-  role: number
-  last_sync_at: string
-  is_active: boolean
-}
-
-export interface UserDashboard {
-  user: User
-  stats: {
-    documents_count: number
-    recent_activities: Array<{
-      type: string
-      document_id: number
-      filename: string
-      updated_at: string
-    }>
-    project_memberships: Array<{
-      project_id: number
-      project_name: string
-      role: string
-      web_url: string
-    }>
-  }
-}
-
-export interface Document {
-  document_id: number
-  editor_url: string
-  message: string
-}
-
-export interface DocumentConfig {
-  document: {
-    fileType: string
-    key: string
-    title: string
-    url: string
-    permissions: {
-      comment: boolean
-      download: boolean
-      edit: boolean
-      fillForms: boolean
-      modifyFilter: boolean
-      print: boolean
-      review: boolean
-    }
-  }
-  editor: {
-    callbackUrl: string
-    lang: string
-    mode: string
-    user: {
-      id: string
-      name: string
-    }
-  }
-  callbackUrl: string
-  token: string
-  type: string
-  width: string
-  height: string
-  embedded: {
-    saveUrl: string
-    shareUrl: string
-    toolbarDocked: string
-  }
-}
-
-// API服务类
-export class ApiService {
+// 认证相关 API
+export const authService = {
+  // 获取GitLab OAuth授权URL
+  getGitLabAuthUrl: () =>
+    api.get('/auth/gitlab'),
   
-  // 健康检查
-  static async healthCheck(): Promise<any> {
-    const response = await api.get('/api/health')
-    return response
-  }
-
-  // 用户相关API
-  static async getCurrentUser(): Promise<User> {
-    const response = await api.get('/api/users/current')
-    // 处理后端返回的数据结构 {"data": {"user": {...}}}
-    return response.data.user
-  }
-
-  static async getActiveUsers(): Promise<{ data: User[], total: number }> {
-    const response = await api.get('/api/users/active')
-    return response.data
-  }
-
-  static async getUserDashboard(): Promise<UserDashboard> {
-    const response = await api.get('/api/users/current')
-    return response.data
-  }
-
-  static async getUserById(id: number): Promise<User> {
-    const response = await api.get(`/api/users/${id}`)
-    return response.data.data
-  }
-
-  static async updateUserProfile(userData: Partial<User>): Promise<User> {
-    const response = await api.put('/api/users/me/profile', userData)
-    return response.data
-  }
-
-  // 获取保存的测试用户资料
-
-
-  // 认证相关API
-  static async getGitLabOAuthUrl(): Promise<{ url: string }> {
-    return await api.get('/api/auth/gitlab')
-  }
-
-  static async handleOAuthCallback(code: string, state?: string): Promise<{ token: string, user: User }> {
-    const response = await api.post('/api/auth/gitlab/callback', { code, state })
-    return response.data
-  }
-
-  static async logout(): Promise<void> {
-    await api.post('/api/auth/logout')
-  }
-
-  // 文档相关API
-  static async createTestDocument(): Promise<Document> {
-    const response = await api.get('/api/documents/test')
-    return response.data
-  }
-
-  static async getDocumentConfig(id: number): Promise<DocumentConfig> {
-    const response = await api.get(`/api/documents/${id}/config`)
-    return response.data
-  }
-
-  static async uploadDocument(file: File, mode: string = 'edit'): Promise<Document> {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('mode', mode)
-    
-    const response = await api.post('/api/documents/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
-    return response.data
-  }
-
-  // 获取文档编辑器URL
-  static getDocumentEditorUrl(id: number): string {
-    return `/api/documents/${id}/editor`
-  }
-
-  // 获取文档内容URL
-  static getDocumentContentUrl(id: number): string {
-    return `/api/documents/${id}/content`
-  }
-
-  // 学习进度跟踪相关API
-  static async getLearningProgressUsers(): Promise<any> {
-    const response = await api.get('/api/learning-progress/users')
-    return response.data.data
-  }
-
-  static async getLearningProgress(userId: number): Promise<any> {
-    const response = await api.get(`/api/learning-progress/user/${userId}`)
-    return response.data.data
-  }
-
-  // 通知系统相关API
-  static async getNotifications(params?: { type?: string; read?: string }): Promise<any> {
-    const response = await api.get('/api/notifications', { params })
-    return response.data
-  }
-
-  static async markNotificationAsRead(notificationId: number): Promise<any> {
-    const response = await api.put(`/api/notifications/${notificationId}/read`)
-    return response.data
-  }
-
-  static async markAllNotificationsAsRead(): Promise<any> {
-    const response = await api.put('/api/notifications/read-all')
-    return response.data
-  }
-
-  static async deleteNotification(notificationId: number): Promise<any> {
-    const response = await api.delete(`/api/notifications/${notificationId}`)
-    return response.data
-  }
-
-  static async deleteNotifications(ids: number[]): Promise<any> {
-    const response = await api.delete('/api/notifications', { data: { ids } })
-    return response.data
-  }
-
-  // 教育报表相关API
-  static async getEducationReports(params?: { time_range?: string; class?: string }): Promise<any> {
-    const response = await api.get('/api/education-reports', { params })
-    return response.data.data
-  }
-
-  static async getEducationReportClasses(): Promise<any> {
-    const response = await api.get('/api/education-reports/classes')
-    return response.data.data
-  }
-
-  static async exportEducationReport(params?: { format?: string; time_range?: string; class?: string }): Promise<any> {
-    const response = await api.post('/api/education-reports/export', null, { params })
-    return response.data
-  }
-
-  // 分析统计API
-  static async getAnalyticsOverview(): Promise<any> {
-    const response = await api.get('/api/analytics/overview')
-    return response.data
-  }
-
-  static async getAnalyticsProjectStats(): Promise<any> {
-    const response = await api.get('/api/analytics/project-stats')
-    return response.data
-  }
-
-  static async getStudentStats(): Promise<any> {
-    const response = await api.get('/api/analytics/student-stats')
-    return response.data
-  }
-
-  static async getAssignmentStats(): Promise<any> {
-    const response = await api.get('/api/analytics/assignment-stats')
-    return response.data
-  }
-
-  static async getSubmissionTrend(params?: { start_date?: Date; end_date?: Date }): Promise<any> {
-    const response = await api.get('/api/analytics/submission-trend', { params })
-    return response.data
-  }
-
-  static async getProjectDistribution(): Promise<any> {
-    const response = await api.get('/api/analytics/project-distribution')
-    return response.data
-  }
-
-  static async getGradeDistribution(): Promise<any> {
-    const response = await api.get('/api/analytics/grade-distribution')
-    return response.data
-  }
-
-  static async getActivityStats(): Promise<any> {
-    const response = await api.get('/api/analytics/activity-stats')
-    return response.data
-  }
-
-  static async getDashboardStats(): Promise<any> {
-    const response = await api.get('/api/analytics/dashboard-stats')
-    return response.data
-  }
-
-  static async getRecentActivities(params?: { limit?: number }): Promise<any> {
-    const response = await api.get('/api/analytics/recent-activities', { params })
-    return response.data
-  }
-
-  // 话题讨论相关API
-  static async getDiscussions(params?: { 
-    project_id?: number; 
-    page?: number; 
-    page_size?: number; 
-    category?: string; 
-    status?: string 
-  }): Promise<any> {
-    const response = await api.get('/api/discussions', { params })
-    return response.data
-  }
-
-  static async getDiscussionDetail(id: number): Promise<any> {
-    const response = await api.get(`/api/discussions/${id}`)
-    return response.data
-  }
-
-  static async createDiscussion(data: {
-    title: string;
-    content: string;
-    project_id: number;
-    category?: string;
-    tags?: string;
-    is_public?: boolean;
-  }): Promise<any> {
-    const response = await api.post('/api/discussions', data)
-    return response.data
-  }
-
-  static async updateDiscussion(id: number, data: {
-    title?: string;
-    content?: string;
-    category?: string;
-    tags?: string;
-    is_public?: boolean;
-  }): Promise<any> {
-    const response = await api.put(`/api/discussions/${id}`, data)
-    return response.data
-  }
-
-  static async deleteDiscussion(id: number): Promise<any> {
-    const response = await api.delete(`/api/discussions/${id}`)
-    return response.data
-  }
-
-  static async createReply(discussionId: number, data: {
-    content: string;
-    parent_reply_id?: number;
-  }): Promise<any> {
-    const response = await api.post(`/api/discussions/${discussionId}/replies`, data)
-    return response.data
-  }
-
-  static async likeDiscussion(id: number): Promise<any> {
-    const response = await api.post(`/api/discussions/${id}/like`)
-    return response.data
-  }
-
-  static async unlikeDiscussion(id: number): Promise<any> {
-    const response = await api.delete(`/api/discussions/${id}/like`)
-    return response.data
-  }
-
-  static async pinDiscussion(id: number): Promise<any> {
-    const response = await api.post(`/api/discussions/${id}/pin`)
-    return response.data
-  }
-
-  static async getDiscussionCategories(): Promise<any> {
-    const response = await api.get('/api/discussions/categories')
-    return response.data
-  }
-
-  static async syncDiscussionsFromGitLab(projectId: number): Promise<any> {
-    const response = await api.post(`/api/discussions/sync/${projectId}`)
-    return response.data
-  }
-
-  static async getProjects(params?: { 
-    class_id?: number; 
-    page?: number; 
-    page_size?: number; 
-    status?: string; 
-    type?: string 
-  }): Promise<any> {
-    const response = await api.get('/api/projects', { params })
-    // 响应拦截器返回response.data，如果后端返回{data: [...], total: number}
-    // 那么这里的response就是{data: [...], total: number}
-    // 如果后端直接返回数组，那么这里的response就是数组
-    console.log('ApiService.getProjects response:', response)
-    return response
-  }
-
-  static async getProject(id: number): Promise<any> {
-    const response = await api.get(`/api/projects/${id}`)
-    return response.data
-  }
-
-  static async createProject(data: {
-    name: string;
-    description: string;
-    type: string;
-    class_id?: number;
-    start_date: string;
-    end_date: string;
-    max_members?: number;
-    wiki_enabled?: boolean;
-    issues_enabled?: boolean;
-    mr_enabled?: boolean;
-  }): Promise<any> {
-    const response = await api.post('/api/projects', data)
-    return response.data
-  }
-
-  static async updateProject(id: number, data: {
-    name?: string;
-    description?: string;
-    status?: string;
-    start_date?: string;
-    end_date?: string;
-  }): Promise<any> {
-    const response = await api.put(`/api/projects/${id}`, data)
-    return response.data
-  }
-
-  static async deleteProject(id: number): Promise<any> {
-    const response = await api.delete(`/api/projects/${id}`)
-    return response.data
-  }
-
-  static async joinProject(code: string): Promise<any> {
-    const response = await api.post('/api/projects/join', { code })
-    return response.data
-  }
-
-  static async getProjectMembers(id: number): Promise<any> {
-    const response = await api.get(`/api/projects/${id}/members`)
-    return response.data
-  }
-
-  static async addProjectMember(id: number, userId: number): Promise<any> {
-    const response = await api.post(`/api/projects/${id}/members`, { user_id: userId })
-    return response.data
-  }
-
-  static async removeProjectMember(id: number, userId: number): Promise<any> {
-    const response = await api.delete(`/api/projects/${id}/members/${userId}`)
-    return response.data
-  }
-
-  static async getProjectStats(id: number): Promise<any> {
-    const response = await api.get(`/api/projects/${id}/stats`)
-    return response.data
-  }
-
-  static async getProjectAssignments(id: number): Promise<any> {
-    const response = await api.get(`/api/projects/${id}/assignments`)
-    return response.data
-  }
+  // GitLab OAuth回调处理
+  gitLabCallback: (code: string, state: string) =>
+    api.get('/auth/gitlab/callback', { params: { code, state } }),
+  
+  logout: () =>
+    api.post('/auth/logout'),
+  
+  getCurrentUser: () =>
+    api.get('/users/me'),
+  
+  updateProfile: (data: Partial<User>) =>
+    api.put('/users/me', data),
+  
+  getUserStats: () =>
+    api.get('/users/me/stats'),
+  
+  // SSH密钥管理
+  getSSHKeys: () =>
+    api.get('/users/me/ssh-keys'),
+  
+  addSSHKey: (data: { title: string; key: string }) =>
+    api.post('/users/me/ssh-keys', data),
+  
+  deleteSSHKey: (id: number) =>
+    api.delete(`/users/me/ssh-keys/${id}`),
+  
+  // 密码管理
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    api.put('/users/me/password', data),
+  
+  // 通知管理
+  getNotifications: (params?: { page?: number; per_page?: number }) =>
+    api.get('/users/me/notifications', { params }),
+  
+  markNotificationAsRead: (id: string) =>
+    api.post(`/users/me/notifications/${id}/read`),
+  
+  markAllNotificationsAsRead: () =>
+    api.post('/users/me/notifications/read-all'),
+  
+  refreshToken: () =>
+    api.post('/auth/refresh')
 }
 
-export default api 
+// 研究课题相关 API
+export const researchService = {
+  getProjects: (params?: {
+    page?: number
+    pageSize?: number
+    search?: string
+    visibility?: string
+    ownerId?: string
+  }) =>
+    api.get('/research-projects', { params }),
+  
+  getHotProjects: (limit?: number) =>
+    api.get('/research-projects/hot', { params: { limit } }),
+  
+  getProject: (id: string) =>
+    api.get(`/research-projects/${id}`),
+  
+  createProject: (data: Partial<Scene>) =>
+    api.post('/research-projects', data),
+  
+  updateProject: (id: string, data: Partial<Scene>) =>
+    api.put(`/research-projects/${id}`, data),
+  
+  deleteProject: (id: string) =>
+    api.delete(`/research-projects/${id}`),
+  
+  getMembers: (id: string) =>
+    api.get(`/research-projects/${id}/members`),
+  
+  addMember: (id: string, memberData: { username: string; access_level: number }) =>
+    api.post(`/research-projects/${id}/members`, memberData),
+  
+  removeMember: (id: string, userId: string) =>
+    api.delete(`/research-projects/${id}/members/${userId}`),
+  
+  // Issues (话题) 管理
+  getIssues: (id: string) =>
+    api.get(`/research-projects/${id}/issues`),
+  
+  createIssue: (id: string, data: Partial<Topic>) =>
+    api.post(`/research-projects/${id}/issues`, data),
+  
+  getIssue: (projectId: string, issueId: string) =>
+    api.get(`/research-projects/${projectId}/issues/${issueId}`),
+  
+  getDiscussions: (projectId: string, issueId: string) =>
+    api.get(`/research-projects/${projectId}/issues/${issueId}/discussions`),
+  
+  createDiscussion: (projectId: string, issueId: string, body: string) =>
+    api.post(`/research-projects/${projectId}/issues/${issueId}/discussions`, { body }),
+  
+  // 获取GitLab IDE URL
+  getGitLabIDEURL: (projectId: string, filePath: string, branch?: string) =>
+    api.get(`/research-projects/${projectId}/ide-url`, {
+      params: { file: filePath, branch: branch || 'main' }
+    })
+}
+
+// 话题相关 API  
+export const topicService = {
+  getTopics: (params?: {
+    page?: number
+    pageSize?: number
+    limit?: number
+    projectId?: string
+    project_id?: string
+    authorId?: string
+    search?: string
+    labels?: string[]
+  }) =>
+    api.get('/topics', { params }),
+  
+  getHotTopics: (limit?: number) =>
+    api.get('/topics/hot', { params: { limit } }),
+  
+  getTopic: (id: string, projectId: string) =>
+    api.get(`/topics/${id}?project_id=${projectId}`),
+  
+  createTopic: (data: Partial<Topic>) =>
+    api.post('/topics', data),
+  
+  updateTopic: (id: string, data: Partial<Topic>) =>
+    api.put(`/topics/${id}`, data),
+  
+  deleteTopic: (id: string) =>
+    api.delete(`/topics/${id}`),
+  
+  likeTopic: (id: string, projectId: string) =>
+    api.post(`/topics/${id}/like?project_id=${projectId}`),
+  
+  unlikeTopic: (id: string, projectId: string) =>
+    api.delete(`/topics/${id}/like?project_id=${projectId}`),
+  
+  dislikeTopic: (id: string, projectId: string) =>
+    api.post(`/topics/${id}/dislike?project_id=${projectId}`),
+  
+  undislikeTopic: (id: string, projectId: string) =>
+    api.delete(`/topics/${id}/dislike?project_id=${projectId}`),
+  
+  getComments: (id: string, projectId: string) =>
+    api.get(`/topics/${id}/comments?project_id=${projectId}`),
+  
+  createComment: (id: string, content: string, projectId: string, parentId?: string) =>
+    api.post(`/topics/${id}/comments?project_id=${projectId}`, { content, parentId })
+}
+
+// 文档相关 API
+export const documentService = {
+  getDocuments: (params?: {
+    page?: number
+    pageSize?: number
+    projectId?: string
+    homeworkId?: string
+    category?: string
+    search?: string
+    status?: string
+    uploaderId?: string
+  }) =>
+    api.get('/documents', { params }),
+  
+  getDocument: (id: string) =>
+    api.get(`/documents/${id}`),
+  
+  createDocument: (formData: FormData) =>
+    api.post('/documents', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    }),
+  
+  createStandaloneDocument: (formData: FormData) =>
+    api.post('/documents/standalone', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    }),
+  
+  updateDocument: (id: string, data: Partial<Document>) =>
+    api.put(`/documents/${id}/with-permission-check`, data),
+  
+  deleteDocument: (id: string) =>
+    api.delete(`/documents/${id}`),
+  
+  downloadDocument: (id: string) =>
+    api.get(`/documents/${id}/download`, { responseType: 'blob' }),
+  
+  getDocumentEditHistory: (id: string) =>
+    api.get(`/documents/${id}/edit-history`),
+  
+  getCategories: () =>
+    api.get('/documents/categories'),
+  
+  searchDocuments: (query: string) =>
+    api.get('/documents/search', { params: { q: query } }),
+  
+  getStats: () =>
+    api.get('/documents/stats'),
+  
+  syncDocuments: (projectId: string) =>
+    api.post(`/documents/sync/${projectId}`),
+  
+  scanProjectDocuments: (projectId: string) =>
+    api.post(`/documents/scan/${projectId}`),
+  
+  submitEditRequest: (documentId: string, data: {
+    proposed_changes: any
+    reason: string
+  }) =>
+    api.post(`/documents/${documentId}/edit-request`, data),
+  
+  getEditRequests: (params?: {
+    document_id?: string
+    status?: string
+  }) =>
+    api.get('/documents/edit-requests', { params }),
+  
+  reviewEditRequest: (requestId: string, data: {
+    approved: boolean
+    comments: string
+  }) =>
+    api.put(`/documents/edit-requests/${requestId}/review`, data),
+  
+  getMyEditRequests: (documentId: string) =>
+    api.get(`/documents/${documentId}/my-edit-requests`)
+}
+
+// 作业相关 API
+export const homeworkService = {
+  getHomeworks: (params?: {
+    page?: number
+    pageSize?: number
+    projectId?: string
+    authorId?: string
+    status?: string
+  }) =>
+    api.get('/homework', { params }),
+  
+  getHomework: (id: string) =>
+    api.get(`/homework/${id}`),
+  
+  getHomeworkById: (id: string) =>
+    api.get(`/homework/${id}`),
+  
+  createHomework: (data: Partial<Homework>) =>
+    api.post('/homework', data),
+  
+  updateHomework: (id: string, data: Partial<Homework>) =>
+    api.put(`/homework/${id}`, data),
+  
+  deleteHomework: (id: string) =>
+    api.delete(`/homework/${id}`),
+  
+  getSubmissions: (homeworkId: string) =>
+    api.get(`/homework/${homeworkId}/submissions`),
+  
+  gradeHomework: (submissionId: string, data: { grade: number; feedback: string }) =>
+    api.post(`/homework/submissions/${submissionId}/grade`, data),
+  
+  submitHomework: (data: {
+    homework_id: string
+    content?: string
+    notes?: string
+    files?: string[]
+    branch_name?: string
+  }) =>
+    api.post(`/homework/${data.homework_id}/submit`, data),
+  
+  getMySubmission: (homeworkId: string) =>
+    api.get(`/homework/${homeworkId}/my-submission`),
+  
+  createStudentBranch: (homeworkId: string) =>
+    api.post(`/homework/${homeworkId}/create-branch`),
+  
+  getStudentBranchInfo: (homeworkId: string) =>
+    api.get(`/homework/${homeworkId}/branch-info`),
+  
+  getSubmissionViewURL: (submissionId: string) =>
+    api.get(`/homework/submissions/${submissionId}/view-url`),
+  
+  gradeSubmission: (submissionId: string, grade: number, feedback?: string) =>
+    api.put(`/submissions/${submissionId}/grade`, { grade, feedback }),
+  
+  getSubmissionsByProject: (projectId: string) =>
+    api.get(`/research-projects/${projectId}/homework`)
+}
+
+// 通知相关 API
+export const notificationService = {
+  getNotifications: (params?: {
+    page?: number
+    pageSize?: number
+    isRead?: boolean
+  }) =>
+    api.get('/notifications', { params }),
+  
+  getNotification: (id: string) =>
+    api.get(`/notifications/${id}`),
+  
+  markAsRead: (id: string) =>
+    api.put(`/notifications/${id}/read`),
+  
+  markAllAsRead: () =>
+    api.put('/notifications/read-all'),
+  
+  deleteNotification: (id: string) =>
+    api.delete(`/notifications/${id}`),
+  
+  clearAll: () =>
+    api.delete('/notifications'),
+  
+  // 公告相关
+  getAnnouncements: () =>
+    api.get('/announcements'),
+  
+  createAnnouncement: (data: any) =>
+    api.post('/announcements', data)
+}
+
+// GitLab 相关 API
+export const gitlabService = {
+  getConfig: () =>
+    api.get('/gitlab/config'),
+  
+  getProjects: () =>
+    api.get('/gitlab/projects'),
+  
+  getProject: (id: string) =>
+    api.get(`/gitlab/projects/${id}`),
+  
+  getBranches: (projectId: string) =>
+    api.get(`/gitlab/projects/${projectId}/branches`),
+  
+  getCommits: (projectId: string, branch?: string) =>
+    api.get(`/gitlab/projects/${projectId}/commits`, { params: { branch } }),
+  
+  getFileContent: (projectId: string, path: string, branch?: string) =>
+    api.get(`/gitlab/projects/${projectId}/files/${encodeURIComponent(path)}`, {
+      params: { branch }
+    }),
+  
+  updateFile: (projectId: string, path: string, content: string, branch?: string) =>
+    api.put(`/gitlab/projects/${projectId}/files/${encodeURIComponent(path)}`, {
+      content,
+      branch
+    }),
+  
+  createMergeRequest: (projectId: string, data: {
+    title: string
+    description: string
+    sourceBranch: string
+    targetBranch: string
+  }) =>
+    api.post(`/gitlab/projects/${projectId}/merge-requests`, data),
+  
+  getRepositoryTree: (projectId: string, path?: string) =>
+    api.get(`/gitlab/projects/${projectId}/tree`, { params: { path } }),
+  
+  // Issues 管理 (直接GitLab API调用)
+  createIssue: (projectId: string, data: {
+    title: string
+    description: string
+    labels?: string[]
+    assigneeId?: number
+  }) =>
+    api.post(`/gitlab/projects/${projectId}/issues`, data)
+}
+
+// 权限相关 API
+export const permissionService = {
+  checkPermission: (data: {
+    action: string
+    resource: string
+    resource_id?: string
+  }) =>
+    api.post('/permissions/check', data),
+  
+  checkProjectPermission: (projectId: string, action?: string) =>
+    api.get(`/permissions/projects/${projectId}`, { 
+      params: action ? { action } : undefined 
+    }),
+  
+  checkProjectPermissionDetailed: (projectId: string) =>
+    api.get(`/permissions/projects/${projectId}`, { 
+      params: { detailed: 'true' }
+    }),
+  
+  getUserPermissions: (projectId?: string) =>
+    api.get('/permissions/user', { 
+      params: projectId ? { project_id: projectId } : undefined 
+    })
+}
+
+// 用户管理相关 API (管理员专用)
+export const userManagementService = {
+  // 获取用户列表
+  getUsers: (params?: {
+    page?: number
+    pageSize?: number
+    search?: string
+    role?: string
+  }) =>
+    api.get('/admin/users', { params }),
+  
+  // 创建用户
+  createUser: (data: {
+    username: string
+    name: string
+    email: string
+    password: string
+    is_admin?: boolean
+    default_role?: string
+  }) =>
+    api.post('/admin/users', data),
+  
+  // 更新用户信息
+  updateUser: (userId: string, data: Partial<User>) =>
+    api.put(`/admin/users/${userId}`, data),
+  
+  // 删除用户
+  deleteUser: (userId: string) =>
+    api.delete(`/admin/users/${userId}`),
+  
+  // 获取用户详情
+  getUserDetails: (userId: string) =>
+    api.get(`/admin/users/${userId}`),
+  
+  // 更新用户角色
+  updateUserRoles: (userId: string, data: {
+    is_admin?: boolean
+    project_roles?: Array<{
+      project_id: string
+      role: string
+    }>
+  }) =>
+    api.put(`/admin/users/${userId}/roles`, data),
+  
+  // 获取用户项目角色
+  getUserProjectRoles: (userId: string) =>
+    api.get(`/admin/users/${userId}/project-roles`),
+  
+  // 添加用户到项目
+  addUserToProject: (userId: string, projectId: string, role: string) =>
+    api.post(`/admin/users/${userId}/projects`, { project_id: projectId, role }),
+  
+  // 从项目移除用户
+  removeUserFromProject: (userId: string, projectId: string) =>
+    api.delete(`/admin/users/${userId}/projects/${projectId}`),
+  
+  // 批量操作用户
+  batchUpdateUsers: (data: {
+    user_ids: string[]
+    action: 'enable' | 'disable' | 'delete'
+    roles?: any
+  }) =>
+    api.post('/admin/users/batch', data),
+  
+  // 获取用户统计信息
+  getUserStats: () =>
+    api.get('/admin/users/stats')
+}
+
+// 活动相关 API
+export const activityService = {
+  getRecentActivities: (limit?: number) =>
+    api.get('/activities/recent', { params: { limit } }),
+  
+  getUserActivities: (userId: string, limit?: number) =>
+    api.get(`/activities/users/${userId}`, { params: { limit } }),
+  
+  getMyActivities: (limit?: number) =>
+    api.get('/activities/users/me', { params: { limit } })
+}
+
+// 用户搜索相关 API
+export const userService = {
+  // 搜索用户
+  searchUsers: (params: {
+    search: string
+    page?: number
+    page_size?: number
+  }) =>
+    api.get('/users', { params }),
+  
+  // 获取用户列表
+  getUsers: (params?: {
+    page?: number
+    page_size?: number
+    search?: string
+    project_id?: string
+  }) =>
+    api.get('/users', { params }),
+  
+  // 根据ID获取用户信息
+  getUserById: (id: string) =>
+    api.get(`/users/${id}`)
+}
+
+export default api

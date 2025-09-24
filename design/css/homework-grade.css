@@ -1,0 +1,197 @@
+/* 作业批改页面样式 */
+
+.homework-grade-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* 作业头部信息 */
+.homework-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.homework-info h2 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: var(--primary-color);
+}
+
+.homework-meta {
+  display: flex;
+  gap: 20px;
+  font-size: 0.9em;
+  color: var(--lighter-text);
+}
+
+/* 学生信息 */
+.student-info {
+  display: flex;
+  align-items: center;
+  background-color: var(--secondary-background);
+  padding: 15px;
+  border-radius: 8px;
+}
+
+.student-avatar {
+  margin-right: 15px;
+}
+
+.student-avatar img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.student-details h3 {
+  margin: 0 0 5px 0;
+  font-size: 1.1em;
+}
+
+.student-details span {
+  font-size: 0.9em;
+  color: var(--lighter-text);
+}
+
+/* 作业内容区域 */
+.homework-content {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.content-section,
+.attachments-section,
+.grading-section {
+  padding: 25px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.content-section h3,
+.attachments-section h3,
+.grading-section h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: var(--primary-color);
+}
+
+/* 作业文本内容 */
+.content-text {
+  line-height: 1.6;
+  color: var(--text-color);
+}
+
+.content-text p {
+  margin-bottom: 15px;
+}
+
+.content-text ol,
+.content-text ul {
+  margin-bottom: 15px;
+  padding-left: 20px;
+}
+
+.content-text li {
+  margin-bottom: 5px;
+}
+
+/* 代码块样式 */
+.code-block {
+  background-color: var(--secondary-background);
+  padding: 15px;
+  border-radius: 6px;
+  font-family: monospace;
+  margin: 15px 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* 附件列表 */
+.attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 15px;
+  background-color: var(--secondary-background);
+  border-radius: 6px;
+  transition: background-color 0.3s;
+}
+
+.attachment-item:hover {
+  background-color: var(--border-color);
+}
+
+.attachment-icon {
+  margin-right: 10px;
+  font-size: 20px;
+  color: var(--accent-color);
+}
+
+.attachment-name {
+  flex-grow: 1;
+}
+
+.small-button {
+  padding: 5px 10px;
+  font-size: 0.9em;
+}
+
+/* 评分表单 */
+.grading-section {
+  border-bottom: none;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.form-group input[type="number"] {
+  width: 100px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-background);
+  color: var(--text-color);
+}
+
+.form-group textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-background);
+  color: var(--text-color);
+  resize: vertical;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(77, 121, 255, 0.2);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  margin-top: 30px;
+}

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>协同创新社区</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/index.css">
+</head>
+
+<body>
+  <header>
+    <div class="logo">
+      <h1>协同创新社区</h1>
+    </div>
+    <nav>
+      <ul>
+        <li><a href="index.html" class="active">首页</a></li>
+        <li><a href="scene.html">课题</a></li>
+        <li><a href="topic-list.html">话题</a></li>
+        <li><a href="documents.html">文档</a></li>
+      </ul>
+    </nav>
+    <div class="user-info">
+      <button class="announcement-icon">📢</button>
+      <span>当前用户</span>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/32" alt="用户头像">
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+
+    <div class="main-content">
+      <div class="content-column">
+        <div class="quick-access">
+          <h2>快速访问</h2>
+          <div class="quick-access-grid">
+            <a href="scene.html" class="quick-access-item">
+              <div class="quick-access-icon">📋</div>
+              <div class="quick-access-title">课题列表</div>
+            </a>
+            <a href="topic.html" class="quick-access-item">
+              <div class="quick-access-icon">💬</div>
+              <div class="quick-access-title">话题列表</div>
+            </a>
+            <a href="documents.html" class="quick-access-item">
+              <div class="quick-access-icon">📄</div>
+              <div class="quick-access-title">文档列表</div>
+            </a>
+          </div>
+        </div>
+
+        <div class="popular-scenes">
+          <div class="scene-header">
+            <h2>热门课题</h2>
+            <div class="scene-controls">
+              <div class="search-box">
+                <input type="text" placeholder="搜索课题...">
+                <button class="search-button">🔍</button>
+              </div>
+              <div class="filter-dropdown">
+                <button class="filter-button">筛选</button>
+                <div class="filter-options">
+                  <label><input type="checkbox" checked> 我的课题</label>
+                  <label><input type="checkbox" checked> 公开课题</label>
+                  <label><input type="checkbox" checked> 专有课题</label>
+                </div>
+              </div>
+              <button id="create-scene-button" class="primary-button">创建课题</button>
+            </div>
+          </div>
+
+          <div class="scene-list">
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>Starlink星座分析</a></h3>
+              <div class="scene-meta">创建于 2023-11-14 • 256次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>LEO轨道碰撞预警</a></h3>
+              <div class="scene-meta">创建于 2023-11-13 • 189次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>卫星通信链路优化</a></h3>
+              <div class="scene-meta">创建于 2023-11-12 • 312次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>GEO卫星通信干扰分析</a></h3>
+              <div class="scene-meta">创建于 2023-11-11 • 178次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>太空碎片追踪系统</a></h3>
+              <div class="scene-meta">创建于 2023-11-10 • 245次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>轨道机动计算器</a></h3>
+              <div class="scene-meta">创建于 2023-11-09 • 156次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>太空交通管制系统</a></h3>
+              <div class="scene-meta">创建于 2023-11-08 • 198次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>卫星星座部署模拟</a></h3>
+              <div class="scene-meta">创建于 2023-11-07 • 223次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>卫星姿态控制系统</a></h3>
+              <div class="scene-meta">创建于 2023-11-06 • 167次访问</div>
+            </div>
+            <div class="scene-item">
+              <h3 class="scene-title"><a href="scene-detail.html"></a>卫星能源管理优化</a></h3>
+              <div class="scene-meta">创建于 2023-11-05 • 189次访问</div>
+            </div>
+          </div>
+
+          
+
+          <div class="view-all-scenes">
+            <div class="pagination">
+              <button class="pagination-button">上一页</button>
+              <span class="pagination-info">1/5</span>
+              <button class="pagination-button">下一页</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 移除冗余的"我的研究场景"部分，因为已经有了"我的场景"部分 -->
+      </div>
+
+      <div class="sidebar">
+        <div class="hot-topics">
+          <h2>热门话题</h2>
+          <div class="topic-list" id="hot-topics">
+            <!-- 热门话题将通过JavaScript动态生成 -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 公告弹窗 -->
+  <div id="announcement-modal" class="modal">
+    <div class="modal-content">
+      <span class="close-modal">&times;</span>
+      <h2>太空交通公告</h2>
+      <div class="announcement-list">
+        <div class="announcement-item">
+          <h3 class="announcement-title">轨道维护窗口期</h3>
+          <div class="announcement-meta">发布于 2023-11-15</div>
+          <p class="announcement-content">LEO轨道维护窗口期：11月20日UTC 08:00-12:00，请各卫星运营商注意调整轨道。</p>
+        </div>
+        <div class="announcement-item">
+          <h3 class="announcement-title">碰撞预警系统升级</h3>
+          <div class="announcement-meta">发布于 2023-11-10</div>
+          <p class="announcement-content">新一代太空交通碰撞预警系统已上线，提供更精确的轨道预测和碰撞概率计算。</p>
+        </div>
+      </div>
+      <div class="view-more">
+        <a href="#" class="view-more-link">查看所有太空公告</a>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>© 2023 协同创新社区. 保留所有权利.</p>
+  </footer>
+
+  <script src="js/scene-management.js"></script>
+</body>
+
+</html>

@@ -2,53 +2,78 @@ package models
 
 import (
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/lib/pq"
+)
+
+// NotificationType 通知类型枚举
+type NotificationType string
+
+const (
+	NotificationTypeAnnouncement   NotificationType = "announcement"    // 公告
+	NotificationTypeProjectCreate  NotificationType = "project_create"  // 课题创建
+	NotificationTypeProjectUpdate  NotificationType = "project_update"  // 课题更新
+	NotificationTypeTopicCreate    NotificationType = "topic_create"    // 话题创建
+	NotificationTypeTopicReply     NotificationType = "topic_reply"     // 话题回复
+	NotificationTypeHomeworkCreate NotificationType = "homework_create" // 作业创建
+	NotificationTypeHomeworkSubmit NotificationType = "homework_submit" // 作业提交
+	NotificationTypeHomeworkGrade  NotificationType = "homework_grade"  // 作业评分
+	NotificationTypeDocumentUpload NotificationType = "document_upload" // 文档上传
+	NotificationTypeDocumentReview NotificationType = "document_review" // 文档审核
 )
 
 // Notification 通知模型
 type Notification struct {
-	ID         uint       `gorm:"primaryKey" json:"id"`
-	UserID     uint       `gorm:"not null" json:"user_id"`   // 接收通知的用户ID
-	Title      string     `gorm:"not null" json:"title"`     // 通知标题
-	Content    string     `json:"content"`                   // 通知内容
-	Type       string     `gorm:"not null" json:"type"`      // 通知类型: assignment_submitted, assignment_reviewed, project_joined, etc.
-	TargetType string     `json:"target_type"`               // 目标类型: assignment, project, class
-	TargetID   uint       `json:"target_id"`                 // 目标ID
-	Read       bool       `gorm:"default:false" json:"read"` // 是否已读
-	ReadAt     *time.Time `json:"read_at"`                   // 读取时间
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	BaseModel
+	Type        NotificationType `gorm:"not null" json:"type"`
+	Title       string           `gorm:"not null" json:"title"`
+	Content     string           `gorm:"not null" json:"content"`
+	RecipientID int64            `gorm:"not null" json:"recipient_id"` // 改为int64以匹配gitlab_user_id
+	SenderID    *int64           `json:"sender_id,omitempty"`          // 改为int64以匹配gitlab_user_id
+	ProjectID   *uuid.UUID       `json:"project_id,omitempty"`
+	TopicID     *uuid.UUID       `json:"topic_id,omitempty"`
+	HomeworkID  *uuid.UUID       `json:"homework_id,omitempty"`
+	DocumentID  *uuid.UUID       `json:"document_id,omitempty"`
+	IsRead      bool             `gorm:"default:false" json:"is_read"`
+	ReadAt      *time.Time       `json:"read_at,omitempty"`
+	ActionURL   string           `json:"action_url"`
 
 	// 关联关系
-	User User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	// 注意：Recipient和Sender关联已移除，用户信息从GitLab API获取
+	Project  *ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
+	Topic    *Topic           `gorm:"foreignKey:TopicID" json:"topic,omitempty"`
+	Homework *Homework        `gorm:"foreignKey:HomeworkID" json:"homework,omitempty"`
+	Document *Document        `gorm:"foreignKey:DocumentID" json:"document,omitempty"`
 }
 
-// TableName 指定表名
-func (Notification) TableName() string {
-	return "notifications"
+// Announcement 公告模型
+type Announcement struct {
+	BaseModel
+	Title       string         `gorm:"not null" json:"title"`
+	Content     string         `gorm:"not null" json:"content"`
+	AuthorID    int64          `gorm:"not null" json:"author_id"`      // 改为int64以匹配gitlab_user_id
+	Priority    string         `gorm:"default:normal" json:"priority"` // low, normal, high, urgent
+	IsActive    bool           `gorm:"default:true" json:"is_active"`
+	ValidFrom   time.Time      `json:"valid_from"`
+	ValidTo     *time.Time     `json:"valid_to,omitempty"`
+	TargetRoles pq.StringArray `gorm:"type:text[]" json:"target_roles"` // 目标角色
+
+	// 关联关系
+	// 注意：Author关联已移除，作者信息从GitLab API获取
 }
 
-// NotificationTypes 通知类型常量
-const (
-	NotificationTypeAssignmentSubmitted = "assignment_submitted"
-	NotificationTypeAssignmentReviewed  = "assignment_reviewed"
-	NotificationTypeProjectJoined       = "project_joined"
-	NotificationTypeClassJoined         = "class_joined"
-	NotificationTypeAssignmentCreated   = "assignment_created"
-	NotificationTypeProjectCreated      = "project_created"
+// AssignmentTemplate 作业模板
+type AssignmentTemplate struct {
+	BaseModel
+	Title       string         `gorm:"not null" json:"title"`
+	Description string         `json:"description"`
+	DueDate     *time.Time     `json:"due_date"`
+	MaxGrade    int            `gorm:"default:100" json:"max_grade"`
+	CreatorID   int64          `gorm:"not null" json:"creator_id"` // GitLab用户ID
+	IsPublic    bool           `gorm:"default:false" json:"is_public"`
+	Tags        pq.StringArray `gorm:"type:text[]" json:"tags"`
 
-	// GitLab 集成相关通知类型
-	NotificationTypeGitLabCommit   = "gitlab_commit"
-	NotificationTypeMergeRequest   = "merge_request"
-	NotificationTypeIssueCreated   = "issue_created"
-	NotificationTypeWikiCreated    = "wiki_created"
-	NotificationTypeAssignmentDue  = "assignment_due"
-	NotificationTypeCodeReview     = "code_review"
-	NotificationTypeGitLabActivity = "gitlab_activity"
-)
-
-// MarkAsRead 标记通知为已读
-func (n *Notification) MarkAsRead() {
-	n.Read = true
-	now := time.Now()
-	n.ReadAt = &now
+	// 关联关系
+	// 注意：Creator关联已移除，创建者信息从GitLab API获取
 }

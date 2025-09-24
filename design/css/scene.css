@@ -1,0 +1,241 @@
+/* 课题页面样式 */
+
+/* 课题管理容器 */
+.scene-management {
+  margin-bottom: 30px;
+}
+
+/* 课题控制区域 */
+.scene-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.scene-controls h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+/* 搜索框样式 */
+.search-box {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  background-color: var(--input-background);
+}
+
+.search-box input {
+  padding: 8px 12px;
+  border: none;
+  background-color: transparent;
+  color: var(--text-color);
+  width: 200px;
+}
+
+.search-box input:focus {
+  outline: none;
+}
+
+.search-button {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.search-button:hover {
+  background-color: var(--primary-color-dark);
+}
+
+/* 筛选下拉菜单 */
+.filter-dropdown {
+  position: relative;
+}
+
+.filter-button {
+  padding: 8px 15px;
+  background-color: var(--secondary-background);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.filter-button:hover {
+  background-color: var(--border-color);
+}
+
+.filter-options {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 10px;
+  margin-top: 5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  display: none;
+}
+
+.filter-dropdown:hover .filter-options {
+  display: block;
+}
+
+.filter-options label {
+  display: block;
+  padding: 5px 0;
+  cursor: pointer;
+}
+
+/* 创建课题按钮 */
+#create-scene-button {
+  padding: 8px 15px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.3s;
+}
+
+#create-scene-button:hover {
+  background-color: var(--primary-color-dark);
+}
+
+/* 课题列表样式 */
+.scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.scene-item {
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 15px;
+  transition: transform 0.3s, box-shadow 0.3s;
+  cursor: pointer;
+}
+
+.scene-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.scene-title {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-size: 18px;
+  color: var(--primary-color);
+}
+
+.scene-meta {
+  font-size: 14px;
+  color: var(--lighter-text);
+}
+
+/* 分页控制 */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 30px;
+  gap: 15px;
+}
+
+.pagination-button {
+  padding: 8px 15px;
+  background-color: var(--secondary-background);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.pagination-button:hover {
+  background-color: var(--border-color);
+}
+
+.pagination-info {
+  font-size: 14px;
+  color: var(--lighter-text);
+}
+
+/* 热门课题侧边栏 */
+.hot-scenes {
+  background-color: var(--card-background);
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.hot-scenes h2 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 18px;
+}
+
+.hot-scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hot-scene-item {
+  padding: 10px;
+  border-radius: 6px;
+  background-color: var(--secondary-background);
+  transition: background-color 0.3s;
+  cursor: pointer;
+}
+
+.hot-scene-item:hover {
+  background-color: var(--border-color);
+}
+
+.hot-scene-title {
+  margin: 0 0 5px 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.hot-scene-meta {
+  font-size: 12px;
+  color: var(--lighter-text);
+}
+
+/* 课题标签样式 */
+.tag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  font-weight: 500;
+  margin-left: 5px;
+}
+
+.public-tag {
+  background-color: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+}
+
+.private-tag {
+  background-color: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.owner-tag {
+  background-color: rgba(155, 89, 182, 0.2);
+  color: #9b59b6;
+}

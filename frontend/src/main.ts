@@ -1,14 +1,13 @@
-import './assets/main.css'
-
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 
 import App from './App.vue'
 import router from './router'
+import { useUserStore } from './stores/user'
+import './assets/css/main.css'
 
 const app = createApp(App)
 
@@ -18,6 +17,11 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 }
 
 app.use(createPinia())
+
+// 初始化用户状态
+const userStore = useUserStore()
+userStore.initUserFromStorage()
+
 app.use(router)
 app.use(ElementPlus)
 

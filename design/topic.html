@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>话题详情 - 协同创新社区</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/topic.css">
+</head>
+
+<body>
+  <header>
+      <h1>协同创新社区</h1>
+    <nav>
+      <ul>
+        <li><a href="index.html">首页</a></li>
+        <li><a href="scene.html">课题</a></li>
+        <li><a href="topic-list.html" class="active">话题</a></li>
+        <li><a href="documents.html">文档</a></li>
+      </ul>
+    </nav>
+    <div class="user-info">
+      <span>欢迎，用户</span>
+      <div class="avatar">
+        <img src="https://via.placeholder.com/32" alt="用户头像">
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="breadcrumb">
+        <a href="#">话题讨论</a> &gt; <span id="topic-title">话题详情</span>
+      </div>
+
+      <div class="topic-detail">
+        <div class="topic-header">
+          <h2 id="topic-detail-title">如何优化场景渲染性能？</h2>
+          <div class="topic-meta">
+            <div class="topic-author">
+              <div class="avatar">
+                <img src="https://via.placeholder.com/32" alt="作者头像">
+              </div>
+              <span>张三</span>
+            </div>
+            <div class="topic-date">发布于 2023-05-15</div>
+            <div class="topic-stats">
+              <span>👁️ 245 次查看</span>
+              <span>� 24 条评论</span>
+              <span>❤️ 45 次点赞</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="topic-content">
+          <p>大家好，我最近在处理一个大型场景时遇到了性能问题。场景中有大量的模型和纹理，导致渲染速度变慢。我尝试了以下几种优化方法：</p>
+          
+          <ol>
+            <li>使用LOD（细节层次）技术</li>
+            <li>实现视锥体剔除</li>
+            <li>合并静态网格</li>
+            <li>优化纹理大小和格式</li>
+          </ol>
+          
+          <p>但是效果仍然不够理想，特别是在移动设备上。有没有其他推荐的优化技术或工具可以帮助提高渲染性能？</p>
+          
+          <div class="topic-attachments">
+            <h4>附件：</h4>
+            <div class="file-item">
+              <div class="file-icon">📊</div>
+              <div class="file-info">
+                <div class="file-name">performance_metrics.pdf</div>
+                <div class="file-size">2.4 MB</div>
+              </div>
+            </div>
+            <div class="file-item">
+              <div class="file-icon">🖼️</div>
+              <div class="file-info">
+                <div class="file-name">scene_screenshot.png</div>
+                <div class="file-size">1.8 MB</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="topic-actions">
+          <button class="action-button">❤️ 点赞</button>
+          <button class="action-button">🔖 收藏</button>
+          <button class="action-button">� 分享</button>
+          <button class="action-button">� 关注</button>
+        </div>
+      </div>
+
+      <div class="comments-section">
+        <h3>评论 (24)</h3>
+        
+        <div class="comments-list">
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-author">
+                <div class="avatar">
+                  <img src="https://via.placeholder.com/32" alt="李四">
+                </div>
+                <span class="comment-author-name">李四</span>
+              </div>
+              <div class="comment-date">2023-05-15 14:30</div>
+            </div>
+            <div class="comment-body">
+              <p>你可以尝试使用实例化渲染（Instanced Rendering）来减少绘制调用。对于场景中重复出现的对象（如树木、草地等），这种技术特别有效。</p>
+            </div>
+            <div class="comment-actions">
+              <span class="comment-action">👍 15</span>
+              <span class="comment-action">� 回复</span>
+            </div>
+          </div>
+          
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-author">
+                <div class="avatar">
+                  <img src="https://via.placeholder.com/32" alt="王五">
+                </div>
+                <span class="comment-author-name">王五</span>
+              </div>
+              <div class="comment-date">2023-05-15 15:45</div>
+            </div>
+            <div class="comment-body">
+              <p>我建议你看看是否可以使用遮挡剔除（Occlusion Culling）。这可以帮助你避免渲染被其他对象遮挡的物体，从而提高性能。</p>
+              <p>另外，你有考虑过使用纹理图集（Texture Atlas）吗？这可以减少纹理切换的开销。</p>
+            </div>
+            <div class="comment-actions">
+              <span class="comment-action">👍 8</span>
+              <span class="comment-action">� 回复</span>
+            </div>
+            
+            <div class="comment-replies">
+              <div class="comment">
+                <div class="comment-header">
+                  <div class="comment-author">
+                    <div class="avatar">
+                      <img src="https://via.placeholder.com/32" alt="张三">
+                    </div>
+                  </div>
+                  <div class="comment-date">2023-05-15 16:10</div>
+                </div>
+                <div class="comment-body">
+                  <p>谢谢建议！我会尝试使用纹理图集。关于遮挡剔除，你有推荐的工具或库吗？</p>
+                </div>
+                <div class="comment-actions">
+                  <span class="comment-action">👍 3</span>
+                  <span class="comment-action">� 回复</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="comment-form">
+          <h4>发表评论</h4>
+          <div class="form-group">
+            <textarea placeholder="写下你的评论..."></textarea>
+            <div class="form-actions">
+              <div class="emoji-picker-trigger">😊 表情</div>
+              <div class="file-upload-trigger">� 附件</div>
+              <input type="file" id="comment-file" style="display: none;">
+              <button type="submit" class="submit-button">发表评论</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="related-topics">
+        <h3>相关话题</h3>
+        <div class="topic-list">
+          <div class="topic-item">
+            <div class="topic-header">
+              <h4 class="topic-title">关于场景光照计算的讨论</h4>
+              <span class="topic-likes">❤️ 32</span>
+            </div>
+            <div class="topic-meta">
+              由 李四 发布于 2023-05-14 • 💬 18 条评论
+            </div>
+          </div>
+          
+          <div class="topic-item">
+            <div class="topic-header">
+              <h4 class="topic-title">场景资源管理最佳实践</h4>
+              <span class="topic-likes">❤️ 28</span>
+            </div>
+            <div class="topic-meta">
+              由 王五 发布于 2023-05-13 • 💬 15 条评论
+            </div>
+          </div>
+          
+          <div class="topic-item">
+            <div class="topic-header">
+              <h4 class="topic-title">如何实现高效的场景加载</h4>
+              <span class="topic-likes">❤️ 22</span>
+            </div>
+            <div class="topic-meta">
+              由 赵六 发布于 2023-05-12 • 💬 12 条评论
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <footer>
+  <footer>
+    <p>&copy; 2025 Research Scene Management</p>
+  </footer>
+
+  <!-- 引入拆分后的JavaScript文件 -->
+  <script src="js/emoji-picker.js"></script>
+  <script src="js/file-upload.js"></script>
+  <script src="js/tabs.js"></script>
+  <script src="js/comments.js"></script>
+  <script src="js/scene-management.js"></script>
+  <script src="js/homework.js"></script>
+  <script src="js/announcements.js"></script>
+  
+  <script>
+    // 获取URL参数中的话题标题
+    document.addEventListener('DOMContentLoaded', function() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const topicTitle = urlParams.get('title');
+      
+      if (topicTitle) {
+        document.getElementById('topic-title').textContent = topicTitle;
+        document.getElementById('topic-detail-title').textContent = topicTitle;
+        document.title = topicTitle + ' - 协同创新社区';
+      }
+    });
+  </script>
+</body>
+</html>
