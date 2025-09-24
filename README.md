@@ -126,24 +126,24 @@ gitlabex/
 ### 开发环境快速启动
 1. **启动基础服务**
 ```bash
-# 使用Docker Compose启动开发环境
+# 使用Docker Compose启动开发环境基础服务
 docker-compose up -d
 ```
 
-1. **配置GitLab OAuth应用**
+2. **配置GitLab OAuth应用**
 ```bash
-# 运行OAuth配置向导配置Oauth以及system token
+# 运行配置向导配置Oauth以及system token
 ./scripts/configure-oauth.sh
 ```
 
-1. **启动后端服务**
+3. **启动后端服务**
 ```bash
 cd backend
 go mod tidy
 go run cmd/main.go
 ```
 
-1. **启动前端服务**
+4. **启动前端服务**
 ```bash
 cd frontend
 pnpm install
@@ -183,17 +183,22 @@ vim config/config.prod.yml
 ./scripts/build-images.sh
 
 # 推送到生产环境仓库
-docker push gitlabex-backend:latest
-docker push gitlabex-frontend:latest
-# 或者
-# 导出、导入镜像
+#docker push gitlabex-backend:latest
+#docker push gitlabex-frontend:latest
+# 或者导出、导入镜像
 docker save -o gitlabex-backend:latest gitlabex-backend.tar
 docker save -o gitlabex-frontend:latest gitlabex-frontend.tar
 docker load -i gitlabex-backend.tar
 docker load -i gitlabex-frontend.tar
 
-# 启动生产环境
-docker-compose  -f docker-compose.prod.yml up -d
+# 启动生产环境基础服务
+docker-compose  -f docker-compose.prod.yml up -d postgres redis minio gitlab
+
+# 运行配置向导配置Oauth以及system token
+./scripts/configure-oauth.sh
+
+# 启动后端/前端服务
+docker-compose -f docker-compose.prod.yml up -d backend frontend
 ```
 
 ## API文档

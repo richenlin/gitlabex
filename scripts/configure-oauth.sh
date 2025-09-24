@@ -1,148 +1,167 @@
 #!/bin/bash
 
-# GitLab OAuth 配置辅助脚本
-# 用于引导用户完成OAuth应用配置
+# GitLabEx 配置向导
+# 用于引导用户完成系统配置
 
 set -e
 
-echo "🔧 GitLab OAuth 配置向导"
-echo "=========================="
+echo "🔧 GitLabEx 配置向导"
+echo "========================"
 echo ""
 
 # 切换到项目根目录
 cd "$(dirname "$0")/.."
 
-# 检查GitLab是否运行
-if ! curl -s http://localhost:8081/ > /dev/null 2>&1; then
-    echo "❌ GitLab服务未运行，请先启动GitLab:"
-    echo "   docker-compose -f docker-compose.dev.yml up -d gitlab"
-    exit 1
-fi
+# 询问用户要更新哪个配置文件
+echo "📋 选择要更新的配置文件:"
+echo "   1) 开发环境 (config/config.yml)"
+echo "   2) 生产环境 (config/config.prod.yml)"
+echo ""
+read -p "请选择 (1-2): " -n 1 -r
+echo
 
-echo "✅ GitLab服务运行正常"
-echo ""
-
-# 显示配置步骤
-echo "📋 OAuth应用配置步骤:"
-echo ""
-echo "1️⃣  访问GitLab管理界面"
-echo "   🌐 URL: http://localhost:8081"
-echo "   👤 用户名: root"
-echo "   🔑 密码: b75hZ0qcwLKD"
-echo ""
-echo "2️⃣  导航到应用管理"
-echo "   📍 Admin Area (左侧菜单的扳手图标)"
-echo "   📱 Applications (左侧菜单)"
-echo "   ➕ New application (右上角按钮)"
-echo ""
-echo "3️⃣  填写应用信息"
-echo "   📝 Name: GitLabEx Education Platform"
-echo "   🔗 Redirect URI: http://localhost:3000/auth/gitlab/callback"
-echo "   ☑️  Confidential: 勾选"
-echo "   🔐 Scopes: 勾选以下选项"
-echo "      ✓ api"
-echo "      ✓ read_user"
-echo "      ✓ openid"
-echo "   💾 Save application"
-echo ""
-echo "4️⃣  复制应用凭据"
-echo "   📋 复制 Application ID"
-echo "   🔐 复制 Secret"
-echo ""
-
-# 打开GitLab页面（如果可能）
-if command -v open > /dev/null 2>&1; then
-    read -p "🤔 是否自动打开GitLab管理页面？(y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "🌐 打开GitLab..."
-        open "http://localhost:8081/admin/applications"
-    fi
-elif command -v xdg-open > /dev/null 2>&1; then
-    read -p "🤔 是否自动打开GitLab管理页面？(y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "🌐 打开GitLab..."
-        xdg-open "http://localhost:8081/admin/applications"
-    fi
-fi
-
-echo ""
-echo "⏳ 请完成上述步骤，然后回到这里..."
-echo ""
-
-# 等待用户完成配置
-read -p "🔑 请输入 Application ID: " client_id
-echo ""
-read -p "🔐 请输入 Secret: " client_secret
-echo ""
-
-# 验证输入
-if [ -z "$client_id" ] || [ -z "$client_secret" ]; then
-    echo "❌ Application ID 和 Secret 不能为空"
-    exit 1
-fi
-
-if [ "$client_id" = "your_client_id_here" ] || [ "$client_secret" = "your_client_secret_here" ]; then
-    echo "❌ 请输入真实的 Application ID 和 Secret"
-    exit 1
-fi
+case $REPLY in
+    1)
+        config_file="config/config.yml"
+        ;;
+    2)
+        config_file="config/config.prod.yml"
+        ;;
+    *)
+        echo "❌ 无效选择，默认使用开发环境配置"
+        config_file="config/config.yml"
+        ;;
+esac
 
 # 备份原配置文件
-if [ -f "config/oauth.env" ]; then
-    cp config/oauth.env config/oauth.env.bak
-    echo "📦 已备份原配置文件到 config/oauth.env.bak"
+if [ -f "$config_file" ]; then
+    cp "$config_file" "$config_file.bak"
+    echo "📦 已备份原配置文件到 $config_file.bak"
+fi
+
+echo ""
+echo "📝 开始配置 GitLab OAuth 应用"
+echo "=============================="
+
+# 显示 GitLab OAuth 配置步骤
+echo ""
+echo "1️⃣  GitLab OAuth 应用配置:"
+echo "   🌐 访问: http://localhost:8081/admin/applications"
+echo "   👤 用户名: root"
+echo "   🔑 密码: b75hZ0qcwLKD"
+echo "   📍 导航到: Admin Area → Applications → New application"
+echo "   📝 应用名称: GitLabEx Education Platform"
+echo "   🔗 重定向URI: 根据服务器局域网前端服务访问IP+port进行配置（如果绑定了域名则输入域名）, 默认http://localhost:3000/auth/gitlab/callback"
+echo "   ✅ 权限范围: api, read_api, openid"
+echo "   💾 保存应用后复制 Application ID 和 Secret"
+echo ""
+
+# 获取 GitLab 配置
+read -p "🔗 请输入 GitLab URL, 根据服务器局域网gitlab服务访问IP+port进行配置（如果绑定了域名则输入域名） (默认: http://localhost:8081): " gitlab_url
+gitlab_url=${gitlab_url:-"http://localhost:8081"}
+
+read -p "🔑 请输入 Application ID: " client_id
+read -p "🔐 请输入 Secret: " client_secret
+
+read -p "🔄 请输入重定向 URI, 根据服务器局域网前端服务访问IP+port进行配置（如果绑定了域名则输入域名） (默认: http://localhost:3000/auth/gitlab/callback): " redirect_uri
+redirect_uri=${redirect_uri:-"http://localhost:3000/auth/gitlab/callback"}
+
+read -p "🎯 请输入权限范围 (默认: api read_api openid): " scopes
+scopes=${scopes:-"api read_api openid"}
+
+echo ""
+echo "2️⃣  GitLab 个人访问令牌 (system_token)"
+echo "   🌐 访问: http://localhost:8081/-/profile/personal_access_tokens"
+echo "   👤 使用 root 用户登录"
+echo "   📝 令牌名称: GitLabEx System Token"
+echo "   ✅ 权限范围: api, read_api, read_user, read_repository, write_repository"
+echo "   💾 创建后复制生成的令牌"
+echo ""
+
+read -p "🔐 请输入 System Token: " system_token
+
+echo ""
+echo "3️⃣  JWT 密钥配置 (用户登录令牌)"
+echo "   💡 建议使用强密码，长度至少32字符"
+echo "   ⏩ 可直接回车使用随机生成的密钥"
+echo ""
+
+read -p "🔒 请输入 JWT Secret (回车使用随机生成): " jwt_secret
+if [ -z "$jwt_secret" ]; then
+    jwt_secret=$(openssl rand -base64 32 | tr -d '\n')
+    echo "🎲 已生成随机 JWT Secret: $jwt_secret"
+fi
+
+echo ""
+echo "4️⃣  CORS 配置 (前端访问地址)"
+echo "   💡 需要将前端访问地址加入允许列表"
+echo "   🌐 根据服务器局域网前端服务访问IP+port进行配置（如果绑定了域名则输入域名）默认: http://localhost:3000,http://127.0.0.1:3000"
+echo ""
+
+read -p "🌐 请输入 CORS 允许的源 (多个用逗号分隔): " cors_origins
+cors_origins=${cors_origins:-"http://localhost:3000,http://127.0.0.1:3000"}
+
+echo ""
+echo "5️⃣  第三方 API 密钥配置"
+echo "   💡 用于第三方系统接入，可为空"
+echo "   ⏩ 可直接回车使用随机生成的密钥"
+echo ""
+
+read -p "🔑 请输入第三方 API 密钥 (回车使用随机生成): " third_party_key
+if [ -z "$third_party_key" ]; then
+    third_party_key=$(openssl rand -base64 24 | tr -d '\n' | tr '+/' '_-')
+    echo "🎲 已生成随机第三方 API 密钥: $third_party_key"
+fi
+
+# 验证必填项
+if [ -z "$client_id" ] || [ -z "$client_secret" ] || [ -z "$system_token" ]; then
+    echo "❌ Application ID、Secret 和 System Token 不能为空"
+    exit 1
 fi
 
 # 更新配置文件
-cat > config/oauth.env << EOF
-# GitLab OAuth 应用配置
-# 由 configure-oauth.sh 脚本自动生成
+echo ""
+echo "🔄 正在更新配置文件 $config_file ..."
 
-GITLAB_URL=http://localhost:8081
-REDIRECT_URI=http://localhost:3000/auth/gitlab/callback
-APPLICATION_NAME="GitLabEx Education Platform"
-SCOPES="api read_user openid"
+# 更新 GitLab 配置
+sed -i "s|url: \".*\"|url: \"$gitlab_url\"|g" "$config_file"
+sed -i "s|client_id: \".*\"|client_id: \"$client_id\"|g" "$config_file"
+sed -i "s|client_secret: \".*\"|client_secret: \"$client_secret\"|g" "$config_file"
+sed -i "s|redirect_uri: \".*\"|redirect_uri: \"$redirect_uri\"|g" "$config_file"
+sed -i "s|scopes: \".*\"|scopes: \"$scopes\"|g" "$config_file"
+sed -i "s|system_token: \".*\"|system_token: \"$system_token\"|g" "$config_file"
 
-# OAuth 应用凭据
-GITLAB_CLIENT_ID=$client_id
-GITLAB_CLIENT_SECRET=$client_secret
-EOF
+# 更新 JWT 配置
+sed -i "s|secret: \".*\"|secret: \"$jwt_secret\"|g" "$config_file"
 
-echo "✅ OAuth 配置已更新！"
+# 更新 CORS 配置
+sed -i "s|cors_allowed_origins: \".*\"|cors_allowed_origins: \"$cors_origins\"|g" "$config_file"
+
+# 更新 API 密钥配置
+sed -i "s|third_party_api_key: \".*\"|third_party_api_key: \"$third_party_key\"|g" "$config_file"
+
+echo "✅ 配置已成功更新到 $config_file！"
 echo ""
 
-# 检查后端服务是否运行
-if docker-compose -f docker-compose.dev.yml ps backend | grep -q "Up"; then
-    echo "🔄 检测到后端服务正在运行，需要重启以应用新配置"
-    read -p "🤔 是否立即重启后端服务？(Y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        echo "🔄 重启后端服务..."
-        docker-compose -f docker-compose.dev.yml restart backend
-        
-        echo "⏳ 等待后端服务启动..."
-        sleep 10
-        
-        # 检查后端服务健康状态
-        if curl -s http://localhost:8080/health > /dev/null 2>&1; then
-            echo "✅ 后端服务重启成功！"
-        else
-            echo "⚠️  后端服务可能未完全启动，请检查日志:"
-            echo "   docker-compose -f docker-compose.dev.yml logs backend"
-        fi
-    fi
-else
-    echo "💡 后端服务未运行，配置将在下次启动时生效"
-fi
+# 显示配置摘要
+echo "📋 配置摘要:"
+echo "============"
+echo "📁 配置文件: $config_file"
+echo "🔗 GitLab URL: $gitlab_url"
+echo "🔑 Client ID: $client_id"
+echo "🔐 Client Secret: **********"
+echo "🔄 Redirect URI: $redirect_uri"
+echo "🎯 Scopes: $scopes"
+echo "🔐 System Token: **********"
+echo "🔒 JWT Secret: **********"
+echo "🌐 CORS Origins: $cors_origins"
+echo "🔑 Third Party Key: **********"
+echo ""
 
+echo "🎉 配置完成！"
 echo ""
-echo "🎉 OAuth 配置完成！"
+echo "💡 下一步操作:"
+echo "   1. 启动后端服务"
+echo "   3. 启动前端服务"
 echo ""
-echo "📝 配置文件位置: config/oauth.env"
-echo "🌐 GitLab: http://localhost:8081"
-echo "🔧 后端API: http://localhost:8080"
-echo "🚀 前端: 启动后访问 http://localhost:3000"
-echo ""
-echo "🔧 启动前端开发服务器:"
-echo "   cd frontend && npm run dev"
+echo "📚 详细说明请查看 README.md"
