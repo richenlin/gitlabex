@@ -163,9 +163,12 @@ fi
 
 echo ""
 echo "🚀 下一步操作:"
-echo "   启动生产环境: ./scripts/start-services.sh"
+echo "   docker save -o gitlabex-backend.tar gitlabex-backend:latest"
+echo "   docker save -o gitlabex-frontend.tar gitlabex-frontend:latest"
 echo "   查看镜像详情: docker inspect gitlabex-backend:latest"
 echo "   删除镜像: docker rmi gitlabex-backend:latest gitlabex-frontend:latest"
+echo "   导入镜像: docker load -i gitlabex-backend.tar"
+echo "   导入镜像: docker load -i gitlabex-frontend.tar"
 echo ""
 
 # 显示镜像总大小

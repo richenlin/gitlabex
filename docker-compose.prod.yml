@@ -25,15 +25,15 @@ services:
     environment:
       GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:-b75hZ0qcwLKD}
       GITLAB_OMNIBUS_CONFIG: |
-        external_url '${GITLAB_EXTERNAL_URL:-http://127.0.0.1:8081}'
+        external_url 'http://192.168.170.172:8081'
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
         gitlab_rails['initial_root_password'] = ENV['GITLAB_ROOT_PASSWORD']
         gitlab_rails['gitlab_signup_enabled'] = true
         nginx['listen_port'] = 80
         nginx['redirect_http_to_https'] = false
         # ==========支持多机部署的网络配置===========
-        gitlab_rails['gitlab_host'] = '${GITLAB_HOST:-127.0.0.1}'
-        gitlab_rails['gitlab_port'] = ${GITLAB_PORT:-8081}
+        gitlab_rails['gitlab_host'] = '192.168.170.172'
+        gitlab_rails['gitlab_port'] = 8081
         gitlab_rails['gitlab_https'] = false
         
         # 禁用内置PostgreSQL，使用外部PostgreSQL
@@ -198,8 +198,8 @@ services:
       - "3000:80"
     environment:
       # 前端API地址配置
-      - VITE_API_BASE_URL=${BACKEND_URL:-http://192.168.140.171:8080}
-      - VITE_GITLAB_URL=${GITLAB_URL:-http://192.168.140.171:8081}
+      - BACKEND_URL=${BACKEND_URL:-http://192.168.170.172:8080}
+      - VITE_GITLAB_URL=${GITLAB_URL:-http://192.168.170.172:8081}
     networks:
       - gitlabex-network
     healthcheck:

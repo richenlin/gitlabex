@@ -133,8 +133,8 @@ sed -i "s|redirect_uri: \".*\"|redirect_uri: \"$redirect_uri\"|g" "$config_file"
 sed -i "s|scopes: \".*\"|scopes: \"$scopes\"|g" "$config_file"
 sed -i "s|system_token: \".*\"|system_token: \"$system_token\"|g" "$config_file"
 
-# 更新 JWT 配置
-sed -i "s|secret: \".*\"|secret: \"$jwt_secret\"|g" "$config_file"
+# 更新 JWT 配置 - 使用更精确的模式避免误替换gitlab.client_secret
+sed -i "/jwt:/,/^[^[:space:]]/ s|  secret: \".*\"|  secret: \"$jwt_secret\"|" "$config_file"
 
 # 更新 CORS 配置
 sed -i "s|cors_allowed_origins: \".*\"|cors_allowed_origins: \"$cors_origins\"|g" "$config_file"

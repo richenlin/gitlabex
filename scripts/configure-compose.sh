@@ -52,12 +52,17 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     fi
 
     echo ""
-    echo "1️⃣  GitLab 根密码配置"
+    echo "1️⃣  后端服务地址 配置"
+    read -p "🔑 请输入 后端服务访问 URL (格式: http://域名或IP:端口): " backend_url
+    backend_url=${backend_url:-"localhost:8080"}
+
+    echo ""
+    echo "2️⃣  GitLab 根密码配置"
     read -p "🔑 请输入 GitLab root 密码 (回车使用默认值 b75hZ0qcwLKD): " gitlab_root_password
     gitlab_root_password=${gitlab_root_password:-"b75hZ0qcwLKD"}
 
     echo ""
-    echo "2️⃣  GitLab 网络配置"
+    echo "3️⃣  GitLab 网络配置"
     read -p "🌐 请输入 GitLab 外部访问 URL (格式: http://域名或IP:端口): " gitlab_external_url
     
     # 解析 URL 获取主机和端口
@@ -156,6 +161,23 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     sed -i '/^database:/,/^[^ ]/ s/^  host: ".*"/  host: "'"$gitlab_host"'"/' "$config_file"
     sed -i '/^redis:/,/^[^ ]/ s/^  host: ".*"/  host: "'"$gitlab_host"'"/' "$config_file"
     sed -i '/^minio:/,/^[^ ]/ s/^  endpoint: ".*"/  endpoint: "'"$gitlab_host"':9000"/' "$config_file"
+
+    # 更新前端环境变量配置
+    echo ""
+    echo "🔄 正在更新前端环境变量配置..."
+    
+    # 确保 backend_url 有正确的格式
+    if [[ ! "$backend_url" =~ ^https?:// ]]; then
+        backend_url="http://$backend_url"
+    fi
+    
+    # 更新 BACKEND_URL - 前端容器启动脚本使用的环境变量
+    sed -i "s|BACKEND_URL=\${BACKEND_URL:-[^}]*}|BACKEND_URL=\${BACKEND_URL:-$backend_url}|g" "$compose_file"
+    
+    # 更新 VITE_GITLAB_URL - 使用更精确的匹配
+    sed -i "s|VITE_GITLAB_URL=\${GITLAB_URL:-[^}]*}|VITE_GITLAB_URL=\${GITLAB_URL:-$gitlab_external_url}|g" "$compose_file"
+
+    echo "✅ 前端环境变量配置已更新！"
 
     # 更新 PostgreSQL 初始化脚本
     # echo ""
