@@ -32,13 +32,16 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     case $REPLY in
         1)
             compose_file="docker-compose.yml"
+            config_file="config/config.yml"
             ;;
         2)
             compose_file="docker-compose.prod.yml"
+            config_file="config/config.prod.yml"
             ;;
         *)
             echo "❌ 无效选择，默认使用开发环境配置"
             compose_file="docker-compose.yml"
+            config_file="config/config.yml"
             ;;
     esac
 
@@ -73,7 +76,8 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         fi
     else
         echo "❌ URL 格式不正确，使用默认配置"
-        gitlab_host="127.0.0.1"
+        gitlab_external_url="http://localhost:8081"
+        gitlab_host="localhost"
         gitlab_port="8081"
         gitlab_https="false"
     fi
@@ -147,6 +151,11 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     # 更新 Redis 服务配置
     # sed -i "s|command: redis-server --requirepass .*|command: redis-server --requirepass $redis_password|g" "$compose_file"
     # sed -i "s|test: \\[\"CMD\", \"redis-cli\", \"-a\", \".*\", \"ping\"\\]|test: [\"CMD\", \"redis-cli\", \"-a\", \"$redis_password\", \"ping\"]|g" "$compose_file"
+
+    # 更新 后端服务配置
+    sed -i '/^database:/,/^[^ ]/ s/^  host: ".*"/  host: "'"$gitlab_host"'"/' "$config_file"
+    sed -i '/^redis:/,/^[^ ]/ s/^  host: ".*"/  host: "'"$gitlab_host"'"/' "$config_file"
+    sed -i '/^minio:/,/^[^ ]/ s/^  endpoint: ".*"/  endpoint: "'"$gitlab_host"':9000"/' "$config_file"
 
     # 更新 PostgreSQL 初始化脚本
     # echo ""

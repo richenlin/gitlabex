@@ -51,7 +51,7 @@ echo "   👤 用户名: root"
 echo "   🔑 密码: b75hZ0qcwLKD"
 echo "   📍 导航到: Admin Area → Applications → New application"
 echo "   📝 应用名称: GitLabEx Education Platform"
-echo "   🔗 重定向URI: 请输入重定向 URI(格式: http://域名或IP:端口/auth/gitlab/callback, 默认: http://localhost:3000/auth/gitlab/callback)
+echo "   🔗 重定向URI: 请输入重定向 URI(格式: http://域名或IP:端口/auth/gitlab/callback, 默认: http://localhost:3000/auth/gitlab/callback)"
 echo "   ✅ 权限范围: api, read_api, openid"
 echo "   💾 保存应用后复制 Application ID 和 Secret"
 echo ""
@@ -60,11 +60,13 @@ echo ""
 read -p "🔗 请输入 GitLab 外部访问 URL (格式: http://域名或IP:端口, 默认: http://localhost:8081): " gitlab_url
 gitlab_url=${gitlab_url:-"http://localhost:8081"}
 
+read -p "🔗 请输入 前端服务 外部访问 URL (格式: http://域名或IP:端口, 默认: http://localhost:3000): " frontend_url
+frontend_url=${frontend_url:-"http://localhost:3000"}
+
 read -p "🔑 请输入 Application ID: " client_id
 read -p "🔐 请输入 Secret: " client_secret
 
-read -p "🔄 请输入重定向 URI(格式: http://域名或IP:端口/auth/gitlab/callback, 默认: http://localhost:3000/auth/gitlab/callback): " redirect_uri
-redirect_uri=${redirect_uri:-"http://localhost:3000/auth/gitlab/callback"}
+redirect_uri="${frontend_url}/auth/gitlab/callback"
 
 read -p "🎯 请输入权限范围 (默认: api read_api openid): " scopes
 scopes=${scopes:-"api read_api openid"}
@@ -95,11 +97,11 @@ fi
 echo ""
 echo "4️⃣  CORS 配置 (前端访问地址)"
 echo "   💡 需要将前端访问地址加入允许列表"
-echo "   🌐 请输入 CORS 允许的源(格式: http://域名或IP:端口, 多个用半角逗号分隔, 默认: http://localhost:3000,http://127.0.0.1:3000"
-echo ""
+# echo "   🌐 请输入 CORS 允许的源(格式: http://域名或IP:端口, 多个用半角逗号分隔, 默认: http://localhost:3000,http://127.0.0.1:3000)"
+# echo ""
 
-read -p "🌐 请输入 CORS 允许的源 (多个用逗号分隔): " cors_origins
-cors_origins=${cors_origins:-"http://localhost:3000,http://127.0.0.1:3000"}
+# read -p "🌐 请输入 CORS 允许的源 (多个用逗号分隔): " cors_origins
+cors_origins="${frontend_url},http://localhost:3000,http://127.0.0.1:3000"
 
 echo ""
 echo "5️⃣  第三方 API 密钥配置"
