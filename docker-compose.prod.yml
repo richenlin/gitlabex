@@ -25,14 +25,14 @@ services:
     environment:
       GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:-b75hZ0qcwLKD}
       GITLAB_OMNIBUS_CONFIG: |
-        external_url '${GITLAB_EXTERNAL_URL:-http://192.168.140.171:8081}'
+        external_url '${GITLAB_EXTERNAL_URL:-http://127.0.0.1:8081}'
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
         gitlab_rails['initial_root_password'] = ENV['GITLAB_ROOT_PASSWORD']
         gitlab_rails['gitlab_signup_enabled'] = true
         nginx['listen_port'] = 80
         nginx['redirect_http_to_https'] = false
-        # 支持多机部署的网络配置
-        gitlab_rails['gitlab_host'] = '${GITLAB_HOST:-192.168.140.171}'
+        # ==========支持多机部署的网络配置===========
+        gitlab_rails['gitlab_host'] = '${GITLAB_HOST:-127.0.0.1}'
         gitlab_rails['gitlab_port'] = ${GITLAB_PORT:-8081}
         gitlab_rails['gitlab_https'] = false
         
@@ -60,30 +60,30 @@ services:
       retries: 5
       start_period: 300s
 
-  # GitLab OAuth应用自动初始化服务
-  gitlab-init:
-    image: alpine:3.19
-    container_name: gitlabex-gitlab-init
-    restart: "no"  # 只运行一次
-    user: root
-    depends_on:
-      gitlab:
-        condition: service_healthy
-    volumes:
-      - ./scripts:/scripts:ro
-      - ./config:/config:ro
-      - gitlab_oauth_config:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      - GITLAB_ROOT_PASSWORD=${GITLAB_ROOT_PASSWORD:-b75hZ0qcwLKD}
-      - GITLAB_CONTAINER=gitlabex-gitlab
-      - OAUTH_CONFIG_FILE=/config/oauth.env
-      - SHARED_DIR=/shared
-    networks:
-      - gitlabex-network
-    command: >
-      sh -c "apk add --no-cache bash curl docker-cli &&
-             /scripts/init-oauth-rails.sh"
+  # GitLab OAuth应用自动初始化服务 (已禁用 - 使用手动配置)
+  # gitlab-init:
+  #   image: alpine:3.19
+  #   container_name: gitlabex-gitlab-init
+  #   restart: "no"  # 只运行一次
+  #   user: root
+  #   depends_on:
+  #     gitlab:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./scripts:/scripts:ro
+  #     - ./config:/config:ro
+  #     - gitlab_oauth_config:/shared
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #   environment:
+  #     - GITLAB_ROOT_PASSWORD=${GITLAB_ROOT_PASSWORD:-b75hZ0qcwLKD}
+  #     - GITLAB_CONTAINER=gitlabex-gitlab
+  #     - OAUTH_CONFIG_FILE=/config/oauth.env
+  #     - SHARED_DIR=/shared
+  #   networks:
+  #     - gitlabex-network
+  #   command: >
+  #     sh -c "apk add --no-cache bash curl docker-cli &&
+  #            /scripts/init-oauth-rails.sh"
 
   # PostgreSQL数据库 - 支持外部连接
   postgres:

@@ -126,13 +126,15 @@ gitlabex/
 ### 开发环境快速启动
 1. **启动基础服务**
 ```bash
+# 生成compose配置
+./scripts/configure-compose.sh
 # 使用Docker Compose启动开发环境基础服务
 docker-compose up -d
 ```
 
 2. **配置GitLab OAuth应用**
 ```bash
-# 运行配置向导配置Oauth以及system token
+# gitlab启动成功后运行配置向导配置Oauth以及system token
 ./scripts/configure-oauth.sh
 ```
 
@@ -159,8 +161,6 @@ pnpm run dev
 - **后端API**: http://localhost:8080
 
 ### 环境配置
-
-创建配置文件并设置环境变量：
 
 #### 开发环境配置
 ```bash
@@ -191,10 +191,14 @@ docker save -o gitlabex-frontend:latest gitlabex-frontend.tar
 docker load -i gitlabex-backend.tar
 docker load -i gitlabex-frontend.tar
 
+
+# 生成compose配置
+./scripts/configure-compose.sh
+
 # 启动生产环境基础服务
 docker-compose  -f docker-compose.prod.yml up -d postgres redis minio gitlab
 
-# 运行配置向导配置Oauth以及system token
+# gitlab启动成功后运行配置向导配置Oauth以及system token
 ./scripts/configure-oauth.sh
 
 # 启动后端/前端服务
