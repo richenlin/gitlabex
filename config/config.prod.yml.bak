@@ -31,18 +31,18 @@ gitlab:
   # 获取方式: 访问 http://localhost:8081/admin/applications
   # 权限范围: api read_api openid
   url: "http://192.168.170.172:8081"
-  client_id: "40fcdd0c2b7841fc6585601e8fdf63200764169278d7eac17f1abcbfcd86f187"  # 必须通过环境变量设置
-  client_secret: "3f2c3fa161b185dc96a2e4640e072c07d04a652d2597787f41b1fc382be905a2"  # 必须通过环境变量设置
+  client_id: "537d8206b73fa931da99061f1564e97da72aa53fcd6eb3587d8f23b14ee6088e"  # 必须通过环境变量设置
+  client_secret: "7e48942204e3783d39dacd8f440b8444e6bd1f9687772ef10c615775eb33210a"  # 必须通过环境变量设置
   redirect_uri: "http://192.168.170.172:3000/auth/gitlab/callback"
   scopes: "api read_api openid"
   # GitLab 个人访问令牌 (用于数据初始化已经游客访问部分公开数据)
   # 获取方式: 访问 http://localhost:8081/-/profile/personal_access_tokens
   # 权限范围: api, read_api, read_user, read_repository, write_repository
-  system_token: "glpat-64xMkZT1y7RoirRbMAsX"  # 必须通过环境变量设置
+  system_token: "glpat-gcWAqg7EsbgaRPnKzVHb"  # 必须通过环境变量设置
 
 # JWT配置
 jwt:
-  secret: "ieqoR62OdrIfoAa0MaCL9FnmYGwhRTQemVR5vU6FWRo="
+  secret: "gitlabex_jwt_secret_development_environment_2024_very_secure_key_32_chars_minimum"
   expiration_hours: 24
 
 # MinIO对象存储配置 - 使用IP地址
@@ -75,4 +75,4 @@ security:
 
 # API密钥配置
 api_keys:
-  third_party_api_key: "VjHm5aie21LXsgGbLEG7Aoe1t9yQ-9nQ"
+  third_party_api_key: "gitlabex_third_party_api_key_2024_change_in_production_32_chars_minimum"
