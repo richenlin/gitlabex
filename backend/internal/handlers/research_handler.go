@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"gitlabex/internal/dto"
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 	"net/http"
@@ -235,7 +236,7 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 	// 生成项目路径（GitLab要求的path字段）
 	projectPath := generateProjectPath(projectName)
 
-	createReq := &services.CreateProjectRequest{
+	createReq := &dto.CreateProjectRequest{
 		Name:                 projectName,
 		Path:                 projectPath,
 		Description:          req.Description,

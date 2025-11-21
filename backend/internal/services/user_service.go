@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"gitlabex/internal/config"
+	"gitlabex/internal/dto"
 	"gitlabex/internal/models"
 	"strconv"
 
@@ -128,36 +129,9 @@ func (s *UserService) CheckProjectPermission(accessToken string, projectID int64
 	return true, nil
 }
 
-// CreateUserData 创建用户数据结构
-type CreateUserData struct {
-	Username    string
-	Name        string
-	Email       string
-	Password    string
-	IsAdmin     bool
-	DefaultRole string
-}
-
-// UpdateUserData 更新用户数据结构
-type UpdateUserData struct {
-	Username string
-	Name     string
-	Email    string
-	IsAdmin  *bool
-}
-
-// UpdateUserRolesData 更新用户角色数据结构
-type UpdateUserRolesData struct {
-	IsAdmin      *bool
-	ProjectRoles []struct {
-		ProjectID string
-		Role      string
-	}
-}
-
 // GetAllUsers 获取所有用户列表 (管理员专用)
 func (s *UserService) GetAllUsers(accessToken string, page, pageSize int, search string) ([]*models.GitLabUser, int, error) {
-	var gitlabUsers []*GitLabAPIUser
+	var gitlabUsers []*dto.GitLabAPIUser
 	var err error
 
 	// 如果有搜索条件，使用搜索API
@@ -214,9 +188,9 @@ func (s *UserService) SearchUsers(accessToken string, search string, page, pageS
 }
 
 // CreateUser 创建用户 (管理员专用)
-func (s *UserService) CreateUser(accessToken string, data *CreateUserData) (*models.GitLabUser, error) {
+func (s *UserService) CreateUser(accessToken string, data *dto.CreateUserData) (*models.GitLabUser, error) {
 	// 通过GitLab API创建用户
-	gitlabUserData := &GitLabCreateUserData{
+	gitlabUserData := &dto.GitLabCreateUserData{
 		Email:            data.Email,
 		Username:         data.Username,
 		Name:             data.Name,
@@ -245,7 +219,7 @@ func (s *UserService) CreateUser(accessToken string, data *CreateUserData) (*mod
 }
 
 // UpdateUser 更新用户信息 (管理员专用)
-func (s *UserService) UpdateUser(accessToken string, userID string, data *UpdateUserData) (*models.GitLabUser, error) {
+func (s *UserService) UpdateUser(accessToken string, userID string, data *dto.UpdateUserData) (*models.GitLabUser, error) {
 	// 转换用户ID为int64
 	id, err := strconv.ParseInt(userID, 10, 64)
 	if err != nil {
@@ -253,7 +227,7 @@ func (s *UserService) UpdateUser(accessToken string, userID string, data *Update
 	}
 
 	// 通过GitLab API更新用户信息
-	gitlabUserData := &GitLabUpdateUserData{
+	gitlabUserData := &dto.GitLabUpdateUserData{
 		Username: data.Username,
 		Name:     data.Name,
 		Email:    data.Email,
@@ -307,7 +281,7 @@ func (s *UserService) DeleteUser(accessToken string, userID string) error {
 }
 
 // UpdateUserRoles 更新用户角色 (管理员专用)
-func (s *UserService) UpdateUserRoles(accessToken string, userID string, data *UpdateUserRolesData) error {
+func (s *UserService) UpdateUserRoles(accessToken string, userID string, data *dto.UpdateUserRolesData) error {
 	// 转换用户ID为int64
 	gitlabUserID, err := strconv.ParseInt(userID, 10, 64)
 	if err != nil {
@@ -315,7 +289,7 @@ func (s *UserService) UpdateUserRoles(accessToken string, userID string, data *U
 	}
 
 	// 构建GitLab更新用户数据
-	updateData := &GitLabUpdateUserData{
+	updateData := &dto.GitLabUpdateUserData{
 		Admin: data.IsAdmin,
 	}
 

@@ -2,10 +2,9 @@ package services
 
 import (
 	"fmt"
+	"gitlabex/internal/dto"
 	"gitlabex/internal/models"
-	"time"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -21,23 +20,10 @@ func NewActivityService(db *gorm.DB) *ActivityService {
 	}
 }
 
-// ActivityItem 活动项
-type ActivityItem struct {
-	ID          uuid.UUID `json:"id"`
-	Type        string    `json:"type"`                   // document, topic, homework, comment
-	Title       string    `json:"title"`                  // 活动标题
-	Description string    `json:"description"`            // 活动描述
-	UserName    string    `json:"user_name"`              // 操作用户名
-	UserAvatar  string    `json:"user_avatar"`            // 用户头像
-	ProjectName string    `json:"project_name,omitempty"` // 所属项目名称
-	CreatedAt   time.Time `json:"created_at"`             // 创建时间
-	URL         string    `json:"url"`                    // 跳转链接
-}
-
 // GetRecentActivities 获取最近活动
-func (s *ActivityService) GetRecentActivities(limit int) ([]ActivityItem, error) {
+func (s *ActivityService) GetRecentActivities(limit int) ([]dto.ActivityItem, error) {
 	fmt.Printf("DEBUG: GetRecentActivities called with limit=%d\n", limit)
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 
 	// 获取最近的项目创建活动
 	projectActivities, err := s.getRecentProjectActivities(limit / 5)
@@ -87,7 +73,7 @@ func (s *ActivityService) GetRecentActivities(limit int) ([]ActivityItem, error)
 }
 
 // getRecentDocumentActivities 获取最近的文档活动
-func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getRecentDocumentActivities(limit int) ([]dto.ActivityItem, error) {
 	fmt.Printf("DEBUG: Getting document activities with limit=%d\n", limit)
 
 	var documents []models.Document
@@ -104,7 +90,7 @@ func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem
 
 	fmt.Printf("DEBUG: Found %d documents\n", len(documents))
 
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 	for _, doc := range documents {
 		projectName := ""
 		// 安全地获取项目名称，如果Project关联失败则使用空字符串
@@ -118,7 +104,7 @@ func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem
 			projectName = doc.Project.Name
 		}
 
-		activity := ActivityItem{
+		activity := dto.ActivityItem{
 			ID:          doc.ID,
 			Type:        "document",
 			Title:       "上传了文档",
@@ -137,7 +123,7 @@ func (s *ActivityService) getRecentDocumentActivities(limit int) ([]ActivityItem
 }
 
 // getRecentTopicActivities 获取最近的话题活动
-func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getRecentTopicActivities(limit int) ([]dto.ActivityItem, error) {
 	fmt.Printf("DEBUG: Getting topic activities with limit=%d\n", limit)
 
 	var topics []models.Topic
@@ -154,7 +140,7 @@ func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, e
 
 	fmt.Printf("DEBUG: Found %d topics\n", len(topics))
 
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 	for _, topic := range topics {
 		projectName := ""
 		defer func() {
@@ -167,7 +153,7 @@ func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, e
 			projectName = topic.Project.Name
 		}
 
-		activity := ActivityItem{
+		activity := dto.ActivityItem{
 			ID:          topic.ID,
 			Type:        "topic",
 			Title:       "发布了话题",
@@ -186,7 +172,7 @@ func (s *ActivityService) getRecentTopicActivities(limit int) ([]ActivityItem, e
 }
 
 // getRecentHomeworkActivities 获取最近的作业活动
-func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]dto.ActivityItem, error) {
 	fmt.Printf("DEBUG: Getting homework activities with limit=%d\n", limit)
 
 	var homeworks []models.Homework
@@ -203,7 +189,7 @@ func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem
 
 	fmt.Printf("DEBUG: Found %d homeworks\n", len(homeworks))
 
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 	for _, homework := range homeworks {
 		projectName := ""
 		defer func() {
@@ -216,7 +202,7 @@ func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem
 			projectName = homework.Project.Name
 		}
 
-		activity := ActivityItem{
+		activity := dto.ActivityItem{
 			ID:          homework.ID,
 			Type:        "homework",
 			Title:       "发布了作业",
@@ -235,7 +221,7 @@ func (s *ActivityService) getRecentHomeworkActivities(limit int) ([]ActivityItem
 }
 
 // getRecentCommentActivities 获取最近的评论活动
-func (s *ActivityService) getRecentCommentActivities(limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getRecentCommentActivities(limit int) ([]dto.ActivityItem, error) {
 	fmt.Printf("DEBUG: Getting comment activities with limit=%d\n", limit)
 
 	var comments []models.Comment
@@ -251,7 +237,7 @@ func (s *ActivityService) getRecentCommentActivities(limit int) ([]ActivityItem,
 
 	fmt.Printf("DEBUG: Found %d comments\n", len(comments))
 
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 	for _, comment := range comments {
 		projectName := ""
 		topicTitle := ""
@@ -270,7 +256,7 @@ func (s *ActivityService) getRecentCommentActivities(limit int) ([]ActivityItem,
 		topicTitle = comment.Topic.Title
 		topicID = comment.Topic.ID.String()
 
-		activity := ActivityItem{
+		activity := dto.ActivityItem{
 			ID:          comment.ID,
 			Type:        "comment",
 			Title:       "评论了话题",
@@ -289,7 +275,7 @@ func (s *ActivityService) getRecentCommentActivities(limit int) ([]ActivityItem,
 }
 
 // sortAndLimitActivities 排序并限制活动数量
-func (s *ActivityService) sortAndLimitActivities(activities []ActivityItem, limit int) []ActivityItem {
+func (s *ActivityService) sortAndLimitActivities(activities []dto.ActivityItem, limit int) []dto.ActivityItem {
 	// 按时间降序排序
 	for i := 0; i < len(activities)-1; i++ {
 		for j := i + 1; j < len(activities); j++ {
@@ -308,8 +294,8 @@ func (s *ActivityService) sortAndLimitActivities(activities []ActivityItem, limi
 }
 
 // GetUserActivities 获取特定用户的活动
-func (s *ActivityService) GetUserActivities(userID int64, limit int) ([]ActivityItem, error) {
-	var activities []ActivityItem
+func (s *ActivityService) GetUserActivities(userID int64, limit int) ([]dto.ActivityItem, error) {
+	var activities []dto.ActivityItem
 
 	// 获取用户的文档活动
 	documentActivities, err := s.getUserDocumentActivities(userID, limit/3)
@@ -339,7 +325,7 @@ func (s *ActivityService) GetUserActivities(userID int64, limit int) ([]Activity
 }
 
 // getUserDocumentActivities 获取用户的文档活动
-func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]dto.ActivityItem, error) {
 	var documents []models.Document
 	err := s.db.Preload("Project").
 		Where("uploader_id = ? AND status = ?", userID, models.DocumentStatusApproved).
@@ -351,7 +337,7 @@ func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]
 		return nil, err
 	}
 
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 	for _, doc := range documents {
 		projectName := ""
 		defer func() {
@@ -364,7 +350,7 @@ func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]
 			projectName = doc.Project.Name
 		}
 
-		activity := ActivityItem{
+		activity := dto.ActivityItem{
 			ID:          doc.ID,
 			Type:        "document",
 			Title:       "上传了文档",
@@ -382,7 +368,7 @@ func (s *ActivityService) getUserDocumentActivities(userID int64, limit int) ([]
 }
 
 // getUserTopicActivities 获取用户的话题活动
-func (s *ActivityService) getUserTopicActivities(userID int64, limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getUserTopicActivities(userID int64, limit int) ([]dto.ActivityItem, error) {
 	var topics []models.Topic
 	err := s.db.Preload("Project").
 		Where("author_id = ? AND status = ?", fmt.Sprintf("%d", userID), "active").
@@ -394,7 +380,7 @@ func (s *ActivityService) getUserTopicActivities(userID int64, limit int) ([]Act
 		return nil, err
 	}
 
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 	for _, topic := range topics {
 		projectName := ""
 		defer func() {
@@ -407,7 +393,7 @@ func (s *ActivityService) getUserTopicActivities(userID int64, limit int) ([]Act
 			projectName = topic.Project.Name
 		}
 
-		activity := ActivityItem{
+		activity := dto.ActivityItem{
 			ID:          topic.ID,
 			Type:        "topic",
 			Title:       "发布了话题",
@@ -425,7 +411,7 @@ func (s *ActivityService) getUserTopicActivities(userID int64, limit int) ([]Act
 }
 
 // getUserHomeworkActivities 获取用户的作业活动
-func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]dto.ActivityItem, error) {
 	var homeworks []models.Homework
 	err := s.db.Preload("Project").
 		Where("creator_id = ? AND status = ?", userID, models.HomeworkStatusPublished).
@@ -437,7 +423,7 @@ func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]
 		return nil, err
 	}
 
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 	for _, homework := range homeworks {
 		projectName := ""
 		defer func() {
@@ -450,7 +436,7 @@ func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]
 			projectName = homework.Project.Name
 		}
 
-		activity := ActivityItem{
+		activity := dto.ActivityItem{
 			ID:          homework.ID,
 			Type:        "homework",
 			Title:       "发布了作业",
@@ -468,7 +454,7 @@ func (s *ActivityService) getUserHomeworkActivities(userID int64, limit int) ([]
 }
 
 // getRecentProjectActivities 获取最近的项目创建活动
-func (s *ActivityService) getRecentProjectActivities(limit int) ([]ActivityItem, error) {
+func (s *ActivityService) getRecentProjectActivities(limit int) ([]dto.ActivityItem, error) {
 	fmt.Printf("DEBUG: Getting project activities with limit=%d\n", limit)
 
 	var projects []models.ResearchProject
@@ -485,9 +471,9 @@ func (s *ActivityService) getRecentProjectActivities(limit int) ([]ActivityItem,
 	// 调试日志
 	fmt.Printf("DEBUG: Found %d projects\n", len(projects))
 
-	var activities []ActivityItem
+	var activities []dto.ActivityItem
 	for _, project := range projects {
-		activity := ActivityItem{
+		activity := dto.ActivityItem{
 			ID:          project.ID,
 			Type:        "project",
 			Title:       "创建了课题",

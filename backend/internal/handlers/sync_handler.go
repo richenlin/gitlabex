@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gitlabex/internal/dto"
 	"gitlabex/internal/services"
 )
 
@@ -19,32 +20,6 @@ func NewSyncHandler(gitlabService *services.GitLabService) *SyncHandler {
 	return &SyncHandler{
 		gitlabService: gitlabService,
 	}
-}
-
-// CreateUserRequest 创建用户请求
-type CreateUserRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=50"`
-	Password string `json:"password" binding:"required,min=8"`
-	Email    string `json:"email" binding:"required,email"`
-	Name     string `json:"name" binding:"required,min=2,max=100"`
-	Role     string `json:"role" binding:"required"`
-}
-
-// CreateUserResponse 创建用户响应
-type CreateUserResponse struct {
-	Success bool      `json:"success"`
-	Message string    `json:"message"`
-	Data    *UserData `json:"data,omitempty"`
-	Error   string    `json:"error,omitempty"`
-}
-
-// UserData 用户数据
-type UserData struct {
-	ID       int64  `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Role     string `json:"role"`
 }
 
 // CreateUser 创建用户接口
@@ -62,9 +37,9 @@ type UserData struct {
 // @Failure 500 {object} CreateUserResponse "服务器内部错误"
 // @Router /api/v1/sync/users [post]
 func (h *SyncHandler) CreateUser(c *gin.Context) {
-	var req CreateUserRequest
+	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, CreateUserResponse{
+		c.JSON(http.StatusBadRequest, dto.CreateUserResponse{
 			Success: false,
 			Message: "请求参数错误",
 			Error:   err.Error(),
@@ -75,7 +50,7 @@ func (h *SyncHandler) CreateUser(c *gin.Context) {
 	// 获取系统管理员Token进行GitLab操作
 	adminToken := h.gitlabService.GetSystemToken()
 	if adminToken == "" {
-		c.JSON(http.StatusInternalServerError, CreateUserResponse{
+		c.JSON(http.StatusInternalServerError, dto.CreateUserResponse{
 			Success: false,
 			Message: "服务器配置错误",
 			Error:   "系统管理员Token未配置",
@@ -87,7 +62,7 @@ func (h *SyncHandler) CreateUser(c *gin.Context) {
 	existingUser, err := h.gitlabService.GetUserByUsername(adminToken, req.Username)
 	if err == nil && existingUser != nil {
 		// 用户已存在，直接返回用户信息
-		userData := &UserData{
+		userData := &dto.UserData{
 			ID:       existingUser.ID,
 			Username: existingUser.Username,
 			Email:    existingUser.Email,
@@ -95,7 +70,7 @@ func (h *SyncHandler) CreateUser(c *gin.Context) {
 			Role:     getRoleDisplayName(req.Role),
 		}
 
-		c.JSON(http.StatusOK, CreateUserResponse{
+		c.JSON(http.StatusOK, dto.CreateUserResponse{
 			Success: true,
 			Message: "用户已存在，可通过GitLab OAuth登录GitLabEx",
 			Data:    userData,
@@ -104,7 +79,7 @@ func (h *SyncHandler) CreateUser(c *gin.Context) {
 	}
 
 	// 在GitLab中创建用户
-	gitlabCreateData := &services.GitLabCreateUserData{
+	gitlabCreateData := &dto.GitLabCreateUserData{
 		Email:            req.Email,
 		Username:         req.Username,
 		Name:             req.Name,
@@ -115,7 +90,7 @@ func (h *SyncHandler) CreateUser(c *gin.Context) {
 
 	gitlabUser, err := h.gitlabService.CreateUser(adminToken, gitlabCreateData)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, CreateUserResponse{
+		c.JSON(http.StatusInternalServerError, dto.CreateUserResponse{
 			Success: false,
 			Message: "GitLab用户创建失败",
 			Error:   err.Error(),
@@ -130,7 +105,7 @@ func (h *SyncHandler) CreateUser(c *gin.Context) {
 	}
 
 	// 构建响应数据
-	userData := &UserData{
+	userData := &dto.UserData{
 		ID:       gitlabUser.ID,
 		Username: gitlabUser.Username,
 		Email:    gitlabUser.Email,
@@ -138,19 +113,11 @@ func (h *SyncHandler) CreateUser(c *gin.Context) {
 		Role:     getRoleDisplayName(req.Role),
 	}
 
-	c.JSON(http.StatusCreated, CreateUserResponse{
+	c.JSON(http.StatusCreated, dto.CreateUserResponse{
 		Success: true,
 		Message: "用户创建成功，可通过GitLab OAuth登录GitLabEx",
 		Data:    userData,
 	})
-}
-
-// GetUserResponse 获取用户信息响应
-type GetUserResponse struct {
-	Success bool      `json:"success"`
-	Message string    `json:"message"`
-	Data    *UserData `json:"data,omitempty"`
-	Error   string    `json:"error,omitempty"`
 }
 
 // GetUser 获取用户信息接口
@@ -168,7 +135,7 @@ type GetUserResponse struct {
 func (h *SyncHandler) GetUser(c *gin.Context) {
 	username := c.Param("username")
 	if username == "" {
-		c.JSON(http.StatusBadRequest, GetUserResponse{
+		c.JSON(http.StatusBadRequest, dto.GetUserResponse{
 			Success: false,
 			Message: "用户名参数不能为空",
 		})
@@ -178,7 +145,7 @@ func (h *SyncHandler) GetUser(c *gin.Context) {
 	// 获取系统管理员Token
 	adminToken := h.gitlabService.GetSystemToken()
 	if adminToken == "" {
-		c.JSON(http.StatusInternalServerError, GetUserResponse{
+		c.JSON(http.StatusInternalServerError, dto.GetUserResponse{
 			Success: false,
 			Message: "服务器配置错误",
 			Error:   "系统管理员Token未配置",
@@ -189,7 +156,7 @@ func (h *SyncHandler) GetUser(c *gin.Context) {
 	// 查询GitLab用户信息
 	gitlabUser, err := h.gitlabService.GetUserByUsername(adminToken, username)
 	if err != nil {
-		c.JSON(http.StatusNotFound, GetUserResponse{
+		c.JSON(http.StatusNotFound, dto.GetUserResponse{
 			Success: false,
 			Message: "用户不存在",
 			Error:   err.Error(),
@@ -204,7 +171,7 @@ func (h *SyncHandler) GetUser(c *gin.Context) {
 	}
 
 	// 构建响应数据
-	userData := &UserData{
+	userData := &dto.UserData{
 		ID:       gitlabUser.ID,
 		Username: gitlabUser.Username,
 		Email:    gitlabUser.Email,
@@ -212,7 +179,7 @@ func (h *SyncHandler) GetUser(c *gin.Context) {
 		Role:     roleDisplayName,
 	}
 
-	c.JSON(http.StatusOK, GetUserResponse{
+	c.JSON(http.StatusOK, dto.GetUserResponse{
 		Success: true,
 		Message: "获取用户信息成功",
 		Data:    userData,

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gitlabex/internal/config"
+	"gitlabex/internal/dto"
 	"gitlabex/internal/models"
 
 	"gorm.io/gorm"
@@ -77,7 +78,7 @@ func (s *ExternalUserService) UpdateExternalUserMapping(externalUser *models.Ext
 }
 
 // SyncExternalUser 同步外部用户到GitLab
-func (s *ExternalUserService) SyncExternalUser(adminToken string, userData *ExternalUserSyncData, apiKeyType string, clientIP string) (*models.ExternalUserMapping, error) {
+func (s *ExternalUserService) SyncExternalUser(adminToken string, userData *dto.ExternalUserSyncData, apiKeyType string, clientIP string) (*models.ExternalUserMapping, error) {
 	// 记录同步日志
 	syncLog := &models.ExternalUserSyncLog{
 		Operation: "create",
@@ -99,7 +100,7 @@ func (s *ExternalUserService) SyncExternalUser(adminToken string, userData *Exte
 		return nil, err
 	}
 
-	var gitlabUser *GitLabAPIUser
+	var gitlabUser *dto.GitLabAPIUser
 	var externalUser *models.ExternalUser
 
 	if existingUser != nil {
@@ -108,7 +109,7 @@ func (s *ExternalUserService) SyncExternalUser(adminToken string, userData *Exte
 		syncLog.ExternalUserID = existingUser.ID
 
 		// 更新GitLab用户信息
-		gitlabUpdateData := &GitLabUpdateUserData{
+		gitlabUpdateData := &dto.GitLabUpdateUserData{
 			Username: userData.Username,
 			Name:     userData.Name,
 			Email:    userData.Email,
@@ -146,7 +147,7 @@ func (s *ExternalUserService) SyncExternalUser(adminToken string, userData *Exte
 		syncLog.Operation = "create"
 
 		// 在GitLab中创建用户
-		gitlabCreateData := &GitLabCreateUserData{
+		gitlabCreateData := &dto.GitLabCreateUserData{
 			Email:            userData.Email,
 			Username:         userData.Username,
 			Name:             userData.Name,
@@ -220,29 +221,29 @@ func (s *ExternalUserService) SyncExternalUser(adminToken string, userData *Exte
 }
 
 // BatchSyncExternalUsers 批量同步外部用户
-func (s *ExternalUserService) BatchSyncExternalUsers(adminToken string, usersData []ExternalUserSyncData, apiKeyType string, clientIP string, maxBatch int) (*BatchSyncResult, error) {
+func (s *ExternalUserService) BatchSyncExternalUsers(adminToken string, usersData []dto.ExternalUserSyncData, apiKeyType string, clientIP string, maxBatch int) (*dto.BatchSyncResult, error) {
 	if len(usersData) > maxBatch {
 		return nil, fmt.Errorf("批量同步数量超出限制，最多支持 %d 个用户", maxBatch)
 	}
 
-	result := &BatchSyncResult{
+	result := &dto.BatchSyncResult{
 		TotalCount:   len(usersData),
 		SuccessCount: 0,
 		FailureCount: 0,
-		Results:      make([]SyncResult, len(usersData)),
+		Results:      make([]dto.SyncResult, len(usersData)),
 	}
 
 	for i, userData := range usersData {
 		mapping, err := s.SyncExternalUser(adminToken, &userData, apiKeyType, clientIP)
 		if err != nil {
-			result.Results[i] = SyncResult{
+			result.Results[i] = dto.SyncResult{
 				Success:      false,
 				ErrorMessage: err.Error(),
 				ExternalID:   userData.ExternalID,
 			}
 			result.FailureCount++
 		} else {
-			result.Results[i] = SyncResult{
+			result.Results[i] = dto.SyncResult{
 				Success:      true,
 				GitLabUserID: mapping.GitLabUser.ID,
 				ExternalID:   userData.ExternalID,
@@ -299,37 +300,4 @@ func (s *ExternalUserService) GetSyncLogs(page, pageSize int, externalSource str
 	}
 
 	return logs, total, nil
-}
-
-// ExternalUserSyncData 外部用户同步数据
-type ExternalUserSyncData struct {
-	ExternalID     string `json:"external_id" binding:"required"`
-	ExternalSource string `json:"external_source" binding:"required"`
-	Username       string `json:"username" binding:"required,min=3,max=50"`
-	Password       string `json:"password" binding:"required,min=6"`
-	Email          string `json:"email" binding:"required,email"`
-	Name           string `json:"name" binding:"required,min=2,max=100"`
-	Role           string `json:"role" binding:"required"`
-	Department     string `json:"department,omitempty"`
-	StudentID      string `json:"student_id,omitempty"`
-	TeacherID      string `json:"teacher_id,omitempty"`
-	Phone          string `json:"phone,omitempty"`
-}
-
-// BatchSyncResult 批量同步结果
-type BatchSyncResult struct {
-	TotalCount   int          `json:"total_count"`
-	SuccessCount int          `json:"success_count"`
-	FailureCount int          `json:"failure_count"`
-	Results      []SyncResult `json:"results"`
-}
-
-// SyncResult 单个同步结果
-type SyncResult struct {
-	Success      bool   `json:"success"`
-	GitLabUserID int64  `json:"gitlab_user_id,omitempty"`
-	ExternalID   string `json:"external_id"`
-	Username     string `json:"username,omitempty"`
-	Email        string `json:"email,omitempty"`
-	ErrorMessage string `json:"error_message,omitempty"`
 }

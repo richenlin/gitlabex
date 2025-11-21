@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"gitlabex/internal/dto"
 	"gitlabex/internal/models"
 )
 
@@ -12,14 +13,6 @@ import (
 type DocumentScannerService struct {
 	minioService    *MinIOService
 	documentService *DocumentService
-}
-
-// SimpleScanResult 扫描结果
-type SimpleScanResult struct {
-	TotalDocuments int      `json:"total_documents"`
-	NewDocuments   int      `json:"new_documents"`
-	UpdatedDocs    int      `json:"updated_docs"`
-	Errors         []string `json:"errors,omitempty"`
 }
 
 // NewDocumentScannerService 创建文档扫描服务
@@ -31,8 +24,8 @@ func NewDocumentScannerService(minioService *MinIOService, documentService *Docu
 }
 
 // ScanMinIODocuments 扫描MinIO中的文档并同步到数据库
-func (s *DocumentScannerService) ScanMinIODocuments() (*SimpleScanResult, error) {
-	result := &SimpleScanResult{
+func (s *DocumentScannerService) ScanMinIODocuments() (*dto.SimpleScanResult, error) {
+	result := &dto.SimpleScanResult{
 		Errors: make([]string, 0),
 	}
 

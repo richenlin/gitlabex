@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"gitlabex/internal/dto"
 	"gitlabex/internal/services"
 	"gitlabex/internal/types"
 	"net/http"
@@ -80,7 +81,7 @@ func (h *AdminUserHandler) CreateUser(c *gin.Context) {
 	}
 
 	// 创建用户
-	user, err := h.userService.CreateUser(accessToken.(string), &services.CreateUserData{
+	user, err := h.userService.CreateUser(accessToken.(string), &dto.CreateUserData{
 		Username:    req.Username,
 		Name:        req.Name,
 		Email:       req.Email,
@@ -126,7 +127,7 @@ func (h *AdminUserHandler) UpdateUser(c *gin.Context) {
 	}
 
 	// 更新用户信息
-	user, err := h.userService.UpdateUser(accessToken.(string), userIDStr, &services.UpdateUserData{
+	user, err := h.userService.UpdateUser(accessToken.(string), userIDStr, &dto.UpdateUserData{
 		Username: req.Username,
 		Name:     req.Name,
 		Email:    req.Email,
@@ -240,7 +241,7 @@ func (h *AdminUserHandler) UpdateUserRoles(c *gin.Context) {
 	}
 
 	// 更新用户角色
-	err := h.userService.UpdateUserRoles(accessToken.(string), userIDStr, &services.UpdateUserRolesData{
+	err := h.userService.UpdateUserRoles(accessToken.(string), userIDStr, &dto.UpdateUserRolesData{
 		IsAdmin: req.IsAdmin,
 		// TODO: 处理项目角色
 	})

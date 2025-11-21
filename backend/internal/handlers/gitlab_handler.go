@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"gitlabex/internal/dto"
 	"gitlabex/internal/services"
 	"net/http"
 	"strconv"
@@ -104,7 +105,7 @@ func (h *GitLabHandler) CreateProject(c *gin.Context) {
 		return
 	}
 
-	var req services.CreateProjectRequest
+	var req dto.CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -161,7 +162,7 @@ func (h *GitLabHandler) CreateBranch(c *gin.Context) {
 		return
 	}
 
-	var req services.CreateBranchRequest
+	var req dto.CreateBranchRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -227,7 +228,7 @@ func (h *GitLabHandler) CreateFile(c *gin.Context) {
 	}
 
 	filePath := c.Param("path")
-	var req services.CreateFileRequest
+	var req dto.CreateFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -261,7 +262,7 @@ func (h *GitLabHandler) UpdateFile(c *gin.Context) {
 	}
 
 	filePath := c.Param("path")
-	var req services.CreateFileRequest
+	var req dto.CreateFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

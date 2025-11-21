@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"gitlabex/internal/dto"
 	"gitlabex/internal/models"
 	"strings"
 	"time"
@@ -667,7 +668,7 @@ func (s *HomeworkService) CreateStudentBranch(homeworkID uuid.UUID, studentID in
 
 	// 创建GitLab分支
 	// 从主分支创建新的学生分支
-	createBranchReq := &CreateBranchRequest{
+	createBranchReq := &dto.CreateBranchRequest{
 		Branch: branchName,
 		Ref:    "main", // 从默认的main分支创建
 	}

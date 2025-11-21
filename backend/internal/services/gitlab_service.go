@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gitlabex/internal/config"
+	"gitlabex/internal/dto"
 	"gitlabex/internal/utils"
 	"io"
 	"net/http"
@@ -109,34 +110,8 @@ func (s *GitLabService) doRequestMultiStatus(method, apiURL, accessToken string,
 	}, expectedStatuses...)
 }
 
-// ProtectBranchRequest 保护分支请求
-type ProtectBranchRequest struct {
-	Name                      string `json:"name"`
-	PushAccessLevel           int    `json:"push_access_level"`      // 30=Developer, 40=Maintainer, 60=Admin
-	MergeAccessLevel          int    `json:"merge_access_level"`     // 30=Developer, 40=Maintainer, 60=Admin
-	UnprotectAccessLevel      int    `json:"unprotect_access_level"` // 40=Maintainer, 60=Admin
-	AllowForcePush            bool   `json:"allow_force_push"`
-	CodeOwnerApprovalRequired bool   `json:"code_owner_approval_required"`
-}
-
-// ProtectedBranch 受保护的分支信息
-type ProtectedBranch struct {
-	ID                        int64         `json:"id"`
-	Name                      string        `json:"name"`
-	PushAccessLevels          []AccessLevel `json:"push_access_levels"`
-	MergeAccessLevels         []AccessLevel `json:"merge_access_levels"`
-	UnprotectAccessLevels     []AccessLevel `json:"unprotect_access_levels"`
-	AllowForcePush            bool          `json:"allow_force_push"`
-	CodeOwnerApprovalRequired bool          `json:"code_owner_approval_required"`
-}
-
-type AccessLevel struct {
-	AccessLevel            int64  `json:"access_level"`
-	AccessLevelDescription string `json:"access_level_description"`
-}
-
 // ProtectBranch 保护分支
-func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *ProtectBranchRequest) (*ProtectedBranch, error) {
+func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *dto.ProtectBranchRequest) (*dto.ProtectedBranch, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches", s.Config.GitLab.URL, projectID)
 
 	// 使用多状态码请求（支持201和409）
@@ -150,7 +125,7 @@ func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *
 		return s.GetProtectedBranch(accessToken, projectID, req.Name)
 	}
 
-	var protectedBranch ProtectedBranch
+	var protectedBranch dto.ProtectedBranch
 	if err := json.Unmarshal(respBody, &protectedBranch); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %v", err)
 	}
@@ -159,11 +134,11 @@ func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *
 }
 
 // GetProtectedBranch 获取受保护分支信息
-func (s *GitLabService) GetProtectedBranch(accessToken string, projectID int64, branchName string) (*ProtectedBranch, error) {
+func (s *GitLabService) GetProtectedBranch(accessToken string, projectID int64, branchName string) (*dto.ProtectedBranch, error) {
 	encodedBranch := url.PathEscape(branchName)
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches/%s", s.Config.GitLab.URL, projectID, encodedBranch)
 
-	var protectedBranch ProtectedBranch
+	var protectedBranch dto.ProtectedBranch
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &protectedBranch, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -173,7 +148,7 @@ func (s *GitLabService) GetProtectedBranch(accessToken string, projectID int64, 
 // SetupProjectBranchProtection 为新创建的课题项目设置分支保护
 func (s *GitLabService) SetupProjectBranchProtection(accessToken string, projectID int64) error {
 	// 保护主分支，只允许维护者和管理员推送
-	mainBranchProtection := &ProtectBranchRequest{
+	mainBranchProtection := &dto.ProtectBranchRequest{
 		Name:                      "main",
 		PushAccessLevel:           40, // 40 = Maintainer level
 		MergeAccessLevel:          40, // 40 = Maintainer level
@@ -185,7 +160,7 @@ func (s *GitLabService) SetupProjectBranchProtection(accessToken string, project
 	_, err := s.ProtectBranch(accessToken, projectID, mainBranchProtection)
 	if err != nil {
 		// 如果main分支不存在，尝试保护master分支
-		masterBranchProtection := &ProtectBranchRequest{
+		masterBranchProtection := &dto.ProtectBranchRequest{
 			Name:                      "master",
 			PushAccessLevel:           40, // 40 = Maintainer level
 			MergeAccessLevel:          40, // 40 = Maintainer level
@@ -203,197 +178,10 @@ func (s *GitLabService) SetupProjectBranchProtection(accessToken string, project
 	return nil
 }
 
-// GitLabUser GitLab用户信息 - 使用models包中的定义
-// 这里保留一个简化的结构用于API响应解析
-type GitLabAPIUser struct {
-	ID               int64  `json:"id"`
-	Username         string `json:"username"`
-	Email            string `json:"email"`
-	Name             string `json:"name"`
-	Avatar           string `json:"avatar_url"`
-	IsAdmin          bool   `json:"is_admin"`
-	State            string `json:"state"`
-	UserType         string `json:"user_type"`
-	External         bool   `json:"external"`
-	CanCreateGroup   bool   `json:"can_create_group"`
-	CanCreateProject bool   `json:"can_create_project"`
-}
-
-// GitLabProject GitLab项目信息
-type GitLabProject struct {
-	ID                int64  `json:"id"`
-	Name              string `json:"name"`
-	Path              string `json:"path"`
-	PathWithNamespace string `json:"path_with_namespace"`
-	WebURL            string `json:"web_url"`
-	SSHURL            string `json:"ssh_url_to_repo"`
-	HTTPURL           string `json:"http_url_to_repo"`
-	Description       string `json:"description"`
-	DefaultBranch     string `json:"default_branch"`
-	Visibility        string `json:"visibility"`
-	CreatedAt         string `json:"created_at"`
-	LastActivityAt    string `json:"last_activity_at"`
-	Namespace         struct {
-		ID   int64  `json:"id"`
-		Name string `json:"name"`
-		Path string `json:"path"`
-	} `json:"namespace"`
-	Owner *GitLabAPIUser `json:"owner,omitempty"`
-}
-
-// GitLabFile GitLab文件信息
-type GitLabFile struct {
-	FileName      string `json:"file_name"`
-	FilePath      string `json:"file_path"`
-	Size          int    `json:"size"`
-	Encoding      string `json:"encoding"`
-	Content       string `json:"content"`
-	ContentSHA256 string `json:"content_sha256"`
-	Ref           string `json:"ref"`
-	BlobID        string `json:"blob_id"`
-	CommitID      string `json:"commit_id"`
-	LastCommitID  string `json:"last_commit_id"`
-}
-
-// GitLabBranch GitLab分支信息
-type GitLabBranch struct {
-	Name   string `json:"name"`
-	Commit struct {
-		ID        string `json:"id"`
-		ShortID   string `json:"short_id"`
-		Title     string `json:"title"`
-		Author    string `json:"author_name"`
-		Message   string `json:"message"`
-		CreatedAt string `json:"created_at"`
-	} `json:"commit"`
-	Protected bool `json:"protected"`
-	Merged    bool `json:"merged"`
-}
-
-// GitLabCommit GitLab提交信息
-type GitLabCommit struct {
-	ID        string         `json:"id"`
-	ShortID   string         `json:"short_id"`
-	Title     string         `json:"title"`
-	Author    *GitLabAPIUser `json:"author"`
-	Committer *GitLabAPIUser `json:"committer"`
-	Message   string         `json:"message"`
-	CreatedAt time.Time      `json:"created_at"`
-	WebURL    string         `json:"web_url"`
-}
-
-// GitLabIssue GitLab议题信息
-type GitLabIssue struct {
-	ID          int64    `json:"id"`
-	IID         int64    `json:"iid"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	State       string   `json:"state"`
-	CreatedAt   string   `json:"created_at"`
-	UpdatedAt   string   `json:"updated_at"`
-	Labels      []string `json:"labels"`
-	Author      struct {
-		ID        int64  `json:"id"`
-		Username  string `json:"username"`
-		Name      string `json:"name"`
-		AvatarURL string `json:"avatar_url"`
-	} `json:"author"`
-	Upvotes        int    `json:"upvotes"`
-	Downvotes      int    `json:"downvotes"`
-	UserNotesCount int    `json:"user_notes_count"`
-	WebURL         string `json:"web_url"`
-}
-
-// GitLabIssueNote GitLab Issue评论结构
-type GitLabIssueNote struct {
-	ID        int64  `json:"id"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-	Author    struct {
-		ID        int64  `json:"id"`
-		Username  string `json:"username"`
-		Name      string `json:"name"`
-		AvatarURL string `json:"avatar_url"`
-	} `json:"author"`
-}
-
-// GitLabAwardEmoji GitLab Award Emoji结构
-type GitLabAwardEmoji struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-	User struct {
-		ID        int64  `json:"id"`
-		Username  string `json:"username"`
-		Name      string `json:"name"`
-		AvatarURL string `json:"avatar_url"`
-	} `json:"user"`
-}
-
-// GitLabMergeRequest GitLab合并请求信息
-type GitLabMergeRequest struct {
-	ID           int64          `json:"id"`
-	IID          int64          `json:"iid"`
-	Title        string         `json:"title"`
-	Description  string         `json:"description"`
-	State        string         `json:"state"`
-	SourceBranch string         `json:"source_branch"`
-	TargetBranch string         `json:"target_branch"`
-	Author       *GitLabAPIUser `json:"author"`
-	Assignee     *GitLabAPIUser `json:"assignee"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	WebURL       string         `json:"web_url"`
-	MergedAt     *string        `json:"merged_at,omitempty"`
-}
-
-// CreateProjectRequest 创建项目请求
-type CreateProjectRequest struct {
-	Name                 string `json:"name"`
-	Path                 string `json:"path"` // 必需字段，项目路径
-	Description          string `json:"description,omitempty"`
-	Visibility           string `json:"visibility,omitempty"` // private, internal, public
-	InitializeWithReadme bool   `json:"initialize_with_readme,omitempty"`
-	DefaultBranch        string `json:"default_branch,omitempty"`
-}
-
-// CreateBranchRequest 创建分支请求
-type CreateBranchRequest struct {
-	Branch string `json:"branch"`
-	Ref    string `json:"ref"`
-}
-
-// CreateFileRequest 创建文件请求
-type CreateFileRequest struct {
-	Branch        string `json:"branch"`
-	Content       string `json:"content"`
-	CommitMessage string `json:"commit_message"`
-	AuthorEmail   string `json:"author_email,omitempty"`
-	AuthorName    string `json:"author_name,omitempty"`
-}
-
-// GitLabWebhookPayload GitLab webhook负载
-type GitLabWebhookPayload struct {
-	ObjectKind string          `json:"object_kind"`
-	EventName  string          `json:"event_name"`
-	User       *GitLabAPIUser  `json:"user"`
-	Project    *GitLabProject  `json:"project"`
-	Commits    []*GitLabCommit `json:"commits"`
-	Ref        string          `json:"ref"`
-	Before     string          `json:"before"`
-	After      string          `json:"after"`
-	Repository struct {
-		Name        string `json:"name"`
-		URL         string `json:"url"`
-		Description string `json:"description"`
-		Homepage    string `json:"homepage"`
-	} `json:"repository"`
-}
-
 // GetUser 获取当前用户信息
-func (s *GitLabService) GetUser(accessToken string) (*GitLabAPIUser, error) {
+func (s *GitLabService) GetUser(accessToken string) (*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/user", s.Config.GitLab.URL)
-	var user GitLabAPIUser
+	var user dto.GitLabAPIUser
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &user, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -401,9 +189,9 @@ func (s *GitLabService) GetUser(accessToken string) (*GitLabAPIUser, error) {
 }
 
 // GetAllUsers 获取所有用户列表 (管理员专用)
-func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*GitLabAPIUser, error) {
+func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users?page=%d&per_page=%d", s.Config.GitLab.URL, page, perPage)
-	var users []*GitLabAPIUser
+	var users []*dto.GitLabAPIUser
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &users, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -411,10 +199,10 @@ func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*G
 }
 
 // SearchUsers 搜索用户
-func (s *GitLabService) SearchUsers(accessToken string, search string, page, perPage int) ([]*GitLabAPIUser, error) {
+func (s *GitLabService) SearchUsers(accessToken string, search string, page, perPage int) ([]*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users?search=%s&page=%d&per_page=%d",
 		s.Config.GitLab.URL, url.QueryEscape(search), page, perPage)
-	var users []*GitLabAPIUser
+	var users []*dto.GitLabAPIUser
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &users, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -422,9 +210,9 @@ func (s *GitLabService) SearchUsers(accessToken string, search string, page, per
 }
 
 // GetUserByUsername 根据用户名获取用户信息
-func (s *GitLabService) GetUserByUsername(accessToken string, username string) (*GitLabAPIUser, error) {
+func (s *GitLabService) GetUserByUsername(accessToken string, username string) (*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users?username=%s", s.Config.GitLab.URL, url.QueryEscape(username))
-	var users []*GitLabAPIUser
+	var users []*dto.GitLabAPIUser
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &users, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -435,9 +223,9 @@ func (s *GitLabService) GetUserByUsername(accessToken string, username string) (
 }
 
 // CreateUser 创建用户 (管理员专用)
-func (s *GitLabService) CreateUser(accessToken string, userData *GitLabCreateUserData) (*GitLabAPIUser, error) {
+func (s *GitLabService) CreateUser(accessToken string, userData *dto.GitLabCreateUserData) (*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users", s.Config.GitLab.URL)
-	var user GitLabAPIUser
+	var user dto.GitLabAPIUser
 	if err := s.doJSONRequest("POST", apiURL, accessToken, userData, &user, http.StatusCreated); err != nil {
 		return nil, err
 	}
@@ -445,9 +233,9 @@ func (s *GitLabService) CreateUser(accessToken string, userData *GitLabCreateUse
 }
 
 // UpdateUser 更新用户信息 (管理员专用)
-func (s *GitLabService) UpdateUser(accessToken string, userID int64, userData *GitLabUpdateUserData) (*GitLabAPIUser, error) {
+func (s *GitLabService) UpdateUser(accessToken string, userID int64, userData *dto.GitLabUpdateUserData) (*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
-	var user GitLabAPIUser
+	var user dto.GitLabAPIUser
 	if err := s.doJSONRequest("PUT", apiURL, accessToken, userData, &user, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -462,10 +250,10 @@ func (s *GitLabService) DeleteUser(accessToken string, userID int64) error {
 }
 
 // GetProjects 获取用户的项目列表
-func (s *GitLabService) GetProjects(accessToken string, page, perPage int) ([]*GitLabProject, error) {
+func (s *GitLabService) GetProjects(accessToken string, page, perPage int) ([]*dto.GitLabProject, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects?owned=true&page=%d&per_page=%d&order_by=last_activity_at",
 		s.Config.GitLab.URL, page, perPage)
-	var projects []*GitLabProject
+	var projects []*dto.GitLabProject
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &projects, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -473,7 +261,7 @@ func (s *GitLabService) GetProjects(accessToken string, page, perPage int) ([]*G
 }
 
 // GetProject 获取特定项目信息
-func (s *GitLabService) GetProject(accessToken string, projectID int64) (*GitLabProject, error) {
+func (s *GitLabService) GetProject(accessToken string, projectID int64) (*dto.GitLabProject, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLab.URL, projectID)
 
 	respBody, statusCode, err := s.doRequestMultiStatus("GET", apiURL, accessToken, nil, http.StatusOK, 401, 403, 404)
@@ -491,7 +279,7 @@ func (s *GitLabService) GetProject(accessToken string, projectID int64) (*GitLab
 	case 404:
 		return nil, fmt.Errorf("项目不存在")
 	case http.StatusOK:
-		var project GitLabProject
+		var project dto.GitLabProject
 		if err := json.Unmarshal(respBody, &project); err != nil {
 			return nil, fmt.Errorf("解析响应失败: %v", err)
 		}
@@ -502,9 +290,9 @@ func (s *GitLabService) GetProject(accessToken string, projectID int64) (*GitLab
 }
 
 // CreateProject 创建新项目
-func (s *GitLabService) CreateProject(accessToken string, req *CreateProjectRequest) (*GitLabProject, error) {
+func (s *GitLabService) CreateProject(accessToken string, req *dto.CreateProjectRequest) (*dto.GitLabProject, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects", s.Config.GitLab.URL)
-	var project GitLabProject
+	var project dto.GitLabProject
 	if err := s.doJSONRequest("POST", apiURL, accessToken, req, &project, http.StatusCreated); err != nil {
 		return nil, err
 	}
@@ -512,9 +300,9 @@ func (s *GitLabService) CreateProject(accessToken string, req *CreateProjectRequ
 }
 
 // GetBranches 获取项目分支列表
-func (s *GitLabService) GetBranches(accessToken string, projectID int64) ([]*GitLabBranch, error) {
+func (s *GitLabService) GetBranches(accessToken string, projectID int64) ([]*dto.GitLabBranch, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
-	var branches []*GitLabBranch
+	var branches []*dto.GitLabBranch
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &branches, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -522,9 +310,9 @@ func (s *GitLabService) GetBranches(accessToken string, projectID int64) ([]*Git
 }
 
 // CreateBranch 创建新分支
-func (s *GitLabService) CreateBranch(accessToken string, projectID int64, req *CreateBranchRequest) (*GitLabBranch, error) {
+func (s *GitLabService) CreateBranch(accessToken string, projectID int64, req *dto.CreateBranchRequest) (*dto.GitLabBranch, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
-	var branch GitLabBranch
+	var branch dto.GitLabBranch
 	if err := s.doJSONRequest("POST", apiURL, accessToken, req, &branch, http.StatusCreated); err != nil {
 		return nil, err
 	}
@@ -532,11 +320,11 @@ func (s *GitLabService) CreateBranch(accessToken string, projectID int64, req *C
 }
 
 // GetFileContent 获取文件内容
-func (s *GitLabService) GetFileContent(accessToken string, projectID int64, filePath, ref string) (*GitLabFile, error) {
+func (s *GitLabService) GetFileContent(accessToken string, projectID int64, filePath, ref string) (*dto.GitLabFile, error) {
 	encodedPath := url.PathEscape(filePath)
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s?ref=%s",
 		s.Config.GitLab.URL, projectID, encodedPath, ref)
-	var file GitLabFile
+	var file dto.GitLabFile
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &file, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -544,7 +332,7 @@ func (s *GitLabService) GetFileContent(accessToken string, projectID int64, file
 }
 
 // CreateFile 创建新文件
-func (s *GitLabService) CreateFile(accessToken string, projectID int64, filePath string, req *CreateFileRequest) error {
+func (s *GitLabService) CreateFile(accessToken string, projectID int64, filePath string, req *dto.CreateFileRequest) error {
 	encodedPath := url.PathEscape(filePath)
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s",
 		s.Config.GitLab.URL, projectID, encodedPath)
@@ -552,7 +340,7 @@ func (s *GitLabService) CreateFile(accessToken string, projectID int64, filePath
 }
 
 // UpdateFile 更新文件内容
-func (s *GitLabService) UpdateFile(accessToken string, projectID int64, filePath string, req *CreateFileRequest) error {
+func (s *GitLabService) UpdateFile(accessToken string, projectID int64, filePath string, req *dto.CreateFileRequest) error {
 	encodedPath := url.PathEscape(filePath)
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s",
 		s.Config.GitLab.URL, projectID, encodedPath)
@@ -560,10 +348,10 @@ func (s *GitLabService) UpdateFile(accessToken string, projectID int64, filePath
 }
 
 // GetCommits 获取提交历史
-func (s *GitLabService) GetCommits(accessToken string, projectID int64, branch string, limit int) ([]*GitLabCommit, error) {
+func (s *GitLabService) GetCommits(accessToken string, projectID int64, branch string, limit int) ([]*dto.GitLabCommit, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&per_page=%d",
 		s.Config.GitLab.URL, projectID, branch, limit)
-	var commits []*GitLabCommit
+	var commits []*dto.GitLabCommit
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &commits, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -571,7 +359,7 @@ func (s *GitLabService) GetCommits(accessToken string, projectID int64, branch s
 }
 
 // GetIssues 获取项目议题
-func (s *GitLabService) GetIssues(accessToken string, projectID int64, state string, labels []string) ([]*GitLabIssue, error) {
+func (s *GitLabService) GetIssues(accessToken string, projectID int64, state string, labels []string) ([]*dto.GitLabIssue, error) {
 	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
 
 	params := url.Values{}
@@ -586,7 +374,7 @@ func (s *GitLabService) GetIssues(accessToken string, projectID int64, state str
 		apiUrl += "?" + params.Encode()
 	}
 
-	var issues []*GitLabIssue
+	var issues []*dto.GitLabIssue
 	if err := s.doJSONRequest("GET", apiUrl, accessToken, nil, &issues, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -594,7 +382,7 @@ func (s *GitLabService) GetIssues(accessToken string, projectID int64, state str
 }
 
 // CreateIssue 创建新议题
-func (s *GitLabService) CreateIssue(accessToken string, projectID int64, title, description string, labels []string, assigneeID *int64) (*GitLabIssue, error) {
+func (s *GitLabService) CreateIssue(accessToken string, projectID int64, title, description string, labels []string, assigneeID *int64) (*dto.GitLabIssue, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
 
 	body := map[string]interface{}{
@@ -607,7 +395,7 @@ func (s *GitLabService) CreateIssue(accessToken string, projectID int64, title, 
 		body["assignee_id"] = *assigneeID
 	}
 
-	var issue GitLabIssue
+	var issue dto.GitLabIssue
 	if err := s.doJSONRequest("POST", apiURL, accessToken, body, &issue, http.StatusCreated); err != nil {
 		return nil, err
 	}
@@ -615,7 +403,7 @@ func (s *GitLabService) CreateIssue(accessToken string, projectID int64, title, 
 }
 
 // GetMergeRequests 获取合并请求
-func (s *GitLabService) GetMergeRequests(accessToken string, projectID int64, state string) ([]*GitLabMergeRequest, error) {
+func (s *GitLabService) GetMergeRequests(accessToken string, projectID int64, state string) ([]*dto.GitLabMergeRequest, error) {
 	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/merge_requests", s.Config.GitLab.URL, projectID)
 
 	params := url.Values{}
@@ -627,7 +415,7 @@ func (s *GitLabService) GetMergeRequests(accessToken string, projectID int64, st
 		apiUrl += "?" + params.Encode()
 	}
 
-	var mrs []*GitLabMergeRequest
+	var mrs []*dto.GitLabMergeRequest
 	if err := s.doJSONRequest("GET", apiUrl, accessToken, nil, &mrs, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -752,7 +540,7 @@ func (s *GitLabService) SearchFiles(accessToken string, projectID int64, search 
 }
 
 // GetProjectIssues 获取项目Issues列表
-func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64, page, perPage int) ([]GitLabIssue, error) {
+func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64, page, perPage int) ([]dto.GitLabIssue, error) {
 	url := fmt.Sprintf("%s/api/v4/projects/%d/issues?page=%d&per_page=%d",
 		s.Config.GitLab.URL, projectID, page, perPage)
 
@@ -771,7 +559,7 @@ func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64, pa
 		return nil, fmt.Errorf("获取Issues失败: %s - %s", resp.Status, string(body))
 	}
 
-	var issues []GitLabIssue
+	var issues []dto.GitLabIssue
 	if err := json.NewDecoder(resp.Body).Decode(&issues); err != nil {
 		return nil, err
 	}
@@ -780,9 +568,9 @@ func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64, pa
 }
 
 // GetIssue 获取单个Issue
-func (s *GitLabService) GetIssue(accessToken string, projectID, issueIID int64) (*GitLabIssue, error) {
+func (s *GitLabService) GetIssue(accessToken string, projectID, issueIID int64) (*dto.GitLabIssue, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d", s.Config.GitLab.URL, projectID, issueIID)
-	var issue GitLabIssue
+	var issue dto.GitLabIssue
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &issue, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -828,21 +616,10 @@ func (s *GitLabService) DeleteProject(accessToken string, projectID int64) error
 	return err
 }
 
-// ProjectMember GitLab项目成员结构
-type ProjectMember struct {
-	ID          int64  `json:"id"`
-	Username    string `json:"username"`
-	Name        string `json:"name"`
-	Email       string `json:"email"`
-	AvatarURL   string `json:"avatar_url"`
-	AccessLevel int    `json:"access_level"`
-	State       string `json:"state"`
-}
-
 // GetProjectMembers 获取GitLab项目成员列表
-func (s *GitLabService) GetProjectMembers(accessToken string, projectID int64) ([]ProjectMember, error) {
+func (s *GitLabService) GetProjectMembers(accessToken string, projectID int64) ([]dto.ProjectMember, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLab.URL, projectID)
-	var members []ProjectMember
+	var members []dto.ProjectMember
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &members, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -933,9 +710,9 @@ func (s *GitLabService) RemoveProjectMember(accessToken string, projectID int64,
 }
 
 // GetUserByID 根据用户ID获取GitLab用户信息
-func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*GitLabAPIUser, error) {
+func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
-	var user GitLabAPIUser
+	var user dto.GitLabAPIUser
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &user, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -943,7 +720,7 @@ func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*GitLabAP
 }
 
 // CreateProjectIssue 创建项目Issue
-func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, title, description string, labels []string) (*GitLabIssue, error) {
+func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, title, description string, labels []string) (*dto.GitLabIssue, error) {
 	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
 
 	data := map[string]interface{}{
@@ -974,7 +751,7 @@ func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, 
 		return nil, fmt.Errorf("创建Issue失败: %s - %s", resp.Status, string(body))
 	}
 
-	var issue GitLabIssue
+	var issue dto.GitLabIssue
 	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
 		return nil, err
 	}
@@ -983,10 +760,10 @@ func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, 
 }
 
 // GetIssueNotes 获取Issue评论列表
-func (s *GitLabService) GetIssueNotes(accessToken string, projectID, issueIID int64, page, perPage int) ([]GitLabIssueNote, error) {
+func (s *GitLabService) GetIssueNotes(accessToken string, projectID, issueIID int64, page, perPage int) ([]dto.GitLabIssueNote, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes?page=%d&per_page=%d&sort=asc&order_by=created_at",
 		s.Config.GitLab.URL, projectID, issueIID, page, perPage)
-	var notes []GitLabIssueNote
+	var notes []dto.GitLabIssueNote
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &notes, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -994,14 +771,14 @@ func (s *GitLabService) GetIssueNotes(accessToken string, projectID, issueIID in
 }
 
 // CreateIssueNote 创建Issue评论
-func (s *GitLabService) CreateIssueNote(accessToken string, projectID, issueIID int64, body string) (*GitLabIssueNote, error) {
+func (s *GitLabService) CreateIssueNote(accessToken string, projectID, issueIID int64, body string) (*dto.GitLabIssueNote, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes", s.Config.GitLab.URL, projectID, issueIID)
 
 	data := map[string]interface{}{
 		"body": body,
 	}
 
-	var note GitLabIssueNote
+	var note dto.GitLabIssueNote
 	if err := s.doJSONRequest("POST", apiURL, accessToken, data, &note, http.StatusCreated); err != nil {
 		return nil, err
 	}
@@ -1009,9 +786,9 @@ func (s *GitLabService) CreateIssueNote(accessToken string, projectID, issueIID 
 }
 
 // GetIssueAwardEmojis 获取Issue的表情反应列表
-func (s *GitLabService) GetIssueAwardEmojis(accessToken string, projectID, issueIID int64) ([]GitLabAwardEmoji, error) {
+func (s *GitLabService) GetIssueAwardEmojis(accessToken string, projectID, issueIID int64) ([]dto.GitLabAwardEmoji, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLab.URL, projectID, issueIID)
-	var emojis []GitLabAwardEmoji
+	var emojis []dto.GitLabAwardEmoji
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &emojis, http.StatusOK); err != nil {
 		return nil, err
 	}
@@ -1019,14 +796,14 @@ func (s *GitLabService) GetIssueAwardEmojis(accessToken string, projectID, issue
 }
 
 // AddIssueAwardEmoji 给Issue添加表情反应
-func (s *GitLabService) AddIssueAwardEmoji(accessToken string, projectID, issueIID int64, emojiName string) (*GitLabAwardEmoji, error) {
+func (s *GitLabService) AddIssueAwardEmoji(accessToken string, projectID, issueIID int64, emojiName string) (*dto.GitLabAwardEmoji, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLab.URL, projectID, issueIID)
 
 	data := map[string]interface{}{
 		"name": emojiName,
 	}
 
-	var emoji GitLabAwardEmoji
+	var emoji dto.GitLabAwardEmoji
 	if err := s.doJSONRequest("POST", apiURL, accessToken, data, &emoji, http.StatusCreated); err != nil {
 		return nil, err
 	}
@@ -1040,7 +817,7 @@ func (s *GitLabService) RemoveIssueAwardEmoji(accessToken string, projectID, iss
 }
 
 // FindUserAwardEmoji 查找用户的特定表情反应
-func (s *GitLabService) FindUserAwardEmoji(accessToken string, projectID, issueIID int64, emojiName string, userID int64) (*GitLabAwardEmoji, error) {
+func (s *GitLabService) FindUserAwardEmoji(accessToken string, projectID, issueIID int64, emojiName string, userID int64) (*dto.GitLabAwardEmoji, error) {
 	emojis, err := s.GetIssueAwardEmojis(accessToken, projectID, issueIID)
 	if err != nil {
 		return nil, err
@@ -1053,24 +830,6 @@ func (s *GitLabService) FindUserAwardEmoji(accessToken string, projectID, issueI
 	}
 
 	return nil, nil // 未找到
-}
-
-// GitLabCreateUserData GitLab创建用户数据结构
-type GitLabCreateUserData struct {
-	Email            string `json:"email"`
-	Username         string `json:"username"`
-	Name             string `json:"name"`
-	Password         string `json:"password"`
-	Admin            bool   `json:"admin,omitempty"`
-	SkipConfirmation bool   `json:"skip_confirmation,omitempty"`
-}
-
-// GitLabUpdateUserData GitLab更新用户数据结构
-type GitLabUpdateUserData struct {
-	Email    string `json:"email,omitempty"`
-	Username string `json:"username,omitempty"`
-	Name     string `json:"name,omitempty"`
-	Admin    *bool  `json:"admin,omitempty"`
 }
 
 // GetSSHKeys 获取用户SSH密钥列表
@@ -1272,9 +1031,9 @@ func (s *GitLabService) getEventTitle(event map[string]interface{}) string {
 }
 
 // GetUserProjects 获取用户参与的项目列表
-func (s *GitLabService) GetUserProjects(accessToken string, userID int64) ([]*GitLabProject, error) {
+func (s *GitLabService) GetUserProjects(accessToken string, userID int64) ([]*dto.GitLabProject, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users/%d/projects", s.Config.GitLab.URL, userID)
-	var projects []*GitLabProject
+	var projects []*dto.GitLabProject
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &projects, http.StatusOK); err != nil {
 		return nil, err
 	}
