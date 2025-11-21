@@ -198,7 +198,7 @@ services:
       - "3000:80"
     environment:
       # 前端API地址配置
-      - BACKEND_URL=${BACKEND_URL:-http://192.168.170.172:8080}
+      - VITE_API_BASE_URL=${BACKEND_URL:-http://192.168.170.1:8080}
       - VITE_GITLAB_URL=${GITLAB_URL:-http://192.168.170.172:8081}
     networks:
       - gitlabex-network
