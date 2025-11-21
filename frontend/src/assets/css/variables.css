@@ -1,51 +1,58 @@
 :root {
-  /* 主题色 */
-  --primary-color: #4d79ff;
-  --secondary-color: #6b8cff;
-  --accent-color: #00e1ff;
+  /* 主题色 - 保持蓝色系，但更符合现代 Web 标准 */
+  --primary-color: #409eff; /* Element Plus 默认蓝，或者用 #2563eb */
+  --primary-hover: #66b1ff;
+  --secondary-color: #6c757d;
+  --accent-color: #00d2d3;
   
-  /* 文本色 */
-  --text-color: #e0e0ff;
-  --light-text: #b0b0ff;
-  --lighter-text: #8080cc;
+  /* 文本色 - 现代灰阶 */
+  --text-color: #303133;       /* 主要文字 - 深灰，不完全黑 */
+  --text-color-regular: #606266; /* 常规文字 */
+  --text-color-secondary: #909399; /* 次要文字 */
+  --light-text: #a8abb2;       /* 浅色文字/占位符 */
+  --lighter-text: #c0c4cc;     /* 更浅文字 */
   
   /* 背景色 */
-  --background-color: #0a0a2a;
-  --card-background: #1a1a4a;
-  --border-color: #303060;
+  --background-color: #f5f7fa; /* 页面背景 - 极浅的灰蓝/灰 */
+  --card-background: #ffffff;  /* 卡片背景 - 纯白 */
+  --header-background: #ffffff;
+  
+  /* 边框与分割线 */
+  --border-color: #ebeef5;
+  --border-color-light: #f2f6fc;
+  --border-color-dark: #dcdfe6;
   
   /* 状态色 */
-  --success-color: #00c853;
-  --warning-color: #ffab00;
-  --danger-color: #ff3d00;
-  --info-color: #00b8d4;
+  --success-color: #67c23a;
+  --warning-color: #e6a23c;
+  --danger-color: #f56c6c;
+  --info-color: #909399;
   
-  /* 渐变背景 */
-  --space-gradient: radial-gradient(circle at 50% 50%, #1a1a4a 0%, #0a0a2a 100%);
-  
-  /* 间距 */
+  /* 间距 - 保持原有逻辑，适当调整 */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
   --spacing-lg: 24px;
   --spacing-xl: 32px;
   
-  /* 圆角 */
+  /* 圆角 - 现代风格通常圆角更大 */
   --border-radius-sm: 4px;
   --border-radius-md: 8px;
   --border-radius-lg: 12px;
   
-  /* 阴影 */
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.15);
-  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.2);
-  
+  /* 阴影 - 柔和、弥散的阴影 */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+  --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.12);
+
   /* 字体 */
-  --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   --font-size-xs: 12px;
   --font-size-sm: 14px;
   --font-size-md: 16px;
   --font-size-lg: 18px;
   --font-size-xl: 24px;
-  --font-size-xxl: 32px;
+  --font-size-xxl: 30px;
 }

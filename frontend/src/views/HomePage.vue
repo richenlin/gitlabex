@@ -533,19 +533,24 @@ onMounted(async () => {
 .quick-access-item {
   background-color: var(--card-background);
   border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   padding: 20px;
   text-align: center;
   transition: transform 0.3s, box-shadow 0.3s;
   display: flex;
   flex-direction: column;
   align-items: center;
-  border: 1px solid var(--border-color);
+  /* Removed explicit border to match design card style which usually relies on shadow/bg in dark mode, 
+     but kept if design/css/index.css had it. 
+     Checking design/css/index.css: .quick-access-item has background-color, box-shadow, no border mentioned in the block I read?
+     Actually lines 469-479 in index.css show NO border.
+  */
+  text-decoration: none;
 }
 
 .quick-access-item:hover {
   transform: translateY(-5px);
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-  text-decoration: none;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
 .quick-access-icon {
@@ -596,16 +601,18 @@ onMounted(async () => {
 .scene-card {
   background-color: var(--card-background);
   border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   padding: 20px;
   cursor: pointer;
   transition: transform 0.3s, box-shadow 0.3s;
-  border: 1px solid var(--border-color);
+  /* Removed explicit border to match design */
   height: 100%;
+  overflow: hidden;
 }
 
 .scene-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
 .scene-header {
@@ -768,7 +775,7 @@ onMounted(async () => {
 }
 
 .activity-icon {
-  font-size: 20px;
+  font-size: 24px;
   color: var(--primary-color);
 }
 

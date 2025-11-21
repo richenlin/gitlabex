@@ -100,13 +100,13 @@ onMounted(() => {
 
 <style scoped>
 .app-header {
-  background-color: rgba(26, 26, 74, 0.9);
-  box-shadow: 0 2px 15px rgba(77, 121, 255, 0.3);
-  backdrop-filter: blur(5px);
-  border-bottom: 1px solid rgba(77, 121, 255, 0.2);
+  background-color: #1a1a4a; /* 恢复深色背景，增加对比度 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   position: sticky;
   top: 0;
   z-index: 100;
+  color: #fff;
 }
 
 .header-content {
@@ -116,56 +116,63 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 60px;
+  height: 64px;
 }
 
 .logo h1 {
-  font-size: 24px;
-  color: var(--primary-color);
-  text-shadow: 0 0 10px rgba(77, 121, 255, 0.5);
+  font-size: 20px;
+  color: #fff; /* Logo 改为白色 */
+  font-weight: 700;
   margin: 0;
+  letter-spacing: 0.5px;
 }
 
 .main-nav {
   display: flex;
-  gap: 30px;
+  gap: 40px;
 }
 
 .nav-link {
-  color: var(--text-color);
+  color: rgba(255, 255, 255, 0.85); /* 文字改为白色 */
   font-weight: 500;
-  padding: 8px 16px;
-  border-radius: 4px;
-  transition: all 0.3s ease;
+  font-size: 15px;
+  padding: 20px 0;
   position: relative;
+  text-decoration: none;
+  transition: color 0.2s ease;
 }
 
 .nav-link:hover {
-  color: var(--accent-color);
-  background-color: rgba(77, 121, 255, 0.1);
-  text-decoration: none;
+  color: #fff;
 }
 
 .nav-link.active {
-  background-color: rgba(77, 121, 255, 0.2);
-  color: var(--primary-color);
-  box-shadow: 0 0 15px rgba(77, 121, 255, 0.3);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 激活状态指示条 - 改为亮蓝色或白色 */
+.nav-link::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background-color: var(--primary-color); /* 保持品牌色，或者用 #fff */
+  transform: scaleX(0);
+  transition: transform 0.2s ease;
+  transform-origin: center;
+}
+
+.nav-link.active::after {
+  transform: scaleX(1);
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
-}
-
-.announcement-btn {
-  color: var(--text-color);
-  font-size: 20px;
-}
-
-.announcement-btn:hover {
-  color: var(--accent-color);
-  transform: scale(1.1);
+  gap: 20px;
 }
 
 .user-info {
@@ -175,70 +182,36 @@ onMounted(() => {
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: background-color 0.3s;
+  transition: background-color 0.2s;
 }
 
 .user-info:hover {
-  background-color: rgba(77, 121, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .username {
-  color: var(--text-color);
+  color: #fff; /* 用户名改为白色 */
   font-size: 14px;
+  font-weight: 500;
 }
 
-.guest-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.announcements-list {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.announcement-item {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.announcement-item:last-child {
-  border-bottom: none;
-}
-
-.announcement-item h4 {
-  margin: 0 0 8px 0;
-  color: var(--primary-color);
-}
-
-.announcement-item p {
-  margin: 0 0 8px 0;
-  color: var(--light-text);
-  line-height: 1.5;
-}
-
-.announcement-time {
-  font-size: 12px;
-  color: var(--lighter-text);
-}
-
+/* Mobile Responsive */
 @media (max-width: 768px) {
   .header-content {
     padding: 0 16px;
+    height: 56px;
   }
   
   .main-nav {
-    gap: 16px;
+    gap: 20px;
   }
   
   .nav-link {
-    padding: 6px 12px;
     font-size: 14px;
   }
   
   .logo h1 {
-    font-size: 20px;
+    font-size: 18px;
   }
 }
 </style>

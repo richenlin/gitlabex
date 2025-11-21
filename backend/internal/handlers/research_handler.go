@@ -233,6 +233,12 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		visibility = "public"
 	}
 
+	// 检查项目名称是否重复
+	if h.researchService.GetResearchProjectName(projectName) != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "项目名称已存在"})
+		return
+	}
+
 	// 生成项目路径（GitLab要求的path字段）
 	projectPath := generateProjectPath(projectName)
 
@@ -248,12 +254,6 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 	gitlabProject, err := h.gitlabService.CreateProject(accessToken.(string), createReq)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建GitLab项目失败: " + err.Error()})
-		return
-	}
-
-	// 检查项目名称是否重复
-	if h.researchService.GetResearchProjectName(projectName) != "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "项目名称已存在"})
 		return
 	}
 

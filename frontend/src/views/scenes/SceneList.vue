@@ -324,11 +324,15 @@ onMounted(() => {
   cursor: pointer;
   transition: all 0.3s;
   height: 100%;
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
 }
 
 .project-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: var(--primary-color);
 }
 
 .project-header {
@@ -341,20 +345,22 @@ onMounted(() => {
 .project-header h3 {
   margin: 0;
   font-size: 16px;
+  color: var(--text-color);
 }
 
 .project-description {
-  color: #666;
+  color: var(--light-text);
   margin-bottom: 15px;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  line-height: 1.5;
 }
 
 .project-meta {
   font-size: 12px;
-  color: #999;
+  color: var(--lighter-text);
   display: flex;
   flex-direction: column;
   gap: 5px;
