@@ -25,6 +25,16 @@ func (s *ResearchService) CreateResearchProject(project *models.ResearchProject)
 	return s.DB.Create(project).Error
 }
 
+// GetResearchProjectName 获取研究课题名称
+func (s *ResearchService) GetResearchProjectName(name string) string {
+	var project models.ResearchProject
+	err := s.DB.Where("name = ?", name).First(&project).Error
+	if err != nil {
+		return ""
+	}
+	return project.Name
+}
+
 // GetResearchProjectByID 根据ID获取研究课题
 func (s *ResearchService) GetResearchProjectByID(id uuid.UUID) (*models.ResearchProject, error) {
 	var project models.ResearchProject

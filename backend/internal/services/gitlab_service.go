@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gitlabex/internal/config"
+	"gitlabex/internal/utils"
 	"io"
 	"net/http"
 	"net/url"
@@ -16,42 +17,96 @@ import (
 // GitLabService GitLab API服务
 type GitLabService struct {
 	Config     *config.Config
-	HTTPClient *http.Client
+	HTTPClient *utils.HTTPClient // 使用封装的HTTP客户端
 }
 
 // NewGitLabService 创建GitLab服务
 func NewGitLabService(cfg *config.Config) *GitLabService {
-	// 配置HTTP传输层以优化连接复用和资源管理
-	transport := &http.Transport{
-		MaxIdleConns:        100,              // 最大空闲连接数
-		MaxIdleConnsPerHost: 10,               // 每个主机的最大空闲连接数
-		IdleConnTimeout:     90 * time.Second, // 空闲连接超时时间
-		DisableKeepAlives:   false,            // 启用Keep-Alive
-		ForceAttemptHTTP2:   true,             // 强制尝试HTTP/2
-	}
+	// 使用统一的HTTP客户端工具类，自动支持连接池
+	httpClient := utils.NewHTTPClient(&utils.HTTPClientConfig{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		Timeout:             30 * time.Second,
+		DisableKeepAlives:   false,
+		ForceAttemptHTTP2:   true,
+	})
 
 	return &GitLabService{
-		Config: cfg,
-		HTTPClient: &http.Client{
-			Timeout:   30 * time.Second,
-			Transport: transport,
-		},
+		Config:     cfg,
+		HTTPClient: httpClient,
 	}
 }
 
-// makeRequest 通用HTTP请求方法，带有context支持
+// makeRequest 通用HTTP请求方法，带有context支持（保留用于兼容性）
 func (s *GitLabService) makeRequest(ctx context.Context, method, url, accessToken string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	opts := &utils.RequestOptions{
+		Method:      method,
+		URL:         url,
+		BearerToken: accessToken,
+		Context:     ctx,
+	}
+
+	// 如果有body，需要特殊处理（因为utils期望interface{}）
+	if body != nil {
+		// 这里为了兼容性，直接使用底层client
+		return s.doRequestWithContext(ctx, method, url, accessToken, body)
+	}
+
+	resp, err := s.HTTPClient.DoRequest(opts)
 	if err != nil {
 		return nil, err
 	}
 
+	// 将utils.Response转换为http.Response（简化版）
+	// 注意：这是一个权宜之计，理想情况下应该重构所有调用者
+	return &http.Response{
+		StatusCode: resp.StatusCode,
+		Header:     resp.Headers,
+	}, nil
+}
+
+// doRequestWithContext 使用context执行原始HTTP请求（内部辅助方法）
+func (s *GitLabService) doRequestWithContext(ctx context.Context, method, url, accessToken string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	return s.HTTPClient.GetClient().Do(req)
+}
 
-	return s.HTTPClient.Do(req)
+// doJSONRequest 执行HTTP请求并解析JSON响应
+func (s *GitLabService) doJSONRequest(method, apiURL, accessToken string, requestBody interface{}, responseBody interface{}, expectedStatus int) error {
+	return s.HTTPClient.DoJSONRequestWithStatus(&utils.RequestOptions{
+		Method:      method,
+		URL:         apiURL,
+		BearerToken: accessToken,
+		Body:        requestBody,
+	}, expectedStatus, responseBody)
+}
+
+// doRequest 执行HTTP请求并返回响应体(自动处理context和错误)
+func (s *GitLabService) doRequest(method, apiURL, accessToken string, body interface{}, expectedStatus int) ([]byte, error) {
+	return s.HTTPClient.DoRequestWithStatus(&utils.RequestOptions{
+		Method:      method,
+		URL:         apiURL,
+		BearerToken: accessToken,
+		Body:        body,
+	}, expectedStatus)
+}
+
+// doRequestMultiStatus 执行HTTP请求并返回响应体(支持多个预期状态码)
+func (s *GitLabService) doRequestMultiStatus(method, apiURL, accessToken string, body interface{}, expectedStatuses ...int) ([]byte, int, error) {
+	return s.HTTPClient.DoRequestWithMultiStatus(&utils.RequestOptions{
+		Method:      method,
+		URL:         apiURL,
+		BearerToken: accessToken,
+		Body:        body,
+	}, expectedStatuses...)
 }
 
 // ProtectBranchRequest 保护分支请求
@@ -82,40 +137,21 @@ type AccessLevel struct {
 
 // ProtectBranch 保护分支
 func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *ProtectBranchRequest) (*ProtectedBranch, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches", s.Config.GitLab.URL, projectID)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches", s.Config.GitLab.URL, projectID)
 
-	body, err := json.Marshal(req)
+	// 使用多状态码请求（支持201和409）
+	respBody, statusCode, err := s.doRequestMultiStatus("POST", apiURL, accessToken, req, http.StatusCreated, http.StatusConflict)
 	if err != nil {
-		return nil, fmt.Errorf("序列化请求失败: %v", err)
-	}
-
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %v", err)
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("发送请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	// GitLab在分支已经受保护时会返回409状态码
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("保护分支失败，状态码: %d, 响应: %s", resp.StatusCode, string(bodyBytes))
+		return nil, fmt.Errorf("保护分支失败: %v", err)
 	}
 
 	// 如果分支已经受保护，尝试获取现有的保护规则
-	if resp.StatusCode == http.StatusConflict {
+	if statusCode == http.StatusConflict {
 		return s.GetProtectedBranch(accessToken, projectID, req.Name)
 	}
 
 	var protectedBranch ProtectedBranch
-	if err := json.NewDecoder(resp.Body).Decode(&protectedBranch); err != nil {
+	if err := json.Unmarshal(respBody, &protectedBranch); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %v", err)
 	}
 
@@ -125,30 +161,12 @@ func (s *GitLabService) ProtectBranch(accessToken string, projectID int64, req *
 // GetProtectedBranch 获取受保护分支信息
 func (s *GitLabService) GetProtectedBranch(accessToken string, projectID int64, branchName string) (*ProtectedBranch, error) {
 	encodedBranch := url.PathEscape(branchName)
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches/%s", s.Config.GitLab.URL, projectID, encodedBranch)
-
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %v", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("发送请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("获取受保护分支失败，状态码: %d", resp.StatusCode)
-	}
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/protected_branches/%s", s.Config.GitLab.URL, projectID, encodedBranch)
 
 	var protectedBranch ProtectedBranch
-	if err := json.NewDecoder(resp.Body).Decode(&protectedBranch); err != nil {
-		return nil, fmt.Errorf("解析响应失败: %v", err)
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &protectedBranch, http.StatusOK); err != nil {
+		return nil, err
 	}
-
 	return &protectedBranch, nil
 }
 
@@ -374,524 +392,181 @@ type GitLabWebhookPayload struct {
 
 // GetUser 获取当前用户信息
 func (s *GitLabService) GetUser(accessToken string) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/user", s.Config.GitLab.URL)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/user", s.Config.GitLab.URL)
 	var user GitLabAPIUser
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &user, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return &user, nil
 }
 
 // GetAllUsers 获取所有用户列表 (管理员专用)
 func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users?page=%d&per_page=%d", s.Config.GitLab.URL, page, perPage)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/users?page=%d&per_page=%d", s.Config.GitLab.URL, page, perPage)
 	var users []*GitLabAPIUser
-	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &users, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return users, nil
 }
 
 // SearchUsers 搜索用户
 func (s *GitLabService) SearchUsers(accessToken string, search string, page, perPage int) ([]*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users?search=%s&page=%d&per_page=%d",
+	apiURL := fmt.Sprintf("%s/api/v4/users?search=%s&page=%d&per_page=%d",
 		s.Config.GitLab.URL, url.QueryEscape(search), page, perPage)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var users []*GitLabAPIUser
-	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &users, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return users, nil
 }
 
 // GetUserByUsername 根据用户名获取用户信息
 func (s *GitLabService) GetUserByUsername(accessToken string, username string) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users?username=%s", s.Config.GitLab.URL, url.QueryEscape(username))
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/users?username=%s", s.Config.GitLab.URL, url.QueryEscape(username))
 	var users []*GitLabAPIUser
-	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &users, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	if len(users) == 0 {
 		return nil, fmt.Errorf("用户不存在")
 	}
-
 	return users[0], nil
 }
 
 // CreateUser 创建用户 (管理员专用)
 func (s *GitLabService) CreateUser(accessToken string, userData *GitLabCreateUserData) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users", s.Config.GitLab.URL)
-
-	jsonData, err := json.Marshal(userData)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/users", s.Config.GitLab.URL)
 	var user GitLabAPIUser
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	if err := s.doJSONRequest("POST", apiURL, accessToken, userData, &user, http.StatusCreated); err != nil {
 		return nil, err
 	}
-
 	return &user, nil
 }
 
 // UpdateUser 更新用户信息 (管理员专用)
 func (s *GitLabService) UpdateUser(accessToken string, userID int64, userData *GitLabUpdateUserData) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
-
-	jsonData, err := json.Marshal(userData)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
 	var user GitLabAPIUser
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	if err := s.doJSONRequest("PUT", apiURL, accessToken, userData, &user, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return &user, nil
 }
 
 // DeleteUser 删除用户 (管理员专用)
 func (s *GitLabService) DeleteUser(accessToken string, userID int64) error {
-	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusAccepted {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
-	}
-
-	return nil
+	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
+	_, _, err := s.doRequestMultiStatus("DELETE", apiURL, accessToken, nil, http.StatusNoContent, http.StatusAccepted)
+	return err
 }
 
 // GetProjects 获取用户的项目列表
 func (s *GitLabService) GetProjects(accessToken string, page, perPage int) ([]*GitLabProject, error) {
-	url := fmt.Sprintf("%s/api/v4/projects?owned=true&page=%d&per_page=%d&order_by=last_activity_at",
+	apiURL := fmt.Sprintf("%s/api/v4/projects?owned=true&page=%d&per_page=%d&order_by=last_activity_at",
 		s.Config.GitLab.URL, page, perPage)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var projects []*GitLabProject
-	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &projects, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return projects, nil
 }
 
 // GetProject 获取特定项目信息
 func (s *GitLabService) GetProject(accessToken string, projectID int64) (*GitLabProject, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLab.URL, projectID)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLab.URL, projectID)
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
+	respBody, statusCode, err := s.doRequestMultiStatus("GET", apiURL, accessToken, nil, http.StatusOK, 401, 403, 404)
+	if err != nil && statusCode == 0 {
+		// 网络错误
 		return nil, err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// 读取响应体用于错误诊断
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %v", err)
-	}
-
-	if resp.StatusCode == 401 {
+	// 处理特定的错误状态码
+	switch statusCode {
+	case 401:
 		return nil, fmt.Errorf("GitLab访问令牌无效或已过期，请重新登录")
-	} else if resp.StatusCode == 403 {
+	case 403:
 		return nil, fmt.Errorf("没有访问该项目的权限")
-	} else if resp.StatusCode == 404 {
+	case 404:
 		return nil, fmt.Errorf("项目不存在")
-	} else if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API错误 (%d): %s", resp.StatusCode, string(body))
+	case http.StatusOK:
+		var project GitLabProject
+		if err := json.Unmarshal(respBody, &project); err != nil {
+			return nil, fmt.Errorf("解析响应失败: %v", err)
+		}
+		return &project, nil
+	default:
+		return nil, fmt.Errorf("GitLab API错误 (%d): %s", statusCode, string(respBody))
 	}
-
-	var project GitLabProject
-	if err := json.Unmarshal(body, &project); err != nil {
-		return nil, err
-	}
-
-	return &project, nil
 }
 
 // CreateProject 创建新项目
 func (s *GitLabService) CreateProject(accessToken string, req *CreateProjectRequest) (*GitLabProject, error) {
-	url := fmt.Sprintf("%s/api/v4/projects", s.Config.GitLab.URL)
-
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(bodyBytes))
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/projects", s.Config.GitLab.URL)
 	var project GitLabProject
-	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
+	if err := s.doJSONRequest("POST", apiURL, accessToken, req, &project, http.StatusCreated); err != nil {
 		return nil, err
 	}
-
 	return &project, nil
 }
 
 // GetBranches 获取项目分支列表
 func (s *GitLabService) GetBranches(accessToken string, projectID int64) ([]*GitLabBranch, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
 	var branches []*GitLabBranch
-	if err := json.NewDecoder(resp.Body).Decode(&branches); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &branches, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return branches, nil
 }
 
 // CreateBranch 创建新分支
 func (s *GitLabService) CreateBranch(accessToken string, projectID int64, req *CreateBranchRequest) (*GitLabBranch, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
-
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
 	var branch GitLabBranch
-	if err := json.NewDecoder(resp.Body).Decode(&branch); err != nil {
+	if err := s.doJSONRequest("POST", apiURL, accessToken, req, &branch, http.StatusCreated); err != nil {
 		return nil, err
 	}
-
 	return &branch, nil
 }
 
 // GetFileContent 获取文件内容
 func (s *GitLabService) GetFileContent(accessToken string, projectID int64, filePath, ref string) (*GitLabFile, error) {
 	encodedPath := url.PathEscape(filePath)
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s?ref=%s",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s?ref=%s",
 		s.Config.GitLab.URL, projectID, encodedPath, ref)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var file GitLabFile
-	if err := json.NewDecoder(resp.Body).Decode(&file); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &file, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return &file, nil
 }
 
 // CreateFile 创建新文件
 func (s *GitLabService) CreateFile(accessToken string, projectID int64, filePath string, req *CreateFileRequest) error {
 	encodedPath := url.PathEscape(filePath)
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s",
 		s.Config.GitLab.URL, projectID, encodedPath)
-
-	body, err := json.Marshal(req)
-	if err != nil {
-		return err
-	}
-
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	if err != nil {
-		return err
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(httpReq)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
-	return nil
+	return s.doJSONRequest("POST", apiURL, accessToken, req, nil, http.StatusCreated)
 }
 
 // UpdateFile 更新文件内容
 func (s *GitLabService) UpdateFile(accessToken string, projectID int64, filePath string, req *CreateFileRequest) error {
 	encodedPath := url.PathEscape(filePath)
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/files/%s",
 		s.Config.GitLab.URL, projectID, encodedPath)
-
-	body, err := json.Marshal(req)
-	if err != nil {
-		return err
-	}
-
-	httpReq, err := http.NewRequest("PUT", url, bytes.NewBuffer(body))
-	if err != nil {
-		return err
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(httpReq)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
-	return nil
+	return s.doJSONRequest("PUT", apiURL, accessToken, req, nil, http.StatusOK)
 }
 
 // GetCommits 获取提交历史
 func (s *GitLabService) GetCommits(accessToken string, projectID int64, branch string, limit int) ([]*GitLabCommit, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&per_page=%d",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&per_page=%d",
 		s.Config.GitLab.URL, projectID, branch, limit)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var commits []*GitLabCommit
-	if err := json.NewDecoder(resp.Body).Decode(&commits); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &commits, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return commits, nil
 }
 
@@ -911,35 +586,16 @@ func (s *GitLabService) GetIssues(accessToken string, projectID int64, state str
 		apiUrl += "?" + params.Encode()
 	}
 
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var issues []*GitLabIssue
-	if err := json.NewDecoder(resp.Body).Decode(&issues); err != nil {
+	if err := s.doJSONRequest("GET", apiUrl, accessToken, nil, &issues, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return issues, nil
 }
 
 // CreateIssue 创建新议题
 func (s *GitLabService) CreateIssue(accessToken string, projectID int64, title, description string, labels []string, assigneeID *int64) (*GitLabIssue, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
 
 	body := map[string]interface{}{
 		"title":       title,
@@ -951,34 +607,10 @@ func (s *GitLabService) CreateIssue(accessToken string, projectID int64, title, 
 		body["assignee_id"] = *assigneeID
 	}
 
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+accessToken)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(httpReq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var issue GitLabIssue
-	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+	if err := s.doJSONRequest("POST", apiURL, accessToken, body, &issue, http.StatusCreated); err != nil {
 		return nil, err
 	}
-
 	return &issue, nil
 }
 
@@ -995,29 +627,10 @@ func (s *GitLabService) GetMergeRequests(accessToken string, projectID int64, st
 		apiUrl += "?" + params.Encode()
 	}
 
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var mrs []*GitLabMergeRequest
-	if err := json.NewDecoder(resp.Body).Decode(&mrs); err != nil {
+	if err := s.doJSONRequest("GET", apiUrl, accessToken, nil, &mrs, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return mrs, nil
 }
 
@@ -1036,38 +649,15 @@ func (s *GitLabService) GetUserProjectAccessLevel(accessToken string, projectID 
 	}
 
 	// 获取项目成员信息
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/members/all", s.Config.GitLab.URL, projectID)
-
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return 0, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return 0, fmt.Errorf("项目不存在或用户无权限")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("获取项目成员失败: %s", resp.Status)
-	}
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/members/all", s.Config.GitLab.URL, projectID)
 
 	var members []struct {
 		ID          int `json:"id"`
 		AccessLevel int `json:"access_level"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&members); err != nil {
-		return 0, err
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &members, http.StatusOK); err != nil {
+		return 0, fmt.Errorf("获取项目成员失败: %v", err)
 	}
 
 	// 查找当前用户的访问级别
@@ -1094,82 +684,52 @@ func (s *GitLabService) GetUserProjectAccessLevel(accessToken string, projectID 
 // GetRepositoryTree 获取仓库文件树
 func (s *GitLabService) GetRepositoryTree(accessToken string, projectID int64, path string, ref string) ([]map[string]interface{}, error) {
 	encodedPath := url.PathEscape(path)
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/tree?path=%s&ref=%s",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/tree?path=%s&ref=%s",
 		s.Config.GitLab.URL, projectID, encodedPath, ref)
 
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建HTTP请求失败: %v", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
+	// 使用多状态码支持特殊错误处理
+	respBody, statusCode, err := s.doRequestMultiStatus("GET", apiURL, accessToken, nil, http.StatusOK, 401, 403, 404)
+	if err != nil && statusCode == 0 {
 		return nil, fmt.Errorf("GitLab服务器连接失败: %v", err)
 	}
-	defer resp.Body.Close()
 
-	// 读取响应体用于错误诊断
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %v", err)
-	}
-
-	if resp.StatusCode == 401 {
+	// 处理特定的错误状态码
+	switch statusCode {
+	case 401:
 		return nil, fmt.Errorf("GitLab访问令牌无效或已过期，请重新登录")
-	} else if resp.StatusCode == 403 {
+	case 403:
 		return nil, fmt.Errorf("没有访问该项目的权限")
-	} else if resp.StatusCode == 404 {
+	case 404:
 		return nil, fmt.Errorf("项目不存在或路径无效")
-	} else if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API错误 (%d): %s", resp.StatusCode, string(body))
-	}
+	case http.StatusOK:
+		var tree []map[string]interface{}
+		if err := json.Unmarshal(respBody, &tree); err != nil {
+			return nil, fmt.Errorf("解析响应数据失败: %v", err)
+		}
 
-	var tree []map[string]interface{}
-	if err := json.Unmarshal(body, &tree); err != nil {
-		return nil, fmt.Errorf("解析响应数据失败: %v", err)
-	}
+		// 为每个文件设置默认值，避免获取提交信息时的额外延迟
+		for i := range tree {
+			// 设置默认值
+			tree[i]["last_commit_message"] = ""
+			tree[i]["last_commit_date"] = ""
+			tree[i]["last_update"] = ""
+			tree[i]["last_commit_author"] = ""
+		}
 
-	// 为每个文件设置默认值，避免获取提交信息时的额外延迟
-	for i := range tree {
-		// 设置默认值
-		tree[i]["last_commit_message"] = ""
-		tree[i]["last_commit_date"] = ""
-		tree[i]["last_update"] = ""
-		tree[i]["last_commit_author"] = ""
+		return tree, nil
+	default:
+		return nil, fmt.Errorf("GitLab API错误 (%d): %s", statusCode, string(respBody))
 	}
-
-	return tree, nil
 }
 
 // getFileLastCommit 获取文件的最后提交信息
 func (s *GitLabService) getFileLastCommit(accessToken string, projectID int64, filePath string, ref string) (map[string]interface{}, error) {
 	encodedPath := url.PathEscape(filePath)
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?path=%s&ref_name=%s&per_page=1",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?path=%s&ref_name=%s&per_page=1",
 		s.Config.GitLab.URL, projectID, encodedPath, ref)
 
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var commits []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&commits); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &commits, http.StatusOK); err != nil {
 		return nil, err
 	}
 
@@ -1182,32 +742,12 @@ func (s *GitLabService) getFileLastCommit(accessToken string, projectID int64, f
 
 // SearchFiles 搜索仓库中的文件
 func (s *GitLabService) SearchFiles(accessToken string, projectID int64, search string) ([]map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/search?scope=blobs&search=%s",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/search?scope=blobs&search=%s",
 		s.Config.GitLab.URL, projectID, url.QueryEscape(search))
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var results []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &results, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return results, nil
 }
 
@@ -1241,150 +781,51 @@ func (s *GitLabService) GetProjectIssues(accessToken string, projectID int64, pa
 
 // GetIssue 获取单个Issue
 func (s *GitLabService) GetIssue(accessToken string, projectID, issueIID int64) (*GitLabIssue, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d", s.Config.GitLab.URL, projectID, issueIID)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d", s.Config.GitLab.URL, projectID, issueIID)
 	var issue GitLabIssue
-	if err := json.NewDecoder(resp.Body).Decode(&issue); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &issue, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return &issue, nil
 }
 
 // GetProjectBranches 获取项目分支列表
 func (s *GitLabService) GetProjectBranches(accessToken string, projectID int64) ([]map[string]interface{}, error) {
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
-
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches", s.Config.GitLab.URL, projectID)
 	var branches []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&branches); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &branches, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return branches, nil
 }
 
 // GetBranchInfo 获取分支信息
 func (s *GitLabService) GetBranchInfo(accessToken string, projectID int64, branchName string) (map[string]interface{}, error) {
 	encodedBranch := url.PathEscape(branchName)
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches/%s", s.Config.GitLab.URL, projectID, encodedBranch)
-
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/branches/%s", s.Config.GitLab.URL, projectID, encodedBranch)
 	var branchInfo map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&branchInfo); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &branchInfo, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return branchInfo, nil
 }
 
 // GetBranchCommits 获取分支的提交历史
 func (s *GitLabService) GetBranchCommits(accessToken string, projectID int64, branchName string) ([]map[string]interface{}, error) {
-	apiUrl := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&per_page=20",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/repository/commits?ref_name=%s&per_page=20",
 		s.Config.GitLab.URL, projectID, url.QueryEscape(branchName))
-
-	req, err := http.NewRequest("GET", apiUrl, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
 	var commits []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&commits); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &commits, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return commits, nil
 }
 
 // DeleteProject 删除GitLab项目
 func (s *GitLabService) DeleteProject(accessToken string, projectID int64) error {
-	url := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLab.URL, projectID)
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// GitLab删除项目成功返回202 Accepted
-	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("删除GitLab项目失败: %s - %s", resp.Status, string(body))
-	}
-
-	return nil
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d", s.Config.GitLab.URL, projectID)
+	_, _, err := s.doRequestMultiStatus("DELETE", apiURL, accessToken, nil, http.StatusAccepted, http.StatusNoContent)
+	return err
 }
 
 // ProjectMember GitLab项目成员结构
@@ -1400,31 +841,11 @@ type ProjectMember struct {
 
 // GetProjectMembers 获取GitLab项目成员列表
 func (s *GitLabService) GetProjectMembers(accessToken string, projectID int64) ([]ProjectMember, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLab.URL, projectID)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("获取项目成员失败: %s - %s", resp.Status, string(body))
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLab.URL, projectID)
 	var members []ProjectMember
-	if err := json.NewDecoder(resp.Body).Decode(&members); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &members, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return members, nil
 }
 
@@ -1436,75 +857,28 @@ func (s *GitLabService) AddProjectMember(accessToken string, projectID int64, us
 		return fmt.Errorf("获取用户信息失败: %v", err)
 	}
 
-	url := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLab.URL, projectID)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/members", s.Config.GitLab.URL, projectID)
 
 	data := map[string]interface{}{
 		"user_id":      user.ID, // 必须使用数字ID
 		"access_level": accessLevel,
 	}
 
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("添加项目成员失败: %s - %s", resp.Status, string(body))
-	}
-
-	return nil
+	return s.doJSONRequest("POST", apiURL, accessToken, data, nil, http.StatusCreated)
 }
 
 // AddUserToGroup 将用户添加到GitLab用户组
 func (s *GitLabService) AddUserToGroup(accessToken string, groupID int64, userID int64, accessLevel int) error {
-	url := fmt.Sprintf("%s/api/v4/groups/%d/members", s.Config.GitLab.URL, groupID)
+	apiURL := fmt.Sprintf("%s/api/v4/groups/%d/members", s.Config.GitLab.URL, groupID)
 
 	data := map[string]interface{}{
 		"user_id":      userID,
 		"access_level": accessLevel,
 	}
 
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
 	// 如果用户已经在组中，GitLab会返回409，这不是错误
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("添加用户到组失败: %s - %s", resp.Status, string(body))
-	}
-
-	return nil
+	_, _, err := s.doRequestMultiStatus("POST", apiURL, accessToken, data, http.StatusCreated, http.StatusConflict)
+	return err
 }
 
 // AssignUserToRoleGroup 根据角色将用户分配到相应的用户组
@@ -1540,84 +914,31 @@ func (s *GitLabService) AssignUserToRoleGroup(accessToken string, userID int64, 
 
 // CheckUserInGroup 检查用户是否在指定的组中
 func (s *GitLabService) CheckUserInGroup(accessToken string, userID int64, groupID int64) (bool, error) {
-	url := fmt.Sprintf("%s/api/v4/groups/%d/members/%d", s.Config.GitLab.URL, groupID, userID)
+	apiURL := fmt.Sprintf("%s/api/v4/groups/%d/members/%d", s.Config.GitLab.URL, groupID, userID)
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
+	_, statusCode, err := s.doRequestMultiStatus("GET", apiURL, accessToken, nil, http.StatusOK, http.StatusNotFound)
+	if err != nil && statusCode != http.StatusNotFound {
 		return false, err
 	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
 
 	// 如果用户在组中，返回200；如果不在组中，返回404
-	if resp.StatusCode == http.StatusOK {
-		return true, nil
-	} else if resp.StatusCode == http.StatusNotFound {
-		return false, nil
-	} else {
-		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("检查用户组成员失败: %s - %s", resp.Status, string(body))
-	}
+	return statusCode == http.StatusOK, nil
 }
 
 // RemoveProjectMember 移除GitLab项目成员
 func (s *GitLabService) RemoveProjectMember(accessToken string, projectID int64, userID int64) error {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/members/%d", s.Config.GitLab.URL, projectID, userID)
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("移除项目成员失败: %s - %s", resp.Status, string(body))
-	}
-
-	return nil
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/members/%d", s.Config.GitLab.URL, projectID, userID)
+	_, _, err := s.doRequestMultiStatus("DELETE", apiURL, accessToken, nil, http.StatusNoContent, http.StatusOK)
+	return err
 }
 
 // GetUserByID 根据用户ID获取GitLab用户信息
 func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*GitLabAPIUser, error) {
-	url := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("获取用户信息失败: %s - %s", resp.Status, string(body))
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
 	var user GitLabAPIUser
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &user, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return &user, nil
 }
 
@@ -1663,168 +984,59 @@ func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, 
 
 // GetIssueNotes 获取Issue评论列表
 func (s *GitLabService) GetIssueNotes(accessToken string, projectID, issueIID int64, page, perPage int) ([]GitLabIssueNote, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes?page=%d&per_page=%d&sort=asc&order_by=created_at",
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes?page=%d&per_page=%d&sort=asc&order_by=created_at",
 		s.Config.GitLab.URL, projectID, issueIID, page, perPage)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("获取评论失败: %s - %s", resp.Status, string(body))
-	}
-
 	var notes []GitLabIssueNote
-	if err := json.NewDecoder(resp.Body).Decode(&notes); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &notes, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return notes, nil
 }
 
 // CreateIssueNote 创建Issue评论
 func (s *GitLabService) CreateIssueNote(accessToken string, projectID, issueIID int64, body string) (*GitLabIssueNote, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes", s.Config.GitLab.URL, projectID, issueIID)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/notes", s.Config.GitLab.URL, projectID, issueIID)
 
 	data := map[string]interface{}{
 		"body": body,
 	}
 
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("创建评论失败: %s - %s", resp.Status, string(body))
-	}
-
 	var note GitLabIssueNote
-	if err := json.NewDecoder(resp.Body).Decode(&note); err != nil {
+	if err := s.doJSONRequest("POST", apiURL, accessToken, data, &note, http.StatusCreated); err != nil {
 		return nil, err
 	}
-
 	return &note, nil
 }
 
 // GetIssueAwardEmojis 获取Issue的表情反应列表
 func (s *GitLabService) GetIssueAwardEmojis(accessToken string, projectID, issueIID int64) ([]GitLabAwardEmoji, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLab.URL, projectID, issueIID)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("获取表情反应失败: %s - %s", resp.Status, string(body))
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLab.URL, projectID, issueIID)
 	var emojis []GitLabAwardEmoji
-	if err := json.NewDecoder(resp.Body).Decode(&emojis); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &emojis, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return emojis, nil
 }
 
 // AddIssueAwardEmoji 给Issue添加表情反应
 func (s *GitLabService) AddIssueAwardEmoji(accessToken string, projectID, issueIID int64, emojiName string) (*GitLabAwardEmoji, error) {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLab.URL, projectID, issueIID)
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji", s.Config.GitLab.URL, projectID, issueIID)
 
 	data := map[string]interface{}{
 		"name": emojiName,
 	}
 
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("添加表情反应失败: %s - %s", resp.Status, string(body))
-	}
-
 	var emoji GitLabAwardEmoji
-	if err := json.NewDecoder(resp.Body).Decode(&emoji); err != nil {
+	if err := s.doJSONRequest("POST", apiURL, accessToken, data, &emoji, http.StatusCreated); err != nil {
 		return nil, err
 	}
-
 	return &emoji, nil
 }
 
 // RemoveIssueAwardEmoji 移除Issue表情反应
 func (s *GitLabService) RemoveIssueAwardEmoji(accessToken string, projectID, issueIID, emojiID int64) error {
-	url := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji/%d", s.Config.GitLab.URL, projectID, issueIID, emojiID)
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("移除表情反应失败: %s - %s", resp.Status, string(body))
-	}
-
-	return nil
+	apiURL := fmt.Sprintf("%s/api/v4/projects/%d/issues/%d/award_emoji/%d", s.Config.GitLab.URL, projectID, issueIID, emojiID)
+	return s.doJSONRequest("DELETE", apiURL, accessToken, nil, nil, http.StatusNoContent)
 }
 
 // FindUserAwardEmoji 查找用户的特定表情反应
@@ -1863,164 +1075,57 @@ type GitLabUpdateUserData struct {
 
 // GetSSHKeys 获取用户SSH密钥列表
 func (s *GitLabService) GetSSHKeys(accessToken string) ([]map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLab.URL)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLab.URL)
 	var keys []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&keys); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &keys, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return keys, nil
 }
 
 // AddSSHKey 添加SSH密钥
 func (s *GitLabService) AddSSHKey(accessToken string, title string, key string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLab.URL)
+	apiURL := fmt.Sprintf("%s/api/v4/user/keys", s.Config.GitLab.URL)
 
 	data := map[string]string{
 		"title": title,
 		"key":   key,
 	}
 
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
-	}
-
 	var newKey map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&newKey); err != nil {
+	if err := s.doJSONRequest("POST", apiURL, accessToken, data, &newKey, http.StatusCreated); err != nil {
 		return nil, err
 	}
-
 	return newKey, nil
 }
 
 // DeleteSSHKey 删除SSH密钥
 func (s *GitLabService) DeleteSSHKey(accessToken string, keyID int) error {
-	url := fmt.Sprintf("%s/api/v4/user/keys/%d", s.Config.GitLab.URL, keyID)
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
-	}
-
-	return nil
+	apiURL := fmt.Sprintf("%s/api/v4/user/keys/%d", s.Config.GitLab.URL, keyID)
+	return s.doJSONRequest("DELETE", apiURL, accessToken, nil, nil, http.StatusNoContent)
 }
 
 // ChangePassword 修改密码
 func (s *GitLabService) ChangePassword(accessToken string, currentPassword string, newPassword string) error {
-	url := fmt.Sprintf("%s/api/v4/user/password", s.Config.GitLab.URL)
+	apiURL := fmt.Sprintf("%s/api/v4/user/password", s.Config.GitLab.URL)
 
 	data := map[string]string{
 		"current_password": currentPassword,
 		"password":         newPassword,
 	}
 
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("GitLab API error: %s, body: %s", resp.Status, string(body))
-	}
-
-	return nil
+	return s.doJSONRequest("PUT", apiURL, accessToken, data, nil, http.StatusOK)
 }
 
 // GetNotifications 获取用户通知列表
 // 注意：GitLab API v4没有标准的notifications端点，这里使用events API来模拟通知
 func (s *GitLabService) GetNotifications(accessToken string, page, perPage int) ([]map[string]interface{}, error) {
 	// 使用GitLab的events API来获取用户活动，作为通知的基础数据
-	url := fmt.Sprintf("%s/api/v4/events?page=%d&per_page=%d", s.Config.GitLab.URL, page, perPage)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		// 如果events API也失败，返回模拟的通知数据
-		return s.getMockNotifications(page, perPage), nil
-	}
+	apiURL := fmt.Sprintf("%s/api/v4/events?page=%d&per_page=%d", s.Config.GitLab.URL, page, perPage)
 
 	var events []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
-		// 如果解析失败，返回模拟的通知数据
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &events, http.StatusOK); err != nil {
+		// 如果events API也失败，返回模拟的通知数据
 		return s.getMockNotifications(page, perPage), nil
 	}
 
@@ -2168,31 +1273,11 @@ func (s *GitLabService) getEventTitle(event map[string]interface{}) string {
 
 // GetUserProjects 获取用户参与的项目列表
 func (s *GitLabService) GetUserProjects(accessToken string, userID int64) ([]*GitLabProject, error) {
-	url := fmt.Sprintf("%s/api/v4/users/%d/projects", s.Config.GitLab.URL, userID)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitLab API error: %s", resp.Status)
-	}
-
+	apiURL := fmt.Sprintf("%s/api/v4/users/%d/projects", s.Config.GitLab.URL, userID)
 	var projects []*GitLabProject
-	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &projects, http.StatusOK); err != nil {
 		return nil, err
 	}
-
 	return projects, nil
 }
 

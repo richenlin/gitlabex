@@ -250,6 +250,12 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
+	// 检查项目名称是否重复
+	if h.researchService.GetResearchProjectName(projectName) != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "项目名称已存在"})
+		return
+	}
+
 	// 设置分支保护，防止学生随意修改主分支
 	if err := h.gitlabService.SetupProjectBranchProtection(accessToken.(string), gitlabProject.ID); err != nil {
 		// 分支保护失败不应该阻止项目创建，只记录错误
