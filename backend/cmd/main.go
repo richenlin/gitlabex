@@ -235,7 +235,8 @@ func main() {
 		topicsPublic := topics.Group("")
 		topicsPublic.Use(middleware.OptionalAuth(cfg))
 		{
-			topicsPublic.GET("", topicHandler.GetTopics) // 话题列表 - 游客可访问（不是高频接口，移除缓存）
+			// 话题列表 - 游客可访问，添加5分钟缓存
+			topicsPublic.GET("", middleware.CacheMiddleware(redisService, 5*time.Minute, "cache:topics_list"), topicHandler.GetTopics)
 		}
 
 		// 需要认证的路由

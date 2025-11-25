@@ -99,25 +99,54 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 			return
 		}
 
-		// 遍历所有项目，获取话题
+		// 使用并发方式获取所有项目的话题
+		type projectTopicsResult struct {
+			topics []map[string]interface{}
+		}
+
+		resultChan := make(chan projectTopicsResult, len(projects))
+		semaphore := make(chan struct{}, 10) // 限制并发数为10
+
 		for _, project := range projects {
 			if project.GitLabProjectID != nil {
-				topics, err := h.getProjectTopics(tokenToUse, &project, 1, limit, c)
-				if err != nil {
-					// 如果某个项目获取失败，继续处理其他项目
-					continue
-				}
-				// 为每个话题添加项目信息
-				for i := range topics {
-					topics[i]["project_id"] = project.ID.String()
-					topics[i]["project"] = map[string]interface{}{
-						"id":   project.ID.String(),
-						"name": project.Name,
+				go func(proj models.ResearchProject) {
+					semaphore <- struct{}{}        // 获取信号量
+					defer func() { <-semaphore }() // 释放信号量
+
+					topics, err := h.getProjectTopics(tokenToUse, &proj, 1, limit, c)
+					if err != nil {
+						// 如果某个项目获取失败，返回空列表
+						resultChan <- projectTopicsResult{topics: []map[string]interface{}{}}
+						return
 					}
-				}
-				allTopics = append(allTopics, topics...)
+
+					// 为每个话题添加项目信息
+					for i := range topics {
+						topics[i]["project_id"] = proj.ID.String()
+						topics[i]["project"] = map[string]interface{}{
+							"id":   proj.ID.String(),
+							"name": proj.Name,
+						}
+					}
+
+					resultChan <- projectTopicsResult{topics: topics}
+				}(project)
 			}
 		}
+
+		// 收集所有结果
+		projectCount := 0
+		for _, project := range projects {
+			if project.GitLabProjectID != nil {
+				projectCount++
+			}
+		}
+
+		for i := 0; i < projectCount; i++ {
+			result := <-resultChan
+			allTopics = append(allTopics, result.topics...)
+		}
+		close(resultChan)
 
 		// 按创建时间排序（最新的在前面）
 		sort.Slice(allTopics, func(i, j int) bool {
@@ -159,43 +188,108 @@ func (h *TopicHandler) getProjectTopics(accessToken string, project *models.Rese
 
 	// 转换为前端需要的格式
 	topics := make([]map[string]interface{}, len(issues))
-	for i, issue := range issues {
-		// 获取当前用户对该Issue的表情反应
-		userLiked, userDisliked := false, false
-		if gitlabUserID, exists := c.Get("gitlab_user_id"); exists {
-			emojis, _ := h.gitlabService.GetIssueAwardEmojis(accessToken, *project.GitLabProjectID, issue.IID)
-			for _, emoji := range emojis {
-				if emoji.User.ID == gitlabUserID.(int64) {
-					if emoji.Name == "thumbsup" {
-						userLiked = true
-					} else if emoji.Name == "thumbsdown" {
-						userDisliked = true
+
+	// 检查是否需要获取用户的表情反应
+	gitlabUserID, hasUserID := c.Get("gitlab_user_id")
+
+	// 如果需要获取用户表情反应，使用并发方式批量获取
+	type emojiResult struct {
+		index        int
+		userLiked    bool
+		userDisliked bool
+	}
+
+	if hasUserID {
+		// 使用channel收集结果
+		resultChan := make(chan emojiResult, len(issues))
+		semaphore := make(chan struct{}, 5) // 限制并发数为5
+
+		for i, issue := range issues {
+			go func(idx int, issueIID int64) {
+				semaphore <- struct{}{}        // 获取信号量
+				defer func() { <-semaphore }() // 释放信号量
+
+				userLiked, userDisliked := false, false
+				emojis, err := h.gitlabService.GetIssueAwardEmojis(accessToken, *project.GitLabProjectID, issueIID)
+				if err == nil {
+					for _, emoji := range emojis {
+						if emoji.User.ID == gitlabUserID.(int64) {
+							if emoji.Name == "thumbsup" {
+								userLiked = true
+							} else if emoji.Name == "thumbsdown" {
+								userDisliked = true
+							}
+						}
 					}
 				}
-			}
+
+				resultChan <- emojiResult{
+					index:        idx,
+					userLiked:    userLiked,
+					userDisliked: userDisliked,
+				}
+			}(i, issue.IID)
 		}
 
-		topics[i] = map[string]interface{}{
-			"id":             fmt.Sprintf("%d", issue.IID), // 使用IID作为前端ID
-			"gitlab_id":      issue.ID,
-			"gitlab_iid":     issue.IID,
-			"title":          issue.Title,
-			"content":        issue.Description,
-			"status":         issue.State,
-			"labels":         issue.Labels,
-			"created_at":     issue.CreatedAt,
-			"updated_at":     issue.UpdatedAt,
-			"like_count":     issue.Upvotes,
-			"dislike_count":  issue.Downvotes,
-			"comments_count": issue.UserNotesCount,
-			"user_liked":     userLiked,
-			"user_disliked":  userDisliked,
-			"author": map[string]interface{}{
-				"id":         issue.Author.ID,
-				"username":   issue.Author.Username,
-				"name":       issue.Author.Name,
-				"avatar_url": issue.Author.AvatarURL,
-			},
+		// 收集所有结果
+		emojiResults := make(map[int]emojiResult)
+		for i := 0; i < len(issues); i++ {
+			result := <-resultChan
+			emojiResults[result.index] = result
+		}
+		close(resultChan)
+
+		// 构建话题列表
+		for i, issue := range issues {
+			result := emojiResults[i]
+			topics[i] = map[string]interface{}{
+				"id":             fmt.Sprintf("%d", issue.IID),
+				"gitlab_id":      issue.ID,
+				"gitlab_iid":     issue.IID,
+				"title":          issue.Title,
+				"content":        issue.Description,
+				"status":         issue.State,
+				"labels":         issue.Labels,
+				"created_at":     issue.CreatedAt,
+				"updated_at":     issue.UpdatedAt,
+				"like_count":     issue.Upvotes,
+				"dislike_count":  issue.Downvotes,
+				"comments_count": issue.UserNotesCount,
+				"user_liked":     result.userLiked,
+				"user_disliked":  result.userDisliked,
+				"author": map[string]interface{}{
+					"id":         issue.Author.ID,
+					"username":   issue.Author.Username,
+					"name":       issue.Author.Name,
+					"avatar_url": issue.Author.AvatarURL,
+				},
+			}
+		}
+	} else {
+		// 游客访问，不需要获取用户表情反应
+		for i, issue := range issues {
+			topics[i] = map[string]interface{}{
+				"id":             fmt.Sprintf("%d", issue.IID),
+				"gitlab_id":      issue.ID,
+				"gitlab_iid":     issue.IID,
+				"title":          issue.Title,
+				"content":        issue.Description,
+				"status":         issue.State,
+				"labels":         issue.Labels,
+				"created_at":     issue.CreatedAt,
+				"updated_at":     issue.UpdatedAt,
+				"like_count":     issue.Upvotes,
+				"dislike_count":  issue.Downvotes,
+				"comments_count": issue.UserNotesCount,
+				"user_liked":     false,
+				"user_disliked":  false,
+				"author": map[string]interface{}{
+					"id":         issue.Author.ID,
+					"username":   issue.Author.Username,
+					"name":       issue.Author.Name,
+					"avatar_url": issue.Author.AvatarURL,
+				},
+			}
 		}
 	}
 
@@ -766,25 +860,54 @@ func (h *TopicHandler) GetHotTopics(c *gin.Context) {
 
 	var allTopics []map[string]interface{}
 
-	// 遍历所有公开项目，获取话题
+	// 使用并发方式获取所有公开项目的话题
+	type projectTopicsResult struct {
+		topics []map[string]interface{}
+	}
+
+	resultChan := make(chan projectTopicsResult, len(projects))
+	semaphore := make(chan struct{}, 10) // 限制并发数为10
+
 	for _, project := range projects {
 		if project.GitLabProjectID != nil {
-			topics, err := h.getProjectTopics(tokenToUse, &project, 1, 20, c)
-			if err != nil {
-				// 如果某个项目获取失败，继续处理其他项目
-				continue
-			}
-			// 为每个话题添加项目信息
-			for i := range topics {
-				topics[i]["project_id"] = project.ID.String()
-				topics[i]["project"] = map[string]interface{}{
-					"id":   project.ID.String(),
-					"name": project.Name,
+			go func(proj models.ResearchProject) {
+				semaphore <- struct{}{}        // 获取信号量
+				defer func() { <-semaphore }() // 释放信号量
+
+				topics, err := h.getProjectTopics(tokenToUse, &proj, 1, 20, c)
+				if err != nil {
+					// 如果某个项目获取失败，返回空列表
+					resultChan <- projectTopicsResult{topics: []map[string]interface{}{}}
+					return
 				}
-			}
-			allTopics = append(allTopics, topics...)
+
+				// 为每个话题添加项目信息
+				for i := range topics {
+					topics[i]["project_id"] = proj.ID.String()
+					topics[i]["project"] = map[string]interface{}{
+						"id":   proj.ID.String(),
+						"name": proj.Name,
+					}
+				}
+
+				resultChan <- projectTopicsResult{topics: topics}
+			}(project)
 		}
 	}
+
+	// 收集所有结果
+	projectCount := 0
+	for _, project := range projects {
+		if project.GitLabProjectID != nil {
+			projectCount++
+		}
+	}
+
+	for i := 0; i < projectCount; i++ {
+		result := <-resultChan
+		allTopics = append(allTopics, result.topics...)
+	}
+	close(resultChan)
 
 	// 按热度排序（点赞数 + 评论数）
 	sort.Slice(allTopics, func(i, j int) bool {
