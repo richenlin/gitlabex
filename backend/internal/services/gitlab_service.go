@@ -1183,3 +1183,25 @@ func (s *GitLabService) GetSystemToken() string {
 	fmt.Printf("DEBUG: No system token found\n")
 	return ""
 }
+
+// ===== 辅助方法 =====
+
+// GetWebIDEURL 获取GitLab仓库树视图的URL
+func (s *GitLabService) GetWebIDEURL(projectPath, branchName, filePath string) string {
+	// GitLab 文件树视图URL（稳定，兼容所有版本）
+	// 格式: https://gitlab.com/{namespace}/{project}/-/tree/{branch}/{file_path}
+	// 在此视图中，用户可以：
+	// 1. 点击"+"按钮创建新文件或文件夹
+	// 2. 点击"Web IDE"按钮进入在线编辑器
+	// 3. 直接点击文件进行编辑
+
+	if filePath != "" {
+		// 打开指定目录
+		return fmt.Sprintf("%s/%s/-/tree/%s/%s",
+			s.Config.GitLab.URL, projectPath, url.PathEscape(branchName), filePath)
+	}
+
+	// 打开分支根目录
+	return fmt.Sprintf("%s/%s/-/tree/%s",
+		s.Config.GitLab.URL, projectPath, url.PathEscape(branchName))
+}

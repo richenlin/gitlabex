@@ -58,6 +58,11 @@ func autoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("failed to fix research_projects creator_id: %w", err)
 	}
 
+	// 添加homeworks表的graded_count字段
+	if err := addHomeworkGradedCount(db); err != nil {
+		return fmt.Errorf("failed to add homework graded_count column: %w", err)
+	}
+
 	// 定义所有需要迁移的模型
 	// 注意：User模型已移除，用户信息完全从GitLab API获取
 	models := []interface{}{
@@ -139,5 +144,58 @@ func fixResearchProjectCreatorID(db *gorm.DB) error {
 		log.Printf("creator_id is already %s type, no conversion needed", dataType)
 	}
 
+	return nil
+}
+
+// addHomeworkGradedCount 为homeworks表添加graded_count字段
+func addHomeworkGradedCount(db *gorm.DB) error {
+	log.Println("Checking homeworks table for graded_count column...")
+
+	// 检查表是否存在
+	var tableExists bool
+	err := db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'homeworks')").Scan(&tableExists).Error
+	if err != nil {
+		return fmt.Errorf("failed to check if homeworks table exists: %w", err)
+	}
+
+	if !tableExists {
+		log.Println("homeworks table does not exist, skipping graded_count addition")
+		return nil
+	}
+
+	// 检查graded_count列是否已存在
+	var columnExists bool
+	err = db.Raw("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'homeworks' AND column_name = 'graded_count')").Scan(&columnExists).Error
+	if err != nil {
+		return fmt.Errorf("failed to check if graded_count column exists: %w", err)
+	}
+
+	if columnExists {
+		log.Println("graded_count column already exists, skipping")
+		return nil
+	}
+
+	// 添加graded_count列
+	log.Println("Adding graded_count column to homeworks table...")
+	if err := db.Exec("ALTER TABLE homeworks ADD COLUMN graded_count INTEGER DEFAULT 0 NOT NULL").Error; err != nil {
+		return fmt.Errorf("failed to add graded_count column: %w", err)
+	}
+
+	// 更新现有数据的graded_count值（统计已评分的提交数量）
+	log.Println("Updating graded_count values for existing homeworks...")
+	updateSQL := `
+		UPDATE homeworks 
+		SET graded_count = (
+			SELECT COUNT(*) 
+			FROM submissions 
+			WHERE submissions.homework_id = homeworks.id 
+			AND submissions.status = 'graded'
+		)
+	`
+	if err := db.Exec(updateSQL).Error; err != nil {
+		return fmt.Errorf("failed to update graded_count values: %w", err)
+	}
+
+	log.Println("Successfully added and initialized graded_count column")
 	return nil
 }

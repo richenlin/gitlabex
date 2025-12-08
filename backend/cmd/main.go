@@ -256,7 +256,7 @@ func main() {
 
 	// 文档相关路由
 	documents := api.Group("/documents")
-	documentHandler := handlers.NewDocumentHandler(documentService, gitlabService)
+	documentHandler := handlers.NewDocumentHandler(documentService, gitlabService, researchService)
 	{
 		// 公开访问的路由（不需要认证）
 		documents.GET("", documentHandler.GetDocuments)                     // 文档列表（不是高频接口，移除缓存）
@@ -353,7 +353,7 @@ func main() {
 
 	// 作业相关路由
 	homework := api.Group("/homework")
-	homeworkHandler := handlers.NewHomeworkHandler(homeworkService, userService)
+	homeworkHandler := handlers.NewHomeworkHandler(homeworkService, userService, gitlabService, researchService)
 	homework.Use(middleware.RequireAuth(cfg))
 	{
 		homework.GET("", homeworkHandler.GetHomeworkByProject)
@@ -386,6 +386,14 @@ func main() {
 
 		// 获取作业提交的查看URL
 		homework.GET("/submissions/:submissionId/view-url", homeworkHandler.GetSubmissionViewURL)
+	}
+
+	// 作业提交相关路由（独立路由组，方便前端调用）
+	submissions := api.Group("/submissions")
+	submissions.Use(middleware.RequireAuth(cfg))
+	{
+		submissions.PUT("/:id/grade", homeworkHandler.GradeHomework) // 批改作业
+		submissions.GET("/:id", homeworkHandler.GetSubmissionByID)   // 获取提交详情
 	}
 
 	// 作业模板相关路由

@@ -29,18 +29,20 @@ const (
 // Homework 作业模型
 type Homework struct {
 	BaseModel
-	Title        string         `gorm:"not null;size:200" json:"title"`
-	Description  string         `gorm:"type:text" json:"description"`
-	Content      string         `gorm:"type:text" json:"content"` // 作业内容，存储在数据库中
-	ProjectID    uuid.UUID      `gorm:"not null" json:"project_id"`
-	CreatorID    int64          `gorm:"not null" json:"creator_id"` // GitLab用户ID
-	Status       HomeworkStatus `gorm:"not null;default:draft" json:"status"`
-	DueDate      *time.Time     `json:"due_date,omitempty"`
-	MaxGrade     int            `gorm:"default:100" json:"max_grade"`
-	MinGrade     int            `gorm:"default:0" json:"min_grade"`
-	Instructions string         `gorm:"type:text" json:"instructions"`
-	Requirements pq.StringArray `gorm:"type:text[]" json:"requirements"`
-	Tags         pq.StringArray `gorm:"type:text[]" json:"tags"`
+	Title           string         `gorm:"not null;size:200" json:"title"`
+	Description     string         `gorm:"type:text" json:"description"`
+	Content         string         `gorm:"type:text" json:"content"` // 作业内容，存储在数据库中
+	ProjectID       uuid.UUID      `gorm:"not null" json:"project_id"`
+	CreatorID       int64          `gorm:"not null" json:"creator_id"` // GitLab用户ID
+	Status          HomeworkStatus `gorm:"not null;default:draft" json:"status"`
+	DueDate         *time.Time     `json:"due_date,omitempty"`
+	MaxGrade        int            `gorm:"default:100" json:"max_grade"`
+	MinGrade        int            `gorm:"default:0" json:"min_grade"`
+	Instructions    string         `gorm:"type:text" json:"instructions"`
+	Requirements    pq.StringArray `gorm:"type:text[]" json:"requirements"`
+	Tags            pq.StringArray `gorm:"type:text[]" json:"tags"`
+	SubmissionCount int            `gorm:"default:0" json:"submission_count"` // 提交计数
+	GradedCount     int            `gorm:"default:0" json:"graded_count"`     // 已评分计数
 
 	// 关联关系
 	Project ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`

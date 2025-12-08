@@ -100,11 +100,12 @@
 
                 <div class="submission-actions">
                   <el-button 
-                    v-if="canResubmit" 
+                    v-if="mySubmission" 
                     type="primary" 
-                    @click="showSubmitDialog"
+                    @click="openHomeworkEditor"
+                    :loading="submitting"
                   >
-                    重新提交
+                    查看/编辑代码
                   </el-button>
                 </div>
               </div>
@@ -113,10 +114,11 @@
                 <el-empty description="尚未提交作业">
                   <el-button 
                     type="primary" 
-                    @click="showSubmitDialog"
+                    @click="openHomeworkEditor"
                     v-if="canSubmit"
+                    :loading="submitting"
                   >
-                    提交作业
+                    打开作业仓库
                   </el-button>
                 </el-empty>
               </div>
@@ -236,41 +238,6 @@
       </div>
     </div>
 
-    <!-- 提交作业对话框 -->
-    <el-dialog v-model="submitDialogVisible" title="提交作业" width="600px">
-      <el-form :model="submitForm" label-width="80px">
-        <el-form-item label="提交内容">
-          <el-input 
-            v-model="submitForm.content" 
-            type="textarea" 
-            :rows="6"
-            placeholder="请输入作业内容或说明"
-          />
-        </el-form-item>
-        <el-form-item label="上传文件">
-          <el-upload
-            ref="uploadRef"
-            :auto-upload="false"
-            :on-change="handleFileChange"
-            :file-list="submitForm.files"
-            multiple
-          >
-            <el-button>选择文件</el-button>
-            <template #tip>
-              <div class="el-upload__tip">
-                支持多文件上传，单个文件不超过10MB
-              </div>
-            </template>
-          </el-upload>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="submitDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitHomework" :loading="submitting">
-          提交
-        </el-button>
-      </template>
-    </el-dialog>
 
     <!-- 批改作业对话框 -->
     <el-dialog v-model="gradeDialogVisible" title="批改作业" width="600px">
@@ -343,15 +310,9 @@ const activeTab = ref('my-submission')
 const submissionFilter = ref('')
 
 // 对话框状态
-const submitDialogVisible = ref(false)
 const gradeDialogVisible = ref(false)
 
 // 表单数据
-const submitForm = ref({
-  content: '',
-  files: [] as any[]
-})
-
 const gradeForm = ref({
   grade: 0,
   feedback: ''
@@ -368,43 +329,6 @@ const canSubmit = ref(false)
 // 用户角色
 const isStudent = ref(false)
 const isTeacher = ref(false)
-
-// 检查权限
-const checkPermissions = async () => {
-  if (!userStore.isLoggedIn || !homework.value) {
-    canManage.value = false
-    canGrade.value = false
-    canSubmit.value = false
-    isStudent.value = false
-    isTeacher.value = false
-    return
-  }
-
-  try {
-    const [managePermission, gradePermission, submitPermission] = await Promise.all([
-      userStore.checkPermission('update', 'homework', homeworkId.value),
-      userStore.checkPermission('grade', 'homework', homeworkId.value),
-      userStore.checkPermission('submit', 'homework', homeworkId.value)
-    ])
-
-    canManage.value = managePermission
-    canGrade.value = gradePermission
-    canSubmit.value = submitPermission
-    
-    // 设置用户角色
-    isTeacher.value = userStore.isAdmin || canGrade.value || canManage.value
-    isStudent.value = !isTeacher.value && canSubmit.value
-  } catch (error) {
-    console.error('权限检查失败:', error)
-    canManage.value = false
-    canGrade.value = false
-    canSubmit.value = false
-    isStudent.value = false
-    isTeacher.value = false
-  }
-}
-
-// canSubmit已移至上面的权限检查逻辑中
 
 const canResubmit = computed(() => {
   return canSubmit.value && mySubmission.value?.status !== 'graded'
@@ -469,11 +393,46 @@ const gradeDistribution = computed(() => {
 const fetchHomework = async () => {
   loading.value = true
   try {
-    const response = await homeworkService.getHomework(homeworkId.value)
-    homework.value = response.data || response
+    // 响应拦截器已经返回了 response.data，所以这里直接就是后端返回的数据
+    const data = await homeworkService.getHomework(homeworkId.value)
     
-    // 获取作业信息后检查权限
-    await checkPermissions()
+    console.log('从后端获取的原始数据:', data)
+    
+    // 后端返回格式: { homework: {...}, permissions: {...} }
+    if (data && data.homework) {
+      homework.value = data.homework
+      
+      // 从后端返回的权限信息中获取权限
+      const permissions = data.permissions || {}
+      canManage.value = permissions.can_edit || false
+      canGrade.value = permissions.can_grade || false
+      canSubmit.value = permissions.can_submit || false
+      
+      // 设置用户角色
+      // 只有管理员或有管理权限的才是纯教师角色
+      isTeacher.value = userStore.isAdmin || canManage.value
+      // 可以提交作业的就显示学生视图（包括研究员）
+      isStudent.value = canSubmit.value && userStore.isLoggedIn
+      
+      console.log('权限信息:', {
+        canManage: canManage.value,
+        canGrade: canGrade.value,
+        canSubmit: canSubmit.value,
+        isTeacher: isTeacher.value,
+        isStudent: isStudent.value,
+        isLoggedIn: userStore.isLoggedIn,
+        permissions: permissions
+      })
+    } else {
+      // 兼容旧格式（直接返回作业对象）
+      console.warn('使用旧格式数据，没有权限信息')
+      homework.value = data
+      canManage.value = false
+      canGrade.value = false
+      canSubmit.value = false
+      isStudent.value = false
+      isTeacher.value = false
+    }
     
     // 设置默认标签页
     if (canSubmit.value) {
@@ -529,41 +488,51 @@ const handleTabChange = (tabName: string) => {
   }
 }
 
-const showSubmitDialog = () => {
-  submitDialogVisible.value = true
-  submitForm.value = {
-    content: mySubmission.value?.content || '',
-    files: []
-  }
-}
-
-const handleFileChange = (file: any, fileList: any[]) => {
-  submitForm.value.files = fileList
-}
-
-const submitHomework = async () => {
+const openHomeworkEditor = async () => {
   submitting.value = true
   try {
-    await homeworkService.submitHomework({
+    const response = await homeworkService.submitHomework({
       homework_id: homeworkId.value,
-      content: submitForm.value.content,
-      files: submitForm.value.files.map(f => f.name)
+      content: '',
+      files: []
     })
     
-    ElMessage.success('作业提交成功')
-    submitDialogVisible.value = false
-    fetchMySubmission()
-  } catch (error) {
-    console.error('提交作业失败:', error)
-    ElMessage.error('提交作业失败')
+    if (response.web_ide_url) {
+      ElMessage.success('正在打开作业仓库...')
+      // 在新窗口打开GitLab仓库
+      window.open(response.web_ide_url, '_blank')
+    } else {
+      ElMessage.error('无法获取仓库链接')
+    }
+  } catch (error: any) {
+    console.error('打开仓库失败:', error)
+    ElMessage.error(error.response?.data?.error || '打开仓库失败')
   } finally {
     submitting.value = false
   }
 }
 
-const viewSubmission = (submission: HomeworkSubmission) => {
-  // 查看提交详情的逻辑
-  console.log('查看提交:', submission)
+const viewSubmission = async (submission: HomeworkSubmission) => {
+  if (!submission || submission.status === 'pending') {
+    ElMessage.warning('学生尚未提交作业')
+    return
+  }
+  
+  try {
+    const response = await homeworkService.getSubmissionViewURL(submission.id)
+    const data = response.data || response
+    
+    if (data.view_url) {
+      // 在新窗口打开GitLab仓库
+      window.open(data.view_url, '_blank')
+      ElMessage.success(`正在打开 ${data.student_name || '学生'} 的作业仓库`)
+    } else {
+      ElMessage.error('无法获取仓库链接')
+    }
+  } catch (error) {
+    console.error('获取仓库链接失败:', error)
+    ElMessage.error('获取仓库链接失败')
+  }
 }
 
 const gradeSubmission = (submission: HomeworkSubmission) => {

@@ -30,6 +30,44 @@ func NewTopicHandler(gitlabService *services.GitLabService, researchService *ser
 	}
 }
 
+// 辅助函数：安全地从上下文获取值
+
+// getInt64FromContext 安全地从上下文获取int64值
+func getInt64FromContextTopic(c *gin.Context, key string) (int64, bool) {
+	value, exists := c.Get(key)
+	if !exists {
+		return 0, false
+	}
+	if v, ok := value.(int64); ok {
+		return v, true
+	}
+	return 0, false
+}
+
+// getStringFromContext 安全地从上下文获取string值
+func getStringFromContextTopic(c *gin.Context, key string) (string, bool) {
+	value, exists := c.Get(key)
+	if !exists {
+		return "", false
+	}
+	if v, ok := value.(string); ok {
+		return v, true
+	}
+	return "", false
+}
+
+// getBoolFromContext 安全地从上下文获取bool值
+func getBoolFromContextTopic(c *gin.Context, key string) bool {
+	value, exists := c.Get(key)
+	if !exists {
+		return false
+	}
+	if v, ok := value.(bool); ok {
+		return v
+	}
+	return false
+}
+
 // GetTopics 获取话题列表 (同时获取独立话题和GitLab Issues)
 func (h *TopicHandler) GetTopics(c *gin.Context) {
 	// 获取分页参数
@@ -223,8 +261,10 @@ func (h *TopicHandler) getStandaloneTopics(accessToken string, page, limit int, 
 		userLiked := false
 		userDisliked := false
 		if hasUserID {
-			userLiked, _ = h.topicService.HasLikedTopic(gitlabUserID.(int64), topic.ID)
-			userDisliked, _ = h.topicService.HasDislikedTopic(gitlabUserID.(int64), topic.ID)
+			if userID, ok := gitlabUserID.(int64); ok {
+				userLiked, _ = h.topicService.HasLikedTopic(userID, topic.ID)
+				userDisliked, _ = h.topicService.HasDislikedTopic(userID, topic.ID)
+			}
 		}
 
 		topicMap := map[string]interface{}{
@@ -290,12 +330,14 @@ func (h *TopicHandler) getProjectTopics(accessToken string, project *models.Rese
 				userLiked, userDisliked := false, false
 				emojis, err := h.gitlabService.GetIssueAwardEmojis(accessToken, *project.GitLabProjectID, issueIID)
 				if err == nil {
-					for _, emoji := range emojis {
-						if emoji.User.ID == gitlabUserID.(int64) {
-							if emoji.Name == "thumbsup" {
-								userLiked = true
-							} else if emoji.Name == "thumbsdown" {
-								userDisliked = true
+					if userID, ok := gitlabUserID.(int64); ok {
+						for _, emoji := range emojis {
+							if emoji.User.ID == userID {
+								if emoji.Name == "thumbsup" {
+									userLiked = true
+								} else if emoji.Name == "thumbsdown" {
+									userDisliked = true
+								}
 							}
 						}
 					}
@@ -376,8 +418,9 @@ func (h *TopicHandler) getProjectTopics(accessToken string, project *models.Rese
 
 // CreateTopic 创建话题 (支持创建独立话题或关联课题的话题)
 func (h *TopicHandler) CreateTopic(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContextTopic(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -394,9 +437,12 @@ func (h *TopicHandler) CreateTopic(c *gin.Context) {
 		return
 	}
 
+	// 权限检查：所有登录用户都可以创建话题
+	// 已在上面通过获取userID验证了用户登录状态
+
 	// 如果没有提供 project_id，创建独立话题
 	if req.ProjectID == "" {
-		h.createStandaloneTopic(c, req.Title, req.Content, req.Labels, gitlabUserID.(int64))
+		h.createStandaloneTopic(c, req.Title, req.Content, req.Labels, userID)
 		return
 	}
 
@@ -406,15 +452,15 @@ func (h *TopicHandler) CreateTopic(c *gin.Context) {
 
 // createStandaloneTopic 创建独立话题（存储在数据库中）
 func (h *TopicHandler) createStandaloneTopic(c *gin.Context, title, content string, labels []string, authorID int64) {
-	// 获取GitLab访问令牌（用于获取作者信息）
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
+	// 安全地获取GitLab访问令牌
+	accessToken, ok := getStringFromContextTopic(c, "gitlab_access_token")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
 
 	// 获取作者信息
-	author, err := h.gitlabService.GetUser(accessToken.(string))
+	author, err := h.gitlabService.GetUser(accessToken)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "获取用户信息失败",
@@ -680,15 +726,15 @@ func (h *TopicHandler) getProjectTopicByID(c *gin.Context, topicIDStr string) {
 		return
 	}
 
-	// 获取GitLab访问令牌
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
+	// 安全地获取GitLab访问令牌
+	accessToken, ok := getStringFromContextTopic(c, "gitlab_access_token")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
 
 	// 从GitLab获取Issue详情
-	issue, err := h.gitlabService.GetIssue(accessToken.(string), *project.GitLabProjectID, topicIID)
+	issue, err := h.gitlabService.GetIssue(accessToken, *project.GitLabProjectID, topicIID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "获取话题详情失败",
@@ -698,7 +744,7 @@ func (h *TopicHandler) getProjectTopicByID(c *gin.Context, topicIDStr string) {
 	}
 
 	// 获取Issue的回复列表
-	notes, err := h.gitlabService.GetIssueNotes(accessToken.(string), *project.GitLabProjectID, topicIID, 1, 100)
+	notes, err := h.gitlabService.GetIssueNotes(accessToken, *project.GitLabProjectID, topicIID, 1, 100)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "获取回复列表失败",
@@ -710,13 +756,15 @@ func (h *TopicHandler) getProjectTopicByID(c *gin.Context, topicIDStr string) {
 	// 获取当前用户对该Issue的表情反应
 	userLiked, userDisliked := false, false
 	if gitlabUserID, exists := c.Get("gitlab_user_id"); exists {
-		emojis, _ := h.gitlabService.GetIssueAwardEmojis(accessToken.(string), *project.GitLabProjectID, issue.IID)
-		for _, emoji := range emojis {
-			if emoji.User.ID == gitlabUserID.(int64) {
-				if emoji.Name == "thumbsup" {
-					userLiked = true
-				} else if emoji.Name == "thumbsdown" {
-					userDisliked = true
+		if userID, ok := gitlabUserID.(int64); ok {
+			emojis, _ := h.gitlabService.GetIssueAwardEmojis(accessToken, *project.GitLabProjectID, issue.IID)
+			for _, emoji := range emojis {
+				if emoji.User.ID == userID {
+					if emoji.Name == "thumbsup" {
+						userLiked = true
+					} else if emoji.Name == "thumbsdown" {
+						userDisliked = true
+					}
 				}
 			}
 		}
@@ -771,8 +819,9 @@ func (h *TopicHandler) getProjectTopicByID(c *gin.Context, topicIDStr string) {
 
 // CreateComment 创建话题回复（支持独立话题和项目话题）
 func (h *TopicHandler) CreateComment(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContextTopic(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -789,9 +838,12 @@ func (h *TopicHandler) CreateComment(c *gin.Context) {
 		return
 	}
 
+	// 权限检查：所有登录用户都可以评论话题
+	// 已通过获取userID验证
+
 	// 检查是否是独立话题
 	if len(topicIDStr) > 11 && topicIDStr[:11] == "standalone-" {
-		h.createStandaloneComment(c, topicIDStr[11:], req.Content, gitlabUserID.(int64))
+		h.createStandaloneComment(c, topicIDStr[11:], req.Content, userID)
 		return
 	}
 
@@ -808,9 +860,9 @@ func (h *TopicHandler) createStandaloneComment(c *gin.Context, topicUUIDStr, con
 		return
 	}
 
-	// 获取GitLab访问令牌（用于获取作者信息）
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
+	// 安全地获取GitLab访问令牌
+	accessToken, ok := getStringFromContextTopic(c, "gitlab_access_token")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
@@ -838,7 +890,7 @@ func (h *TopicHandler) createStandaloneComment(c *gin.Context, topicUUIDStr, con
 	}
 
 	// 获取作者信息
-	author, err := h.gitlabService.GetUser(accessToken.(string))
+	author, err := h.gitlabService.GetUser(accessToken)
 	if err != nil {
 		author = &dto.GitLabAPIUser{
 			ID:       authorID,
@@ -982,8 +1034,9 @@ func (h *TopicHandler) UndislikeTopic(c *gin.Context) {
 
 // likeStandaloneTopic 点赞独立话题
 func (h *TopicHandler) likeStandaloneTopic(c *gin.Context, topicUUIDStr string) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContextTopic(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -995,22 +1048,22 @@ func (h *TopicHandler) likeStandaloneTopic(c *gin.Context, topicUUIDStr string) 
 	}
 
 	// 检查是否已经点赞
-	hasLiked, _ := h.topicService.HasLikedTopic(gitlabUserID.(int64), topicID)
+	hasLiked, _ := h.topicService.HasLikedTopic(userID, topicID)
 	if hasLiked {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "已经点赞过了"})
 		return
 	}
 
 	// 如果已经反对，先取消反对
-	hasDisliked, _ := h.topicService.HasDislikedTopic(gitlabUserID.(int64), topicID)
+	hasDisliked, _ := h.topicService.HasDislikedTopic(userID, topicID)
 	if hasDisliked {
-		h.topicService.UndislikeTopic(gitlabUserID.(int64), topicID)
+		h.topicService.UndislikeTopic(userID, topicID)
 	}
 
 	// 添加点赞
 	like := &models.TopicLike{
 		TopicID: topicID,
-		UserID:  gitlabUserID.(int64),
+		UserID:  userID,
 	}
 
 	if err := h.topicService.LikeTopic(like); err != nil {
@@ -1029,8 +1082,9 @@ func (h *TopicHandler) likeStandaloneTopic(c *gin.Context, topicUUIDStr string) 
 
 // unlikeStandaloneTopic 取消点赞独立话题
 func (h *TopicHandler) unlikeStandaloneTopic(c *gin.Context, topicUUIDStr string) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContextTopic(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -1042,14 +1096,14 @@ func (h *TopicHandler) unlikeStandaloneTopic(c *gin.Context, topicUUIDStr string
 	}
 
 	// 检查是否已经点赞
-	hasLiked, _ := h.topicService.HasLikedTopic(gitlabUserID.(int64), topicID)
+	hasLiked, _ := h.topicService.HasLikedTopic(userID, topicID)
 	if !hasLiked {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "尚未点赞"})
 		return
 	}
 
 	// 取消点赞
-	if err := h.topicService.UnlikeTopic(gitlabUserID.(int64), topicID); err != nil {
+	if err := h.topicService.UnlikeTopic(userID, topicID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "取消点赞失败",
 			"details": err.Error(),
@@ -1065,8 +1119,9 @@ func (h *TopicHandler) unlikeStandaloneTopic(c *gin.Context, topicUUIDStr string
 
 // dislikeStandaloneTopic 反对独立话题
 func (h *TopicHandler) dislikeStandaloneTopic(c *gin.Context, topicUUIDStr string) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContextTopic(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -1078,7 +1133,7 @@ func (h *TopicHandler) dislikeStandaloneTopic(c *gin.Context, topicUUIDStr strin
 	}
 
 	// 检查是否已经反对
-	hasDisliked, _ := h.topicService.HasDislikedTopic(gitlabUserID.(int64), topicID)
+	hasDisliked, _ := h.topicService.HasDislikedTopic(userID, topicID)
 	if hasDisliked {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "已经反对过了"})
 		return
@@ -1087,7 +1142,7 @@ func (h *TopicHandler) dislikeStandaloneTopic(c *gin.Context, topicUUIDStr strin
 	// 添加反对
 	dislike := &models.TopicDislike{
 		TopicID: topicID,
-		UserID:  gitlabUserID.(int64),
+		UserID:  userID,
 	}
 
 	if err := h.topicService.DislikeTopic(dislike); err != nil {
@@ -1103,8 +1158,9 @@ func (h *TopicHandler) dislikeStandaloneTopic(c *gin.Context, topicUUIDStr strin
 
 // undislikeStandaloneTopic 取消反对独立话题
 func (h *TopicHandler) undislikeStandaloneTopic(c *gin.Context, topicUUIDStr string) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContextTopic(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -1116,14 +1172,14 @@ func (h *TopicHandler) undislikeStandaloneTopic(c *gin.Context, topicUUIDStr str
 	}
 
 	// 检查是否已经反对
-	hasDisliked, _ := h.topicService.HasDislikedTopic(gitlabUserID.(int64), topicID)
+	hasDisliked, _ := h.topicService.HasDislikedTopic(userID, topicID)
 	if !hasDisliked {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "尚未反对"})
 		return
 	}
 
 	// 取消反对
-	if err := h.topicService.UndislikeTopic(gitlabUserID.(int64), topicID); err != nil {
+	if err := h.topicService.UndislikeTopic(userID, topicID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "取消反对失败",
 			"details": err.Error(),
@@ -1136,8 +1192,9 @@ func (h *TopicHandler) undislikeStandaloneTopic(c *gin.Context, topicUUIDStr str
 
 // toggleEmojiReaction 切换表情反应的通用方法
 func (h *TopicHandler) toggleEmojiReaction(c *gin.Context, emojiName, actionName string) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContextTopic(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -1172,19 +1229,20 @@ func (h *TopicHandler) toggleEmojiReaction(c *gin.Context, emojiName, actionName
 		return
 	}
 
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
+	// 安全地获取访问令牌
+	accessToken, ok := getStringFromContextTopic(c, "gitlab_access_token")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
 
 	// 检查是否已经有该表情反应
 	existingEmoji, err := h.gitlabService.FindUserAwardEmoji(
-		accessToken.(string),
+		accessToken,
 		*project.GitLabProjectID,
 		topicIID,
 		emojiName,
-		gitlabUserID.(int64),
+		userID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -1210,16 +1268,16 @@ func (h *TopicHandler) toggleEmojiReaction(c *gin.Context, emojiName, actionName
 	if oppositeEmoji != "" {
 		// 查找并移除相反的表情反应
 		existingOpposite, err := h.gitlabService.FindUserAwardEmoji(
-			accessToken.(string),
+			accessToken,
 			*project.GitLabProjectID,
 			topicIID,
 			oppositeEmoji,
-			gitlabUserID.(int64),
+			userID,
 		)
 		if err == nil && existingOpposite != nil {
 			// 移除相反的表情反应
 			h.gitlabService.RemoveIssueAwardEmoji(
-				accessToken.(string),
+				accessToken,
 				*project.GitLabProjectID,
 				topicIID,
 				existingOpposite.ID,
@@ -1229,7 +1287,7 @@ func (h *TopicHandler) toggleEmojiReaction(c *gin.Context, emojiName, actionName
 
 	// 添加表情反应
 	_, err = h.gitlabService.AddIssueAwardEmoji(
-		accessToken.(string),
+		accessToken,
 		*project.GitLabProjectID,
 		topicIID,
 		emojiName,
@@ -1247,8 +1305,9 @@ func (h *TopicHandler) toggleEmojiReaction(c *gin.Context, emojiName, actionName
 
 // removeEmojiReaction 移除表情反应的通用方法
 func (h *TopicHandler) removeEmojiReaction(c *gin.Context, emojiName, actionName string) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContextTopic(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -1283,19 +1342,20 @@ func (h *TopicHandler) removeEmojiReaction(c *gin.Context, emojiName, actionName
 		return
 	}
 
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
+	// 安全地获取访问令牌
+	accessToken, ok := getStringFromContextTopic(c, "gitlab_access_token")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
 
 	// 查找用户的表情反应
 	existingEmoji, err := h.gitlabService.FindUserAwardEmoji(
-		accessToken.(string),
+		accessToken,
 		*project.GitLabProjectID,
 		topicIID,
 		emojiName,
-		gitlabUserID.(int64),
+		userID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -1321,7 +1381,7 @@ func (h *TopicHandler) removeEmojiReaction(c *gin.Context, emojiName, actionName
 
 	// 移除表情反应
 	err = h.gitlabService.RemoveIssueAwardEmoji(
-		accessToken.(string),
+		accessToken,
 		*project.GitLabProjectID,
 		topicIID,
 		existingEmoji.ID,

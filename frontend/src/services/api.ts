@@ -409,7 +409,7 @@ export const homeworkService = {
     files?: string[]
     branch_name?: string
   }) =>
-    api.post(`/homework/${data.homework_id}/submit`, data),
+    api.post(`/homework/${data.homework_id}/submissions`, data),
   
   getMySubmission: (homeworkId: string) =>
     api.get(`/homework/${homeworkId}/my-submission`),

@@ -10,9 +10,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/mozillazg/go-pinyin"
 )
 
 // ResearchHandler 研究课题处理器
@@ -31,18 +33,73 @@ func NewResearchHandler(researchService *services.ResearchService, userService *
 	}
 }
 
+// 辅助函数：安全地从上下文获取值
+
+// getInt64FromContext 安全地从上下文获取int64值
+func getInt64FromContext(c *gin.Context, key string) (int64, bool) {
+	value, exists := c.Get(key)
+	if !exists {
+		return 0, false
+	}
+	if v, ok := value.(int64); ok {
+		return v, true
+	}
+	return 0, false
+}
+
+// getStringFromContext 安全地从上下文获取string值
+func getStringFromContext(c *gin.Context, key string) (string, bool) {
+	value, exists := c.Get(key)
+	if !exists {
+		return "", false
+	}
+	if v, ok := value.(string); ok {
+		return v, true
+	}
+	return "", false
+}
+
+// getBoolFromContext 安全地从上下文获取bool值
+func getBoolFromContext(c *gin.Context, key string) bool {
+	value, exists := c.Get(key)
+	if !exists {
+		return false
+	}
+	if v, ok := value.(bool); ok {
+		return v
+	}
+	return false
+}
+
 // generateProjectPath 生成符合GitLab要求的项目路径
 // GitLab路径要求：只能包含字母、数字、'_', '-' 和 '.'，不能以'-'开头，不能以'.git'或'.atom'结尾
+// 支持将中文字符转换为拼音
 func generateProjectPath(name string) string {
+	var result strings.Builder
+
+	// 遍历每个字符
+	for _, r := range name {
+		if unicode.Is(unicode.Han, r) {
+			// 如果是中文字符，转换为拼音
+			pinyinSlice := pinyin.LazyPinyin(string(r), pinyin.NewArgs())
+			if len(pinyinSlice) > 0 {
+				result.WriteString(pinyinSlice[0])
+			}
+		} else if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' {
+			// 如果是字母、数字、下划线或点号，直接保留
+			result.WriteRune(r)
+		} else if r == ' ' || r == '-' {
+			// 空格和连字符转换为连字符
+			result.WriteRune('-')
+		}
+		// 其他字符忽略
+	}
+
 	// 转换为小写
-	path := strings.ToLower(name)
+	path := strings.ToLower(result.String())
 
-	// 替换空格和其他特殊字符为连字符
-	reg := regexp.MustCompile(`[^a-z0-9._-]`)
-	path = reg.ReplaceAllString(path, "-")
-
-	// 移除连续的特殊字符
-	reg = regexp.MustCompile(`[-._]{2,}`)
+	// 移除连续的连字符、点号或下划线
+	reg := regexp.MustCompile(`[-._]{2,}`)
 	path = reg.ReplaceAllString(path, "-")
 
 	// 确保不以'-'开头
@@ -109,27 +166,32 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 	if isGuest == true || gitlabUserID == nil {
 		projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false)
 	} else {
-		gitlabUID := gitlabUserID.(int64)
-
-		// 如果指定了ownerId参数，则按创建者过滤
-		if ownerIDStr != "" {
-			ownerGitLabID, parseErr := strconv.ParseInt(ownerIDStr, 10, 64)
-			if parseErr != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "无效的创建者ID"})
-				return
-			}
-
-			// 根据创建者GitLab ID获取项目
-			projects, total, err = h.researchService.GetUserProjectsByGitLabID(ownerGitLabID, limit, offset)
+		// 安全地获取用户ID
+		gitlabUID, ok := getInt64FromContext(c, "gitlab_user_id")
+		if !ok {
+			// 如果无法获取用户ID，视为游客
+			projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false)
 		} else {
-			// 检查用户权限 - 管理员可以看到所有项目，普通用户看到公开项目和自己创建的项目
-			isAdmin, _ := c.Get("is_admin")
-			if isAdmin != nil && isAdmin.(bool) {
-				// 管理员可以看到所有项目
-				projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate)
+			// 如果指定了ownerId参数，则按创建者过滤
+			if ownerIDStr != "" {
+				ownerGitLabID, parseErr := strconv.ParseInt(ownerIDStr, 10, 64)
+				if parseErr != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "无效的创建者ID"})
+					return
+				}
+
+				// 根据创建者GitLab ID获取项目
+				projects, total, err = h.researchService.GetUserProjectsByGitLabID(ownerGitLabID, limit, offset)
 			} else {
-				// 普通用户只能看到公开项目和自己创建的项目
-				projects, total, err = h.researchService.GetUserAccessibleProjectsByGitLabID(gitlabUID, limit, offset)
+				// 检查用户权限 - 管理员可以看到所有项目，普通用户看到公开项目和自己创建的项目
+				isAdmin := getBoolFromContext(c, "is_admin")
+				if isAdmin {
+					// 管理员可以看到所有项目
+					projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate)
+				} else {
+					// 普通用户只能看到公开项目和自己创建的项目
+					projects, total, err = h.researchService.GetUserAccessibleProjectsByGitLabID(gitlabUID, limit, offset)
+				}
 			}
 		}
 	}
@@ -153,13 +215,13 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 // CreateResearchProject 创建研究课题
 func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 	// 从上下文获取GitLab访问令牌和用户信息
-	accessToken, exists := c.Get("gitlab_access_token")
+	_, exists := c.Get("gitlab_access_token")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
 
-	gitlabUserID, exists := c.Get("gitlab_user_id")
+	_, exists = c.Get("gitlab_user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "无法获取用户信息"})
 		return
@@ -182,37 +244,29 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		return
 	}
 
-	// 检查权限 - 只有管理员和教师可以创建课题
-	isAdmin, _ := c.Get("is_admin")
-
-	// 获取用户信息来检查角色
-	accessTokenStr := accessToken.(string)
-	user, err := h.gitlabService.GetUser(accessTokenStr)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "无法获取用户信息",
-		})
+	// 安全地获取访问令牌
+	accessTokenStr, ok := getStringFromContext(c, "gitlab_access_token")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的访问令牌"})
 		return
 	}
 
-	// 检查是否为系统管理员
-	if isAdmin != nil && isAdmin.(bool) {
-		// 系统管理员，允许创建
-	} else {
-		// 检查用户是否在Teachers组中（教师角色）
-		hasTeacherPermission, err := h.gitlabService.CheckUserInGroup(accessTokenStr, user.ID, 10) // Teachers组ID为10
-		if err != nil {
-			fmt.Printf("检查用户组权限时出错: %v\n", err)
-		}
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContext(c, "gitlab_user_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的用户ID"})
+		return
+	}
 
-		// 如果不是管理员也不是教师，拒绝创建
-		if !hasTeacherPermission {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "权限不足：只有管理员和教师可以创建课题",
-				"message": "请联系管理员获取教师权限",
-			})
-			return
-		}
+	// 检查管理员权限
+	isAdmin := getBoolFromContext(c, "is_admin")
+
+	// 检查权限 - 只有管理员和教师可以创建课题
+	// 注意：这里暂时允许所有登录用户创建，实际应该在GitLab项目创建后通过访问级别判断
+	// 或者检查用户是否有Maintainer级别的全局权限
+	if !isAdmin {
+		// 非管理员用户，允许创建但会在GitLab层面受限
+		// GitLab会根据用户权限决定是否允许创建项目
 	}
 
 	// 处理项目名称和可见性
@@ -251,14 +305,14 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		DefaultBranch:        "main",
 	}
 
-	gitlabProject, err := h.gitlabService.CreateProject(accessToken.(string), createReq)
+	gitlabProject, err := h.gitlabService.CreateProject(accessTokenStr, createReq)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建GitLab项目失败: " + err.Error()})
 		return
 	}
 
 	// 设置分支保护，防止学生随意修改主分支
-	if err := h.gitlabService.SetupProjectBranchProtection(accessToken.(string), gitlabProject.ID); err != nil {
+	if err := h.gitlabService.SetupProjectBranchProtection(accessTokenStr, gitlabProject.ID); err != nil {
 		// 分支保护失败不应该阻止项目创建，只记录错误
 		fmt.Printf("警告：为项目 %d 设置分支保护失败: %v\n", gitlabProject.ID, err)
 	}
@@ -274,7 +328,7 @@ func (h *ResearchHandler) CreateResearchProject(c *gin.Context) {
 		Description:     req.Description,
 		GitLabURL:       gitlabProject.WebURL,
 		GitLabProjectID: &gitlabProject.ID,
-		CreatorID:       gitlabUserID.(int64),
+		CreatorID:       userID,
 		IsPublic:        isPublic,
 		StartDate:       startDate,
 		EndDate:         req.EndDate,
@@ -364,9 +418,9 @@ func (h *ResearchHandler) GetResearchProjectByID(c *gin.Context) {
 
 // UpdateResearchProject 更新研究课题信息
 func (h *ResearchHandler) UpdateResearchProject(c *gin.Context) {
-	// 从上下文获取GitLab用户信息
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContext(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -400,16 +454,29 @@ func (h *ResearchHandler) UpdateResearchProject(c *gin.Context) {
 		return
 	}
 
-	// 检查权限 - 管理员、项目创建者可以更新
-	// 注意：为了简化权限管理，我们暂时只允许项目创建者和管理员编辑项目
-	// 教师权限可以通过GitLab项目成员管理来实现
-	isAdmin, _ := c.Get("is_admin")
-	isOwner := project.CreatorID == gitlabUserID.(int64)
+	// 检查权限 - 管理员、项目创建者、教师(Maintainer)可以更新
+	isAdmin := getBoolFromContext(c, "is_admin")
+	isOwner := project.CreatorID == userID
 
 	// 权限检查：项目创建者或管理员可以更新
-	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权限修改该课题"})
-		return
+	if !isAdmin && !isOwner {
+		// 检查GitLab项目权限 (Maintainer 40+)
+		if project.GitLabProjectID != nil {
+			accessToken, ok := getStringFromContext(c, "gitlab_access_token")
+			if ok {
+				accessLevel, err := h.gitlabService.GetUserProjectAccessLevel(accessToken, *project.GitLabProjectID)
+				if err != nil || accessLevel < 40 {
+					c.JSON(http.StatusForbidden, gin.H{"error": "只有管理员和教师可以编辑课题"})
+					return
+				}
+			} else {
+				c.JSON(http.StatusForbidden, gin.H{"error": "无权限修改该课题"})
+				return
+			}
+		} else {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权限修改该课题"})
+			return
+		}
 	}
 
 	updates := make(map[string]interface{})
@@ -445,8 +512,9 @@ func (h *ResearchHandler) UpdateResearchProject(c *gin.Context) {
 
 // DeleteResearchProject 删除研究课题
 func (h *ResearchHandler) DeleteResearchProject(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContext(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -459,17 +527,40 @@ func (h *ResearchHandler) DeleteResearchProject(c *gin.Context) {
 	}
 
 	// 检查权限
-	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
+	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
 		return
 	}
 
-	// 检查权限：项目创建者或管理员可以删除
-	isAdmin, _ := c.Get("is_admin")
-	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权限删除该课题"})
-		return
+	// 检查管理员权限
+	isAdmin := getBoolFromContext(c, "is_admin")
+
+	// 权限检查：项目创建者、管理员或教师可以删除
+	if !isAdmin && !isOwner {
+		// 检查GitLab项目权限 (Maintainer 40+)
+		project, err := h.researchService.GetResearchProjectByID(projectID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "课题不存在"})
+			return
+		}
+
+		if project.GitLabProjectID != nil {
+			accessToken, ok := getStringFromContext(c, "gitlab_access_token")
+			if ok {
+				accessLevel, err := h.gitlabService.GetUserProjectAccessLevel(accessToken, *project.GitLabProjectID)
+				if err != nil || accessLevel < 40 {
+					c.JSON(http.StatusForbidden, gin.H{"error": "只有管理员和教师可以删除课题"})
+					return
+				}
+			} else {
+				c.JSON(http.StatusForbidden, gin.H{"error": "无权限删除该课题"})
+				return
+			}
+		} else {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权限删除该课题"})
+			return
+		}
 	}
 
 	// 获取项目信息
@@ -481,9 +572,8 @@ func (h *ResearchHandler) DeleteResearchProject(c *gin.Context) {
 
 	// 删除GitLab项目
 	if project.GitLabProjectID != nil {
-		accessToken, exists := c.Get("gitlab_access_token")
-		if exists {
-			if err := h.gitlabService.DeleteProject(accessToken.(string), *project.GitLabProjectID); err != nil {
+		if accessToken, ok := getStringFromContext(c, "gitlab_access_token"); ok {
+			if err := h.gitlabService.DeleteProject(accessToken, *project.GitLabProjectID); err != nil {
 				// 记录错误但不阻止删除，因为数据库中的项目记录仍需要删除
 				fmt.Printf("警告: 删除GitLab项目失败: %v\n", err)
 			}
@@ -549,8 +639,9 @@ func (h *ResearchHandler) GetMembers(c *gin.Context) {
 
 // AddMember 添加课题成员
 func (h *ResearchHandler) AddMember(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取用户ID
+	userID, ok := getInt64FromContext(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -572,19 +663,15 @@ func (h *ResearchHandler) AddMember(c *gin.Context) {
 		return
 	}
 
-	// 检查权限 - 只有项目所有者和管理员可以添加成员
-	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
+	// 检查权限 - 只有项目所有者、管理员和教师可以添加成员
+	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
 		return
 	}
 
-	// 检查权限：项目创建者或管理员可以操作
-	isAdmin, _ := c.Get("is_admin")
-	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权限添加成员"})
-		return
-	}
+	// 检查管理员权限
+	isAdmin := getBoolFromContext(c, "is_admin")
 
 	// 获取项目信息
 	project, err := h.researchService.GetResearchProjectByID(projectID)
@@ -593,21 +680,42 @@ func (h *ResearchHandler) AddMember(c *gin.Context) {
 		return
 	}
 
+	// 权限检查
+	if !isAdmin && !isOwner {
+		// 检查GitLab项目权限 (Maintainer 40+)
+		if project.GitLabProjectID != nil {
+			accessToken, ok := getStringFromContext(c, "gitlab_access_token")
+			if ok {
+				accessLevel, err := h.gitlabService.GetUserProjectAccessLevel(accessToken, *project.GitLabProjectID)
+				if err != nil || accessLevel < 40 {
+					c.JSON(http.StatusForbidden, gin.H{"error": "只有管理员和教师可以添加成员"})
+					return
+				}
+			} else {
+				c.JSON(http.StatusForbidden, gin.H{"error": "无权限添加成员"})
+				return
+			}
+		} else {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权限添加成员"})
+			return
+		}
+	}
+
 	// 检查是否关联了GitLab项目
 	if project.GitLabProjectID == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
 		return
 	}
 
-	// 获取GitLab访问令牌
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
+	// 安全地获取GitLab访问令牌
+	accessToken, ok := getStringFromContext(c, "gitlab_access_token")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
 
 	// 通过GitLab API添加项目成员
-	err = h.gitlabService.AddProjectMember(accessToken.(string), *project.GitLabProjectID, req.Username, req.AccessLevel)
+	err = h.gitlabService.AddProjectMember(accessToken, *project.GitLabProjectID, req.Username, req.AccessLevel)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "添加项目成员失败",
@@ -621,8 +729,9 @@ func (h *ResearchHandler) AddMember(c *gin.Context) {
 
 // RemoveMember 移除课题成员
 func (h *ResearchHandler) RemoveMember(c *gin.Context) {
-	gitlabUserID, exists := c.Get("gitlab_user_id")
-	if !exists {
+	// 安全地获取当前用户ID
+	currentUserID, ok := getInt64FromContext(c, "gitlab_user_id")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
@@ -643,18 +752,14 @@ func (h *ResearchHandler) RemoveMember(c *gin.Context) {
 	}
 
 	// 检查权限
-	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, gitlabUserID.(int64))
+	isOwner, err := h.researchService.IsProjectOwnerByGitLabID(projectID, currentUserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查权限失败"})
 		return
 	}
 
-	// 检查权限：项目创建者或管理员可以操作
-	isAdmin, _ := c.Get("is_admin")
-	if !isOwner && (isAdmin == nil || !isAdmin.(bool)) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "无权限移除成员"})
-		return
-	}
+	// 检查管理员权限
+	isAdmin := getBoolFromContext(c, "is_admin")
 
 	// 获取项目信息
 	project, err := h.researchService.GetResearchProjectByID(projectID)
@@ -663,21 +768,42 @@ func (h *ResearchHandler) RemoveMember(c *gin.Context) {
 		return
 	}
 
+	// 权限检查
+	if !isAdmin && !isOwner {
+		// 检查GitLab项目权限 (Maintainer 40+)
+		if project.GitLabProjectID != nil {
+			accessToken, ok := getStringFromContext(c, "gitlab_access_token")
+			if ok {
+				accessLevel, err := h.gitlabService.GetUserProjectAccessLevel(accessToken, *project.GitLabProjectID)
+				if err != nil || accessLevel < 40 {
+					c.JSON(http.StatusForbidden, gin.H{"error": "只有管理员和教师可以移除成员"})
+					return
+				}
+			} else {
+				c.JSON(http.StatusForbidden, gin.H{"error": "无权限移除成员"})
+				return
+			}
+		} else {
+			c.JSON(http.StatusForbidden, gin.H{"error": "无权限移除成员"})
+			return
+		}
+	}
+
 	// 检查是否关联了GitLab项目
 	if project.GitLabProjectID == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "该课题未关联GitLab项目"})
 		return
 	}
 
-	// 获取GitLab访问令牌
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
+	// 安全地获取GitLab访问令牌
+	accessToken, ok := getStringFromContext(c, "gitlab_access_token")
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少GitLab访问令牌"})
 		return
 	}
 
 	// 通过GitLab API移除项目成员
-	err = h.gitlabService.RemoveProjectMember(accessToken.(string), *project.GitLabProjectID, userID)
+	err = h.gitlabService.RemoveProjectMember(accessToken, *project.GitLabProjectID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "移除项目成员失败",

@@ -86,6 +86,7 @@
                 查看
               </el-button>
               <el-button 
+                v-if="canGrade"
                 size="small" 
                 type="primary"
                 @click="gradeSubmission(scope.row)"
@@ -107,62 +108,6 @@
       </el-table>
     </div>
 
-    <!-- 查看提交对话框 -->
-    <el-dialog v-model="viewDialogVisible" title="查看提交" width="800px">
-      <div v-if="currentSubmission" class="submission-view">
-        <div class="submission-header">
-          <h3>{{ currentSubmission.student?.name }} 的提交</h3>
-          <div class="submission-meta">
-            <span>提交时间: {{ currentSubmission.submitted_at ? formatDate(currentSubmission.submitted_at) : '-' }}</span>
-            <span>分支: {{ currentSubmission.gitlab_branch || '-' }}</span>
-          </div>
-        </div>
-        
-        <div class="submission-content">
-          <h4>提交内容</h4>
-          <div class="content-text">{{ currentSubmission.content || '无文本内容' }}</div>
-        </div>
-
-        <div class="submission-files" v-if="currentSubmission.files?.length">
-          <h4>附件文件</h4>
-          <div class="files-list">
-            <div 
-              v-for="file in currentSubmission.files" 
-              :key="file.id"
-              class="file-item"
-            >
-              <el-icon><Document /></el-icon>
-              <span class="file-name">{{ file.title }}</span>
-              <el-button size="small" type="text" @click="downloadFile(file)">下载</el-button>
-            </div>
-          </div>
-        </div>
-
-        <div class="grade-info" v-if="currentSubmission.grade !== null">
-          <h4>评分信息</h4>
-          <div class="grade-details">
-            <div class="grade-score">
-              成绩: {{ currentSubmission.grade }}/{{ homework?.max_grade }}
-            </div>
-            <div class="grade-feedback" v-if="currentSubmission.feedback">
-              <strong>反馈:</strong>
-              <p>{{ currentSubmission.feedback }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <template #footer>
-        <el-button @click="viewDialogVisible = false">关闭</el-button>
-        <el-button 
-          type="primary" 
-          @click="gradeSubmissionFromView"
-          v-if="currentSubmission && currentSubmission.status !== 'pending'"
-        >
-          {{ currentSubmission.status === 'graded' ? '修改评分' : '批改' }}
-        </el-button>
-      </template>
-    </el-dialog>
 
     <!-- 批改对话框 -->
     <el-dialog v-model="gradeDialogVisible" title="批改作业" width="600px">
@@ -212,14 +157,20 @@ import type { Homework, HomeworkSubmission } from '@/types'
 import { ElMessage } from 'element-plus'
 import { formatDate } from '@/utils/date'
 import { Document, Search } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 
 // 响应式数据
 const homework = ref<Homework | null>(null)
 const submissions = ref<HomeworkSubmission[]>([])
 const currentSubmission = ref<HomeworkSubmission | null>(null)
+
+// 权限状态
+const canManage = ref(false)
+const canGrade = ref(false)
 
 const loading = ref(false)
 const grading = ref(false)
@@ -268,8 +219,23 @@ const filteredSubmissions = computed(() => {
 // 方法
 const fetchHomework = async () => {
   try {
-    const response = await homeworkService.getHomework(homeworkId.value)
-    homework.value = response.data || response
+    const data = await homeworkService.getHomework(homeworkId.value)
+    
+    if (data && data.homework) {
+      homework.value = data.homework
+      
+      // 获取权限信息
+      const permissions = data.permissions || {}
+      canManage.value = permissions.can_edit || false
+      canGrade.value = permissions.can_grade || false
+      
+      console.log('提交列表页权限:', { canManage: canManage.value, canGrade: canGrade.value })
+    } else {
+      homework.value = data
+      // 兼容旧格式，默认无权限
+      canManage.value = false
+      canGrade.value = false
+    }
   } catch (error) {
     console.error('获取作业信息失败:', error)
     ElMessage.error('获取作业信息失败')
@@ -300,20 +266,20 @@ const viewSubmission = async (submission: HomeworkSubmission) => {
     return
   }
   
+  // 直接打开GitLab仓库查看学生代码
   try {
-    // 获取提交的GitLab查看URL
     const response = await homeworkService.getSubmissionViewURL(submission.id)
     const data = response.data || response
     
     if (data.view_url) {
-      // 在新窗口打开GitLab分支
       window.open(data.view_url, '_blank')
+      ElMessage.success(`正在打开 ${data.student_name || '学生'} 的作业仓库`)
     } else {
-      ElMessage.error('无法获取作业查看链接')
+      ElMessage.error('无法获取仓库链接')
     }
   } catch (error) {
-    console.error('获取作业查看链接失败:', error)
-    ElMessage.error('获取作业查看链接失败')
+    console.error('获取仓库链接失败:', error)
+    ElMessage.error('获取仓库链接失败')
   }
 }
 
@@ -330,6 +296,25 @@ const gradeSubmissionFromView = () => {
   viewDialogVisible.value = false
   if (currentSubmission.value) {
     gradeSubmission(currentSubmission.value)
+  }
+}
+
+const openInWebIDE = async () => {
+  if (!currentSubmission.value) return
+  
+  try {
+    const response = await homeworkService.getSubmissionViewURL(currentSubmission.value.id)
+    const data = response.data || response
+    
+    if (data.view_url) {
+      window.open(data.view_url, '_blank')
+      ElMessage.success('正在打开GitLab在线编辑器')
+    } else {
+      ElMessage.error('无法获取作业查看链接')
+    }
+  } catch (error) {
+    console.error('获取作业查看链接失败:', error)
+    ElMessage.error('获取作业查看链接失败')
   }
 }
 

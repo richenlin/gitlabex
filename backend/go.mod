@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
 	github.com/minio/minio-go/v7 v7.0.95
+	github.com/mozillazg/go-pinyin v0.21.0
 	github.com/redis/go-redis/v9 v9.14.0
 	github.com/rs/cors v1.10.1
 	gopkg.in/yaml.v3 v3.0.1

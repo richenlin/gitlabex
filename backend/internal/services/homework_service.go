@@ -150,6 +150,15 @@ func (s *HomeworkService) GetUserSubmissionForHomework(homeworkID uuid.UUID, use
 // GradeHomework 评分作业
 func (s *HomeworkService) GradeHomework(submissionID uuid.UUID, grade int, feedback string, graderID int64) error {
 	return s.DB.Transaction(func(tx *gorm.DB) error {
+		// 获取提交信息，检查是否已经评分过
+		var submission models.Submission
+		if err := tx.First(&submission, "id = ?", submissionID).Error; err != nil {
+			return err
+		}
+
+		// 记录之前是否已经评分
+		wasGraded := submission.Status == models.SubmissionStatusGraded
+
 		// 更新提交
 		err := tx.Model(&models.Submission{}).
 			Where("id = ?", submissionID).
@@ -165,16 +174,14 @@ func (s *HomeworkService) GradeHomework(submissionID uuid.UUID, grade int, feedb
 			return err
 		}
 
-		// 获取提交信息
-		var submission models.Submission
-		if err := tx.First(&submission, "id = ?", submissionID).Error; err != nil {
-			return err
+		// 只有首次评分时才增加计数
+		if !wasGraded {
+			return tx.Model(&models.Homework{}).
+				Where("id = ?", submission.HomeworkID).
+				UpdateColumn("graded_count", gorm.Expr("graded_count + 1")).Error
 		}
 
-		// 更新作业已评分计数
-		return tx.Model(&models.Homework{}).
-			Where("id = ?", submission.HomeworkID).
-			UpdateColumn("graded_count", gorm.Expr("graded_count + 1")).Error
+		return nil
 	})
 }
 
@@ -200,6 +207,54 @@ func (s *HomeworkService) GetSubmissionByUserAndHomework(userID int64, homeworkI
 		return nil, err
 	}
 	return &submission, nil
+}
+
+// GetHomeworkDetailStats 获取单个作业的详细统计信息
+func (s *HomeworkService) GetHomeworkDetailStats(homeworkID uuid.UUID) (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// 实时统计提交数量
+	var submissionCount int64
+	s.DB.Model(&models.Submission{}).
+		Where("homework_id = ?", homeworkID).
+		Count(&submissionCount)
+	stats["submission_count"] = submissionCount
+
+	// 实时统计已评分数量
+	var gradedCount int64
+	s.DB.Model(&models.Submission{}).
+		Where("homework_id = ? AND status = ?", homeworkID, models.SubmissionStatusGraded).
+		Count(&gradedCount)
+	stats["graded_count"] = gradedCount
+
+	// 计算平均分
+	var avgGrade float64
+	s.DB.Model(&models.Submission{}).
+		Where("homework_id = ? AND grade IS NOT NULL", homeworkID).
+		Select("COALESCE(AVG(grade), 0)").
+		Scan(&avgGrade)
+	stats["average_grade"] = avgGrade
+
+	// 最高分和最低分
+	var minGrade, maxGrade *int
+	s.DB.Model(&models.Submission{}).
+		Where("homework_id = ? AND grade IS NOT NULL", homeworkID).
+		Select("MIN(grade) as min_grade, MAX(grade) as max_grade").
+		Scan(&map[string]interface{}{
+			"min_grade": &minGrade,
+			"max_grade": &maxGrade,
+		})
+	stats["min_grade"] = minGrade
+	stats["max_grade"] = maxGrade
+
+	// 待评分数量
+	var pendingCount int64
+	s.DB.Model(&models.Submission{}).
+		Where("homework_id = ? AND status = ?", homeworkID, models.SubmissionStatusSubmitted).
+		Count(&pendingCount)
+	stats["pending_count"] = pendingCount
+
+	return stats, nil
 }
 
 // GetHomeworkStats 获取作业统计信息
@@ -372,25 +427,36 @@ func (s *HomeworkService) CloneSubmission(originalSubmissionID uuid.UUID, newBra
 }
 
 // ExportGrades 导出成绩
+// 注意: 用户信息需要通过 GitLab API 获取,建议在 Handler 层调用此方法后补充用户信息
 func (s *HomeworkService) ExportGrades(homeworkID uuid.UUID) ([]map[string]interface{}, error) {
+	var submissions []models.Submission
+
+	// 先获取所有提交记录
+	err := s.DB.Where("homework_id = ?", homeworkID).
+		Order("student_id, submitted_at DESC").
+		Find(&submissions).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	// 构建导出数据
 	var results []map[string]interface{}
+	for _, sub := range submissions {
+		result := map[string]interface{}{
+			"student_id":    sub.StudentID, // GitLab用户ID,前端可用此ID调用GitLab API获取详细信息
+			"gitlab_branch": sub.GitLabBranch,
+			"submitted_at":  sub.SubmittedAt,
+			"grade":         sub.Grade,
+			"feedback":      sub.Feedback,
+			"status":        sub.Status,
+			"graded_at":     sub.GradedAt,
+			"graded_by":     sub.GradedBy,
+		}
+		results = append(results, result)
+	}
 
-	err := s.DB.Table("submissions").
-		Select(`
-			users.username as student_name,
-			users.email as student_email,
-			submissions.branch_name,
-			submissions.submitted_at,
-			submissions.grade,
-			submissions.feedback,
-			submissions.status
-		`).
-		Joins("JOIN users ON submissions.student_id = users.id").
-		Where("submissions.homework_id = ?", homeworkID).
-		Order("users.username").
-		Scan(&results).Error
-
-	return results, err
+	return results, nil
 }
 
 // ImportGrades 导入成绩（批量更新）

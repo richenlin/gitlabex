@@ -9,6 +9,33 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// RequirePermission 要求指定权限的中间件
+func RequirePermission(perm models.Permission) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// 获取权限上下文
+		ctx := getPermissionContext(c)
+		if ctx == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+			c.Abort()
+			return
+		}
+
+		// 检查权限
+		if !ctx.CanPerform(perm) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":        "权限不足",
+				"required":     string(perm),
+				"user_role":    ctx.Role.GetEducationRole(),
+				"access_level": ctx.AccessLevel,
+			})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
 // RequireProjectAccess 要求项目访问权限
 func RequireProjectAccess(gitlabService *services.GitLabService, minRole models.GitLabRole) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -122,4 +149,33 @@ func getMinAccessLevel(role models.GitLabRole) int {
 	default:
 		return 10 // 默认为Guest级别
 	}
+}
+
+// getPermissionContext 从gin.Context中获取权限上下文
+func getPermissionContext(c *gin.Context) *models.PermissionContext {
+	gitlabUserID, exists := c.Get("gitlab_user_id")
+	if !exists {
+		return nil
+	}
+
+	isAdmin, _ := c.Get("is_admin")
+	accessLevel, _ := c.Get("user_access_level")
+	projectID, _ := c.Get("project_id")
+
+	ctx := &models.PermissionContext{
+		UserID:  gitlabUserID.(int64),
+		IsAdmin: isAdmin != nil && isAdmin.(bool),
+	}
+
+	if accessLevel != nil {
+		ctx.AccessLevel = accessLevel.(int)
+		ctx.Role = models.ParseGitLabRole(ctx.AccessLevel)
+	}
+
+	if projectID != nil {
+		pid := projectID.(int64)
+		ctx.ProjectID = &pid
+	}
+
+	return ctx
 }
