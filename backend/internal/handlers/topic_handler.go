@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -19,14 +20,16 @@ type TopicHandler struct {
 	gitlabService   *services.GitLabService
 	researchService *services.ResearchService
 	topicService    *services.TopicService
+	redisService    *services.RedisService
 }
 
 // NewTopicHandler 创建话题处理器
-func NewTopicHandler(gitlabService *services.GitLabService, researchService *services.ResearchService, topicService *services.TopicService) *TopicHandler {
+func NewTopicHandler(gitlabService *services.GitLabService, researchService *services.ResearchService, topicService *services.TopicService, redisService *services.RedisService) *TopicHandler {
 	return &TopicHandler{
 		gitlabService:   gitlabService,
 		researchService: researchService,
 		topicService:    topicService,
+		redisService:    redisService,
 	}
 }
 
@@ -74,6 +77,7 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	projectIDStr := c.Query("project_id")
+	statusFilter := c.Query("status") // ✅ 获取状态筛选参数
 
 	if page < 1 {
 		page = 1
@@ -203,6 +207,25 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 			return timeI.After(timeJ)
 		})
 
+		// ✅ 应用状态筛选
+		if statusFilter != "" {
+			filteredTopics := make([]map[string]interface{}, 0)
+			for _, topic := range allTopics {
+				topicStatus, ok := topic["status"].(string)
+				if !ok {
+					continue
+				}
+				// 匹配状态：open/opened -> opened 或 active（开放状态），closed -> closed
+				if (statusFilter == "open" && (topicStatus == "opened" || topicStatus == "active")) ||
+					(statusFilter == "opened" && (topicStatus == "opened" || topicStatus == "active")) ||
+					(statusFilter == "closed" && topicStatus == "closed") ||
+					(statusFilter == "active" && topicStatus == "active") {
+					filteredTopics = append(filteredTopics, topic)
+				}
+			}
+			allTopics = filteredTopics
+		}
+
 		// 应用分页
 		start := (page - 1) * limit
 		end := start + limit
@@ -282,6 +305,8 @@ func (h *TopicHandler) getStandaloneTopics(accessToken string, page, limit int, 
 			"user_liked":     userLiked,
 			"user_disliked":  userDisliked,
 			"is_standalone":  true,
+			"project_id":     nil, // 独立话题没有关联项目
+			"project":        nil, // 独立话题没有关联项目
 			"author": map[string]interface{}{
 				"id":         author.ID,
 				"username":   author.Username,
@@ -487,6 +512,13 @@ func (h *TopicHandler) createStandaloneTopic(c *gin.Context, title, content stri
 		return
 	}
 
+	// ✅ 清除话题列表缓存
+	if h.redisService != nil {
+		ctx := c.Request.Context()
+		h.redisService.DeleteCachePattern(ctx, "cache:topics_list:*")
+		h.redisService.DeleteCachePattern(ctx, "cache:hot_topics:*")
+	}
+
 	// 返回创建的话题信息
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "话题创建成功",
@@ -558,6 +590,13 @@ func (h *TopicHandler) createProjectTopic(c *gin.Context, title, content, projec
 		return
 	}
 
+	// ✅ 清除话题列表缓存
+	if h.redisService != nil {
+		ctx := c.Request.Context()
+		h.redisService.DeleteCachePattern(ctx, "cache:topics_list:*")
+		h.redisService.DeleteCachePattern(ctx, "cache:hot_topics:*")
+	}
+
 	// 返回创建的话题信息
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "话题创建成功",
@@ -588,6 +627,16 @@ func (h *TopicHandler) GetTopicByID(c *gin.Context) {
 	if len(topicIDStr) > 11 && topicIDStr[:11] == "standalone-" {
 		h.getStandaloneTopicByID(c, topicIDStr[11:])
 		return
+	}
+
+	// 检查是否提供了project_id，如果没有则尝试作为独立话题处理
+	projectIDStr := c.Query("project_id")
+	if projectIDStr == "" {
+		// 没有project_id，可能是独立话题，尝试解析为UUID
+		if topicUUID, err := uuid.Parse(topicIDStr); err == nil {
+			h.getStandaloneTopicByID(c, topicUUID.String())
+			return
+		}
 	}
 
 	// 否则按GitLab Issue处理
@@ -681,6 +730,8 @@ func (h *TopicHandler) getStandaloneTopicByID(c *gin.Context, topicUUIDStr strin
 			"user_liked":     userLiked,
 			"user_disliked":  userDisliked,
 			"is_standalone":  true,
+			"project_id":     nil, // 独立话题没有关联项目
+			"project":        nil, // 独立话题没有关联项目
 			"author": map[string]interface{}{
 				"id":         author.ID,
 				"username":   author.Username,
@@ -702,7 +753,10 @@ func (h *TopicHandler) getProjectTopicByID(c *gin.Context, topicIDStr string) {
 
 	projectIDStr := c.Query("project_id")
 	if projectIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少项目ID"})
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "缺少项目ID",
+			"message": "项目话题需要提供 project_id 参数。如果这是独立话题，请使用 standalone-{uuid} 格式的ID",
+		})
 		return
 	}
 
@@ -868,9 +922,15 @@ func (h *TopicHandler) createStandaloneComment(c *gin.Context, topicUUIDStr, con
 	}
 
 	// 验证话题是否存在
-	_, err = h.topicService.GetTopicByID(topicID)
+	topic, err := h.topicService.GetTopicByID(topicID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "话题不存在"})
+		return
+	}
+
+	// ✅ 检查话题状态，关闭的话题不能评论
+	if topic.Status == "closed" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "该话题已关闭，无法添加评论"})
 		return
 	}
 
@@ -1047,6 +1107,17 @@ func (h *TopicHandler) likeStandaloneTopic(c *gin.Context, topicUUIDStr string) 
 		return
 	}
 
+	// ✅ 检查话题状态
+	topic, err := h.topicService.GetTopicByID(topicID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "话题不存在"})
+		return
+	}
+	if topic.Status == "closed" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "该话题已关闭，无法点赞"})
+		return
+	}
+
 	// 检查是否已经点赞
 	hasLiked, _ := h.topicService.HasLikedTopic(userID, topicID)
 	if hasLiked {
@@ -1058,6 +1129,8 @@ func (h *TopicHandler) likeStandaloneTopic(c *gin.Context, topicUUIDStr string) 
 	hasDisliked, _ := h.topicService.HasDislikedTopic(userID, topicID)
 	if hasDisliked {
 		h.topicService.UndislikeTopic(userID, topicID)
+		// ✅ 更新反对数
+		h.topicService.UpdateTopicDislikesCount(topicID)
 	}
 
 	// 添加点赞
@@ -1067,6 +1140,11 @@ func (h *TopicHandler) likeStandaloneTopic(c *gin.Context, topicUUIDStr string) 
 	}
 
 	if err := h.topicService.LikeTopic(like); err != nil {
+		// ✅ 检查是否是重复点赞错误
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "idx_topic_user_like") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "已经点赞过了"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "点赞失败",
 			"details": err.Error(),
@@ -1132,11 +1210,30 @@ func (h *TopicHandler) dislikeStandaloneTopic(c *gin.Context, topicUUIDStr strin
 		return
 	}
 
+	// ✅ 检查话题状态
+	topic, err := h.topicService.GetTopicByID(topicID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "话题不存在"})
+		return
+	}
+	if topic.Status == "closed" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "该话题已关闭，无法反对"})
+		return
+	}
+
 	// 检查是否已经反对
 	hasDisliked, _ := h.topicService.HasDislikedTopic(userID, topicID)
 	if hasDisliked {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "已经反对过了"})
 		return
+	}
+
+	// 如果已经点赞，先取消点赞
+	hasLiked, _ := h.topicService.HasLikedTopic(userID, topicID)
+	if hasLiked {
+		h.topicService.UnlikeTopic(userID, topicID)
+		// ✅ 更新点赞数
+		h.topicService.UpdateTopicLikesCount(topicID)
 	}
 
 	// 添加反对
@@ -1146,12 +1243,20 @@ func (h *TopicHandler) dislikeStandaloneTopic(c *gin.Context, topicUUIDStr strin
 	}
 
 	if err := h.topicService.DislikeTopic(dislike); err != nil {
+		// ✅ 检查是否是重复反对错误
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "idx_topic_user_dislike") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "已经反对过了"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "反对失败",
 			"details": err.Error(),
 		})
 		return
 	}
+
+	// ✅ 更新反对数
+	h.topicService.UpdateTopicDislikesCount(topicID)
 
 	c.JSON(http.StatusOK, gin.H{"message": "反对成功"})
 }
@@ -1186,6 +1291,9 @@ func (h *TopicHandler) undislikeStandaloneTopic(c *gin.Context, topicUUIDStr str
 		})
 		return
 	}
+
+	// ✅ 更新反对数
+	h.topicService.UpdateTopicDislikesCount(topicID)
 
 	c.JSON(http.StatusOK, gin.H{"message": "取消反对成功"})
 }

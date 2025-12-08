@@ -108,13 +108,15 @@ export interface Topic {
   author_id: string
   author: User
   gitlab_issue_id?: number
-  status: 'opened' | 'closed'
+  status: 'opened' | 'closed' | 'active' // 支持独立话题的active状态
   labels: string[]
   likes_count: number
   like_count?: number // 别名，用于兼容
   dislike_count?: number
   comments_count: number
   is_pinned: boolean
+  is_standalone?: boolean // 是否为独立话题（不关联课题）
+  topic_id?: string // 独立话题的UUID
   priority: 'low' | 'medium' | 'high' | 'urgent'
   created_at: string
   updated_at: string

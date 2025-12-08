@@ -576,7 +576,26 @@ const resetUploadForm = () => {
 }
 
 const handleFileChange = (file: any) => {
-  uploadForm.value.file = file.raw
+  console.log('🔍 handleFileChange 被调用:')
+  console.log('  - 原始 file 对象:', file)
+  console.log('  - file.raw:', file.raw)
+  console.log('  - file.raw 是否为 File:', file.raw instanceof File)
+  
+  // ✅ 确保使用真正的 File 对象
+  // Element Plus 的 UploadFile 对象将真正的 File 放在 raw 属性中
+  if (file.raw && file.raw instanceof File) {
+    uploadForm.value.file = file.raw
+  } else if (file instanceof File) {
+    uploadForm.value.file = file
+  } else {
+    console.error('❌ 无法获取 File 对象！', file)
+    ElMessage.error('文件选择失败，请重试')
+    return
+  }
+  
+  console.log('  - 设置后 uploadForm.value.file:', uploadForm.value.file)
+  console.log('  - uploadForm.value.file 是否为 File:', uploadForm.value.file instanceof File)
+  
   if (!uploadForm.value.title && file.name) {
     const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'))
     uploadForm.value.title = nameWithoutExt
@@ -593,7 +612,18 @@ const beforeUpload = (file: File) => {
 }
 
 const handleUpload = async () => {
-  if (!uploadFormRef.value || !uploadForm.value.file) return
+  if (!uploadFormRef.value || !uploadForm.value.file) {
+    console.error('❌ 缺少必要的表单或文件')
+    ElMessage.error('请先选择文件')
+    return
+  }
+  
+  // ✅ 验证文件对象
+  if (!(uploadForm.value.file instanceof File)) {
+    console.error('❌ uploadForm.value.file 不是 File 对象:', uploadForm.value.file)
+    ElMessage.error('文件对象无效，请重新选择文件')
+    return
+  }
   
   try {
     await uploadFormRef.value.validate()
@@ -604,13 +634,26 @@ const handleUpload = async () => {
     formData.append('title', uploadForm.value.title)
     formData.append('description', uploadForm.value.description)
     
+    // 🔍 调试：检查 FormData 内容
+    console.log('📤 准备上传文档:')
+    console.log('  - file:', uploadForm.value.file)
+    console.log('  - file 是否为 File:', uploadForm.value.file instanceof File)
+    console.log('  - file.name:', uploadForm.value.file.name)
+    console.log('  - file.size:', uploadForm.value.file.size)
+    console.log('  - title:', uploadForm.value.title)
+    console.log('  - project_id:', uploadForm.value.project_id)
+    console.log('  - FormData 实例:', formData)
+    console.log('  - FormData 是否为 FormData:', formData instanceof FormData)
+    
     // 根据是否选择项目决定使用哪个API
     if (uploadForm.value.project_id) {
       // 关联到项目的文档
       formData.append('project_id', uploadForm.value.project_id)
+      console.log('  - 使用 createDocument API')
       await documentService.createDocument(formData)
     } else {
       // 独立文档
+      console.log('  - 使用 createStandaloneDocument API')
       await documentService.createStandaloneDocument(formData)
     }
     

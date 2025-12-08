@@ -3,6 +3,8 @@ package services
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"gitlabex/internal/config"
@@ -17,8 +19,9 @@ import (
 
 // GitLabService GitLab API服务
 type GitLabService struct {
-	Config     *config.Config
-	HTTPClient *utils.HTTPClient // 使用封装的HTTP客户端
+	Config       *config.Config
+	HTTPClient   *utils.HTTPClient // 使用封装的HTTP客户端
+	RedisService *RedisService     // Redis缓存服务
 }
 
 // NewGitLabService 创建GitLab服务
@@ -37,6 +40,11 @@ func NewGitLabService(cfg *config.Config) *GitLabService {
 		Config:     cfg,
 		HTTPClient: httpClient,
 	}
+}
+
+// SetRedisService 设置Redis服务（用于缓存）
+func (s *GitLabService) SetRedisService(redisService *RedisService) {
+	s.RedisService = redisService
 }
 
 // makeRequest 通用HTTP请求方法，带有context支持（保留用于兼容性）
@@ -179,23 +187,65 @@ func (s *GitLabService) SetupProjectBranchProtection(accessToken string, project
 	return nil
 }
 
-// GetUser 获取当前用户信息
+// GetUser 获取当前用户信息（带缓存）
 func (s *GitLabService) GetUser(accessToken string) (*dto.GitLabAPIUser, error) {
+	ctx := context.Background()
+
+	// 生成缓存key（基于token的hash，避免暴露token）
+	cacheKey := fmt.Sprintf("gitlab:user:token:%s", hashString(accessToken))
+
+	// 尝试从缓存获取
+	if s.RedisService != nil {
+		var cachedUser dto.GitLabAPIUser
+		err := s.RedisService.GetCache(ctx, cacheKey, &cachedUser)
+		if err == nil {
+			return &cachedUser, nil
+		}
+	}
+
+	// 缓存未命中，调用GitLab API
 	apiURL := fmt.Sprintf("%s/api/v4/user", s.Config.GitLab.URL)
 	var user dto.GitLabAPIUser
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &user, http.StatusOK); err != nil {
 		return nil, err
 	}
+
+	// 存入缓存（15分钟）
+	if s.RedisService != nil {
+		_ = s.RedisService.SetCache(ctx, cacheKey, &user, 15*time.Minute)
+	}
+
 	return &user, nil
 }
 
-// GetAllUsers 获取所有用户列表 (管理员专用)
+// GetAllUsers 获取所有用户列表（管理员专用，带缓存）
 func (s *GitLabService) GetAllUsers(accessToken string, page, perPage int) ([]*dto.GitLabAPIUser, error) {
+	ctx := context.Background()
+
+	// 生成缓存key
+	cacheKey := fmt.Sprintf("gitlab:users:all:page:%d:per_page:%d", page, perPage)
+
+	// 尝试从缓存获取
+	if s.RedisService != nil {
+		var cachedUsers []*dto.GitLabAPIUser
+		err := s.RedisService.GetCache(ctx, cacheKey, &cachedUsers)
+		if err == nil {
+			return cachedUsers, nil
+		}
+	}
+
+	// 缓存未命中，调用GitLab API
 	apiURL := fmt.Sprintf("%s/api/v4/users?page=%d&per_page=%d", s.Config.GitLab.URL, page, perPage)
 	var users []*dto.GitLabAPIUser
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &users, http.StatusOK); err != nil {
 		return nil, err
 	}
+
+	// 存入缓存（10分钟，用户列表更新频率较低）
+	if s.RedisService != nil {
+		_ = s.RedisService.SetCacheWithTags(ctx, cacheKey, users, []string{"gitlab_users", "gitlab_users_list"}, 10*time.Minute)
+	}
+
 	return users, nil
 }
 
@@ -210,8 +260,23 @@ func (s *GitLabService) SearchUsers(accessToken string, search string, page, per
 	return users, nil
 }
 
-// GetUserByUsername 根据用户名获取用户信息
+// GetUserByUsername 根据用户名获取用户信息（带缓存）
 func (s *GitLabService) GetUserByUsername(accessToken string, username string) (*dto.GitLabAPIUser, error) {
+	ctx := context.Background()
+
+	// 生成缓存key
+	cacheKey := fmt.Sprintf("gitlab:user:username:%s", username)
+
+	// 尝试从缓存获取
+	if s.RedisService != nil {
+		var cachedUser dto.GitLabAPIUser
+		err := s.RedisService.GetCache(ctx, cacheKey, &cachedUser)
+		if err == nil {
+			return &cachedUser, nil
+		}
+	}
+
+	// 缓存未命中，调用GitLab API
 	apiURL := fmt.Sprintf("%s/api/v4/users?username=%s", s.Config.GitLab.URL, url.QueryEscape(username))
 	var users []*dto.GitLabAPIUser
 	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &users, http.StatusOK); err != nil {
@@ -220,33 +285,116 @@ func (s *GitLabService) GetUserByUsername(accessToken string, username string) (
 	if len(users) == 0 {
 		return nil, fmt.Errorf("用户不存在")
 	}
-	return users[0], nil
+
+	user := users[0]
+
+	// 存入缓存（30分钟）
+	if s.RedisService != nil {
+		_ = s.RedisService.SetCacheWithTags(ctx, cacheKey, user, []string{"gitlab_users"}, 30*time.Minute)
+	}
+
+	return user, nil
 }
 
-// CreateUser 创建用户 (管理员专用)
+// GetUserByID 根据用户ID获取用户信息（带缓存）
+func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*dto.GitLabAPIUser, error) {
+	ctx := context.Background()
+
+	// 生成缓存key
+	cacheKey := fmt.Sprintf("gitlab:user:id:%d", userID)
+
+	// 尝试从缓存获取
+	if s.RedisService != nil {
+		var cachedUser dto.GitLabAPIUser
+		err := s.RedisService.GetCache(ctx, cacheKey, &cachedUser)
+		if err == nil {
+			return &cachedUser, nil
+		}
+	}
+
+	// 缓存未命中，调用GitLab API
+	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
+	var user dto.GitLabAPIUser
+	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &user, http.StatusOK); err != nil {
+		return nil, err
+	}
+
+	// 存入缓存（30分钟）
+	if s.RedisService != nil {
+		_ = s.RedisService.SetCacheWithTags(ctx, cacheKey, &user, []string{"gitlab_users"}, 30*time.Minute)
+	}
+
+	return &user, nil
+}
+
+// CreateUser 创建用户（管理员专用，自动清除相关缓存）
 func (s *GitLabService) CreateUser(accessToken string, userData *dto.GitLabCreateUserData) (*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users", s.Config.GitLab.URL)
 	var user dto.GitLabAPIUser
 	if err := s.doJSONRequest("POST", apiURL, accessToken, userData, &user, http.StatusCreated); err != nil {
 		return nil, err
 	}
+
+	// 清除用户列表缓存
+	if s.RedisService != nil {
+		ctx := context.Background()
+		_ = s.RedisService.DeleteCacheByTag(ctx, "gitlab_users_list")
+	}
+
 	return &user, nil
 }
 
-// UpdateUser 更新用户信息 (管理员专用)
+// UpdateUser 更新用户信息（管理员专用，自动清除相关缓存）
 func (s *GitLabService) UpdateUser(accessToken string, userID int64, userData *dto.GitLabUpdateUserData) (*dto.GitLabAPIUser, error) {
 	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
 	var user dto.GitLabAPIUser
 	if err := s.doJSONRequest("PUT", apiURL, accessToken, userData, &user, http.StatusOK); err != nil {
 		return nil, err
 	}
+
+	// 清除该用户的所有缓存
+	if s.RedisService != nil {
+		ctx := context.Background()
+		// 清除ID缓存
+		_ = s.RedisService.DeleteCache(ctx, fmt.Sprintf("gitlab:user:id:%d", userID))
+		// 清除用户名缓存（如果用户名被修改）
+		if userData.Username != "" {
+			_ = s.RedisService.DeleteCache(ctx, fmt.Sprintf("gitlab:user:username:%s", userData.Username))
+		}
+		// 清除用户列表缓存
+		_ = s.RedisService.DeleteCacheByTag(ctx, "gitlab_users_list")
+	}
+
 	return &user, nil
 }
 
-// DeleteUser 删除用户 (管理员专用)
+// DeleteUser 删除用户（管理员专用，自动清除相关缓存）
 func (s *GitLabService) DeleteUser(accessToken string, userID int64) error {
+	// 先获取用户信息以便清除用户名缓存
+	var username string
+	if s.RedisService != nil {
+		user, _ := s.GetUserByID(accessToken, userID)
+		if user != nil {
+			username = user.Username
+		}
+	}
+
 	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
 	_, _, err := s.doRequestMultiStatus("DELETE", apiURL, accessToken, nil, http.StatusNoContent, http.StatusAccepted)
+
+	// 删除成功后清除缓存
+	if err == nil && s.RedisService != nil {
+		ctx := context.Background()
+		// 清除ID缓存
+		_ = s.RedisService.DeleteCache(ctx, fmt.Sprintf("gitlab:user:id:%d", userID))
+		// 清除用户名缓存
+		if username != "" {
+			_ = s.RedisService.DeleteCache(ctx, fmt.Sprintf("gitlab:user:username:%s", username))
+		}
+		// 清除用户列表缓存
+		_ = s.RedisService.DeleteCacheByTag(ctx, "gitlab_users_list")
+	}
+
 	return err
 }
 
@@ -795,16 +943,6 @@ func (s *GitLabService) RemoveProjectMember(accessToken string, projectID int64,
 	return err
 }
 
-// GetUserByID 根据用户ID获取GitLab用户信息
-func (s *GitLabService) GetUserByID(accessToken string, userID int64) (*dto.GitLabAPIUser, error) {
-	apiURL := fmt.Sprintf("%s/api/v4/users/%d", s.Config.GitLab.URL, userID)
-	var user dto.GitLabAPIUser
-	if err := s.doJSONRequest("GET", apiURL, accessToken, nil, &user, http.StatusOK); err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
 // CreateProjectIssue 创建项目Issue
 func (s *GitLabService) CreateProjectIssue(accessToken string, projectID int64, title, description string, labels []string) (*dto.GitLabIssue, error) {
 	url := fmt.Sprintf("%s/api/v4/projects/%d/issues", s.Config.GitLab.URL, projectID)
@@ -1204,4 +1342,95 @@ func (s *GitLabService) GetWebIDEURL(projectPath, branchName, filePath string) s
 	// 打开分支根目录
 	return fmt.Sprintf("%s/%s/-/tree/%s",
 		s.Config.GitLab.URL, projectPath, url.PathEscape(branchName))
+}
+
+// ===== 缓存相关辅助方法 =====
+
+// hashString 对字符串进行SHA256哈希
+func hashString(s string) string {
+	hash := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(hash[:])
+}
+
+// GetUsersByIDBatch 批量获取用户信息（带缓存优化）
+func (s *GitLabService) GetUsersByIDBatch(accessToken string, userIDs []int64) (map[int64]*dto.GitLabAPIUser, error) {
+	ctx := context.Background()
+	result := make(map[int64]*dto.GitLabAPIUser)
+	missingIDs := make([]int64, 0)
+
+	// 先从缓存中获取
+	if s.RedisService != nil {
+		for _, userID := range userIDs {
+			cacheKey := fmt.Sprintf("gitlab:user:id:%d", userID)
+			var cachedUser dto.GitLabAPIUser
+			err := s.RedisService.GetCache(ctx, cacheKey, &cachedUser)
+			if err == nil {
+				result[userID] = &cachedUser
+			} else {
+				missingIDs = append(missingIDs, userID)
+			}
+		}
+	} else {
+		missingIDs = userIDs
+	}
+
+	// 批量获取缓存未命中的用户
+	for _, userID := range missingIDs {
+		user, err := s.GetUserByID(accessToken, userID)
+		if err == nil {
+			result[userID] = user
+		}
+	}
+
+	return result, nil
+}
+
+// InvalidateUserCache 手动清除用户缓存
+func (s *GitLabService) InvalidateUserCache(userID int64, username string) error {
+	if s.RedisService == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+
+	// 清除ID缓存
+	if err := s.RedisService.DeleteCache(ctx, fmt.Sprintf("gitlab:user:id:%d", userID)); err != nil {
+		return err
+	}
+
+	// 清除用户名缓存
+	if username != "" {
+		if err := s.RedisService.DeleteCache(ctx, fmt.Sprintf("gitlab:user:username:%s", username)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// InvalidateAllUserCaches 清除所有用户相关缓存
+func (s *GitLabService) InvalidateAllUserCaches() error {
+	if s.RedisService == nil {
+		return nil
+	}
+
+	ctx := context.Background()
+	return s.RedisService.DeleteCacheByTag(ctx, "gitlab_users")
+}
+
+// WarmupUserCache 预热用户缓存（可在系统启动时调用）
+func (s *GitLabService) WarmupUserCache(accessToken string) error {
+	if s.RedisService == nil {
+		return nil
+	}
+
+	// 获取第一页用户（通常是活跃用户）
+	users, err := s.GetAllUsers(accessToken, 1, 100)
+	if err != nil {
+		return err
+	}
+
+	// 由于GetAllUsers已经会缓存，这里只是触发缓存
+	fmt.Printf("预热用户缓存完成，缓存了 %d 个用户\n", len(users))
+	return nil
 }

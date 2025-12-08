@@ -94,22 +94,40 @@ const uploadStatus = ref<'success' | 'exception' | 'warning' | ''>('')
 
 // 计算属性
 const uploadUrl = computed(() => {
-  return `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1'}/documents/upload`
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1'
+  // 如果没有项目ID，使用独立文档上传接口
+  if (!props.projectId) {
+    return `${baseUrl}/documents/standalone`
+  }
+  return `${baseUrl}/documents/upload`
 })
 
 const headers = computed(() => {
-  return {
+  const headers: Record<string, string> = {
     'Authorization': `Bearer ${userStore.token}`
   }
+  // 不要手动设置 Content-Type，让浏览器自动设置 multipart/form-data 和 boundary
+  return headers
 })
 
 const uploadData = computed(() => {
-  return {
-    project_id: props.projectId,
-    category: props.category,
-    title: props.title,
-    description: props.description
+  const data: Record<string, any> = {}
+  
+  // 只添加非空值
+  if (props.projectId) {
+    data.project_id = props.projectId
   }
+  if (props.category) {
+    data.category = props.category
+  }
+  if (props.title) {
+    data.title = props.title
+  }
+  if (props.description) {
+    data.description = props.description
+  }
+  
+  return data
 })
 
 const acceptText = computed(() => {
@@ -162,11 +180,11 @@ const beforeUpload = (rawFile: UploadRawFile) => {
     return false
   }
 
-  // 检查项目ID
-  if (!props.projectId) {
-    ElMessage.error('请选择项目')
-    return false
-  }
+  // 项目ID可选，不选则创建独立文档
+  // if (!props.projectId) {
+  //   ElMessage.error('请选择项目')
+  //   return false
+  // }
 
   uploading.value = true
   uploadProgress.value = 0
@@ -224,10 +242,11 @@ const clearFiles = () => {
 }
 
 const submitUpload = () => {
-  if (!props.projectId) {
-    ElMessage.error('请选择项目')
-    return
-  }
+  // 项目ID可选
+  // if (!props.projectId) {
+  //   ElMessage.error('请选择项目')
+  //   return
+  // }
   
   uploadRef.value?.submit()
 }

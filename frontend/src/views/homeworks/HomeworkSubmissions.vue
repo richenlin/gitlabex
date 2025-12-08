@@ -94,14 +94,6 @@
               >
                 {{ scope.row.status === 'graded' ? '修改评分' : '批改' }}
               </el-button>
-              <el-button 
-                size="small" 
-                type="success"
-                @click="viewInGitLab(scope.row)"
-                v-if="scope.row.gitlab_branch"
-              >
-                GitLab
-              </el-button>
             </div>
           </template>
         </el-table-column>

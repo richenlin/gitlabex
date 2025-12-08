@@ -50,6 +50,19 @@ api.interceptors.request.use(
       console.warn('API请求拦截器 - 没有token，无法添加Authorization头')
     }
     
+    // ✅ 如果是 FormData，删除 Content-Type，让浏览器自动设置
+    console.log('API请求拦截器 - 数据类型:', typeof config.data)
+    console.log('API请求拦截器 - 是否为FormData:', config.data instanceof FormData)
+    console.log('API请求拦截器 - 数据内容:', config.data)
+    
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+      console.log('✅ API请求拦截器 - 检测到FormData，已删除Content-Type')
+      console.log('✅ 删除后的headers:', config.headers)
+    } else {
+      console.log('⚠️ API请求拦截器 - 不是FormData，保持原Content-Type')
+    }
+    
     console.log('API请求拦截器 - 最终headers:', config.headers)
     return config
   },
@@ -259,8 +272,8 @@ export const topicService = {
   getHotTopics: (limit?: number) =>
     api.get('/topics/hot', { params: { limit } }),
   
-  getTopic: (id: string, projectId: string) =>
-    api.get(`/topics/${id}?project_id=${projectId}`),
+  getTopic: (id: string, projectId?: string) =>
+    api.get(`/topics/${id}${projectId ? `?project_id=${projectId}` : ''}`),
   
   createTopic: (data: Partial<Topic>) =>
     api.post('/topics', data),
@@ -271,23 +284,23 @@ export const topicService = {
   deleteTopic: (id: string) =>
     api.delete(`/topics/${id}`),
   
-  likeTopic: (id: string, projectId: string) =>
-    api.post(`/topics/${id}/like?project_id=${projectId}`),
+  likeTopic: (id: string, projectId?: string) =>
+    api.post(`/topics/${id}/like${projectId ? `?project_id=${projectId}` : ''}`),
   
-  unlikeTopic: (id: string, projectId: string) =>
-    api.delete(`/topics/${id}/like?project_id=${projectId}`),
+  unlikeTopic: (id: string, projectId?: string) =>
+    api.delete(`/topics/${id}/like${projectId ? `?project_id=${projectId}` : ''}`),
   
-  dislikeTopic: (id: string, projectId: string) =>
-    api.post(`/topics/${id}/dislike?project_id=${projectId}`),
+  dislikeTopic: (id: string, projectId?: string) =>
+    api.post(`/topics/${id}/dislike${projectId ? `?project_id=${projectId}` : ''}`),
   
-  undislikeTopic: (id: string, projectId: string) =>
-    api.delete(`/topics/${id}/dislike?project_id=${projectId}`),
+  undislikeTopic: (id: string, projectId?: string) =>
+    api.delete(`/topics/${id}/dislike${projectId ? `?project_id=${projectId}` : ''}`),
   
-  getComments: (id: string, projectId: string) =>
-    api.get(`/topics/${id}/comments?project_id=${projectId}`),
+  getComments: (id: string, projectId?: string) =>
+    api.get(`/topics/${id}/comments${projectId ? `?project_id=${projectId}` : ''}`),
   
-  createComment: (id: string, content: string, projectId: string, parentId?: string) =>
-    api.post(`/topics/${id}/comments?project_id=${projectId}`, { content, parentId })
+  createComment: (id: string, content: string, projectId?: string, parentId?: string) =>
+    api.post(`/topics/${id}/comments${projectId ? `?project_id=${projectId}` : ''}`, { content, parentId })
 }
 
 // 文档相关 API
@@ -308,18 +321,12 @@ export const documentService = {
     api.get(`/documents/${id}`),
   
   createDocument: (formData: FormData) =>
-    api.post('/documents', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    }),
+    api.post('/documents', formData),
+    // 不要手动设置 Content-Type，让 axios 自动设置 multipart/form-data 和 boundary
   
   createStandaloneDocument: (formData: FormData) =>
-    api.post('/documents/standalone', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    }),
+    api.post('/documents/standalone', formData),
+    // 不要手动设置 Content-Type，让 axios 自动设置 multipart/form-data 和 boundary
   
   updateDocument: (id: string, data: Partial<Document>) =>
     api.put(`/documents/${id}/with-permission-check`, data),

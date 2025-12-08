@@ -58,8 +58,8 @@
             <div class="topic-header">
               <h3 class="topic-title">{{ topic.title }}</h3>
               <div class="topic-badges">
-                <el-tag :type="topic.status === 'opened' ? 'success' : 'info'" size="small">
-                  {{ topic.status === 'opened' ? '开放' : '关闭' }}
+                <el-tag :type="['opened', 'active'].includes(topic.status) ? 'success' : 'info'" size="small">
+                  {{ ['opened', 'active'].includes(topic.status) ? '开放' : '关闭' }}
                 </el-tag>
                 <el-tag v-if="topic.project" type="primary" size="small">
                   {{ topic.project.name }}
@@ -449,17 +449,15 @@ const handleSearch = () => {
 }
 
 const viewTopic = async (topic: Topic) => {
-  // 从话题列表获取项目ID
-  if (!topic.project_id) {
-    ElMessage.error('无法获取话题所属项目信息')
-    return
-  }
-  
   topicDetailLoading.value = true
   topicDetailDialogVisible.value = true
   
   try {
-    const response: any = await topicService.getTopic(topic.id, topic.project_id)
+    // 独立话题（is_standalone为true或project_id为null）不需要传递project_id
+    const response: any = await topicService.getTopic(
+      topic.id, 
+      topic.is_standalone ? undefined : topic.project_id
+    )
     currentTopicDetail.value = response.topic
     topicComments.value = response.comments || []
     replyingTopic.value = currentTopicDetail.value
@@ -554,17 +552,18 @@ const submitReply = async () => {
     return
   }
   
-  if (!replyingTopic.value || !replyingTopic.value.project_id) {
+  if (!replyingTopic.value) {
     ElMessage.error('无法获取话题信息')
     return
   }
   
   submittingReply.value = true
   try {
+    // 独立话题不需要传递project_id
     const response: any = await topicService.createComment(
       replyingTopic.value.id, 
       replyForm.value.content, 
-      replyingTopic.value.project_id
+      replyingTopic.value.is_standalone ? undefined : replyingTopic.value.project_id
     )
     ElMessage.success('回复成功')
     replyForm.value.content = ''
@@ -606,25 +605,23 @@ const toggleLike = async (topic: Topic) => {
     return
   }
   
-  if (!topic.project_id) {
-    ElMessage.error('无法获取话题所属项目信息')
-    return
-  }
-  
   topic.liking = true
   try {
+    // 独立话题不需要传递project_id
+    const projectId = topic.is_standalone ? undefined : topic.project_id
+    
     if (topic.user_liked) {
-      await topicService.unlikeTopic(topic.id, topic.project_id)
+      await topicService.unlikeTopic(topic.id, projectId)
       topic.user_liked = false
       topic.like_count = Math.max(0, (topic.like_count || 0) - 1)
       ElMessage.success('取消点赞成功')
     } else {
-      await topicService.likeTopic(topic.id, topic.project_id)
+      await topicService.likeTopic(topic.id, projectId)
       topic.user_liked = true
       topic.like_count = (topic.like_count || 0) + 1
       // 如果之前反对了，取消反对
       if (topic.user_disliked) {
-        await topicService.undislikeTopic(topic.id, topic.project_id)
+        await topicService.undislikeTopic(topic.id, projectId)
         topic.user_disliked = false
         topic.dislike_count = Math.max(0, (topic.dislike_count || 0) - 1)
       }
@@ -644,25 +641,23 @@ const toggleDislike = async (topic: Topic) => {
     return
   }
   
-  if (!topic.project_id) {
-    ElMessage.error('无法获取话题所属项目信息')
-    return
-  }
-  
   topic.disliking = true
   try {
+    // 独立话题不需要传递project_id
+    const projectId = topic.is_standalone ? undefined : topic.project_id
+    
     if (topic.user_disliked) {
-      await topicService.undislikeTopic(topic.id, topic.project_id)
+      await topicService.undislikeTopic(topic.id, projectId)
       topic.user_disliked = false
       topic.dislike_count = Math.max(0, (topic.dislike_count || 0) - 1)
       ElMessage.success('取消反对成功')
     } else {
-      await topicService.dislikeTopic(topic.id, topic.project_id)
+      await topicService.dislikeTopic(topic.id, projectId)
       topic.user_disliked = true
       topic.dislike_count = (topic.dislike_count || 0) + 1
       // 如果之前点赞了，取消点赞
       if (topic.user_liked) {
-        await topicService.unlikeTopic(topic.id, topic.project_id)
+        await topicService.unlikeTopic(topic.id, projectId)
         topic.user_liked = false
         topic.like_count = Math.max(0, (topic.like_count || 0) - 1)
       }
@@ -677,15 +672,16 @@ const toggleDislike = async (topic: Topic) => {
 }
 
 const fetchComments = async () => {
-  if (!currentTopicDetail.value || !currentTopicDetail.value.project_id) {
+  if (!currentTopicDetail.value) {
     return
   }
   
   commentsLoading.value = true
   try {
+    // 独立话题不需要传递project_id
     const response: any = await topicService.getTopic(
       currentTopicDetail.value.id, 
-      currentTopicDetail.value.project_id
+      currentTopicDetail.value.is_standalone ? undefined : currentTopicDetail.value.project_id
     )
     const allComments = response.comments || []
     commentsTotal.value = allComments.length

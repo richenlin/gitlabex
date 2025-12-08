@@ -413,7 +413,44 @@ func (h *ResearchHandler) GetResearchProjectByID(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, project)
+	// ✅ 获取创建者信息
+	var creator *dto.GitLabAPIUser
+	if hasToken {
+		creator, _ = h.gitlabService.GetUserByID(accessToken.(string), project.CreatorID)
+	}
+	if creator == nil {
+		// 如果无法获取创建者信息，使用默认值
+		creator = &dto.GitLabAPIUser{
+			ID:       project.CreatorID,
+			Username: "unknown",
+			Name:     "Unknown User",
+		}
+	}
+
+	// 构建响应，包含创建者信息
+	response := map[string]interface{}{
+		"id":                project.ID,
+		"name":              project.Name,
+		"description":       project.Description,
+		"status":            project.Status,
+		"creator_id":        project.CreatorID,
+		"gitlab_project_id": project.GitLabProjectID,
+		"gitlab_url":        project.GitLabURL,
+		"start_date":        project.StartDate,
+		"end_date":          project.EndDate,
+		"is_public":         project.IsPublic,
+		"tags":              project.Tags,
+		"created_at":        project.CreatedAt,
+		"updated_at":        project.UpdatedAt,
+		"creator": map[string]interface{}{
+			"id":         creator.ID,
+			"username":   creator.Username,
+			"name":       creator.Name,
+			"avatar_url": creator.Avatar,
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // UpdateResearchProject 更新研究课题信息

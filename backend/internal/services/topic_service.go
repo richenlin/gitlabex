@@ -67,7 +67,8 @@ func (s *TopicService) GetPublicTopics(limit, offset int) ([]models.Topic, int64
 func (s *TopicService) GetTopicByID(id uuid.UUID) (*models.Topic, error) {
 	var topic models.Topic
 	err := s.db.Preload("Project").
-		Preload("Likes").
+		Preload("TopicLikes").
+		Preload("TopicDislikes").
 		First(&topic, "id = ?", id).Error
 	return &topic, err
 }
@@ -133,7 +134,22 @@ func (s *TopicService) UpdateTopicLikesCount(topicID uuid.UUID) error {
 
 	return s.db.Model(&models.Topic{}).
 		Where("id = ?", topicID).
-		UpdateColumn("likes_count", count).Error
+		UpdateColumn("like_count", count).Error
+}
+
+// UpdateTopicDislikesCount 更新话题反对数
+func (s *TopicService) UpdateTopicDislikesCount(topicID uuid.UUID) error {
+	var count int64
+	err := s.db.Model(&models.TopicDislike{}).
+		Where("topic_id = ?", topicID).
+		Count(&count).Error
+	if err != nil {
+		return err
+	}
+
+	return s.db.Model(&models.Topic{}).
+		Where("id = ?", topicID).
+		UpdateColumn("dislike_count", count).Error
 }
 
 // SearchTopics 搜索话题
@@ -267,14 +283,4 @@ func (s *TopicService) HasDislikedTopic(userID int64, topicID uuid.UUID) (bool, 
 	var count int64
 	err := s.db.Model(&models.TopicDislike{}).Where("topic_id = ? AND user_id = ?", topicID, userID).Count(&count).Error
 	return count > 0, err
-}
-
-// UpdateTopicDislikesCount 更新话题反对数量
-func (s *TopicService) UpdateTopicDislikesCount(topicID uuid.UUID) error {
-	var count int64
-	if err := s.db.Model(&models.TopicDislike{}).Where("topic_id = ?", topicID).Count(&count).Error; err != nil {
-		return err
-	}
-
-	return s.db.Model(&models.Topic{}).Where("id = ?", topicID).Update("dislike_count", count).Error
 }

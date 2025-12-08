@@ -43,6 +43,14 @@ func main() {
 	// 初始化服务
 	gitlabService := services.NewGitLabService(cfg)
 
+	// 为GitLab服务设置Redis缓存
+	if redisService != nil {
+		gitlabService.SetRedisService(redisService)
+		log.Println("GitLab Service: Redis缓存已启用")
+	} else {
+		log.Println("GitLab Service: 运行于无缓存模式")
+	}
+
 	// 初始化MinIO服务
 	minioService, err := services.NewMinIOService(
 		cfg.MinIO.Endpoint,
@@ -71,13 +79,16 @@ func main() {
 	// 初始化处理器
 	gitlabHandler := handlers.NewGitLabHandler(gitlabService, userService)
 	researchHandler := handlers.NewResearchHandler(researchService, userService, gitlabService)
-	topicHandler := handlers.NewTopicHandler(gitlabService, researchService, topicService)
+	topicHandler := handlers.NewTopicHandler(gitlabService, researchService, topicService, redisService) // ✅ 添加 redisService 参数
 	syncHandler := handlers.NewSyncHandler(gitlabService)
 	activityHandler := handlers.NewActivityHandler(activityService)
 	permissionHandler := handlers.NewPermissionHandler(gitlabService, researchService, topicService)
 
 	// 创建Gin路由器
 	r := gin.Default()
+
+	// ✅ 设置最大 multipart 内存限制为 100MB
+	r.MaxMultipartMemory = 100 << 20 // 100 MB
 
 	// 配置CORS - 从配置文件读取AllowedOrigins
 	allowedOrigins := strings.Split(cfg.Security.CORSAllowedOrigins, ",")
@@ -103,6 +114,9 @@ func main() {
 		"/health",
 		"/api/v1/auth/gitlab",
 		"/api/v1/auth/gitlab/callback",
+		"/api/v1/documents/standalone", // ✅ 独立文档上传（multipart）
+		"/api/v1/documents/upload",     // ✅ 项目文档上传（multipart）
+		"/api/v1/documents",            // ✅ 文档上传（multipart）- 包含 POST /documents
 	}
 	r.Use(middleware.XSSWhitelistMiddleware(skipPaths))
 
@@ -273,6 +287,7 @@ func main() {
 			documentsAuth.DELETE("/:id", documentHandler.DeleteDocument)
 			documentsAuth.GET("/stats", documentHandler.GetDocumentStats)
 			documentsAuth.POST("", documentHandler.UploadDocument)
+			documentsAuth.POST("/upload", documentHandler.UploadDocument) // 文档上传 - 兼容前端路由
 
 			// 自动文档索引路由 - 需要认证
 			documentsAuth.POST("/sync/:project_id", documentHandler.SyncDocuments)

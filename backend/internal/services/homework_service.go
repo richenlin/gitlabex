@@ -213,46 +213,38 @@ func (s *HomeworkService) GetSubmissionByUserAndHomework(userID int64, homeworkI
 func (s *HomeworkService) GetHomeworkDetailStats(homeworkID uuid.UUID) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
-	// 实时统计提交数量
-	var submissionCount int64
-	s.DB.Model(&models.Submission{}).
+	// 使用单次查询获取所有统计信息
+	var result struct {
+		TotalSubmissions int64   `json:"total_submissions"`
+		GradedCount      int64   `json:"graded_count"`
+		PendingCount     int64   `json:"pending_count"`
+		AvgGrade         float64 `json:"avg_grade"`
+		MinGrade         *int    `json:"min_grade"`
+		MaxGrade         *int    `json:"max_grade"`
+	}
+
+	err := s.DB.Model(&models.Submission{}).
 		Where("homework_id = ?", homeworkID).
-		Count(&submissionCount)
-	stats["submission_count"] = submissionCount
+		Select(`
+			COUNT(*) as total_submissions,
+			COUNT(CASE WHEN status = 'graded' THEN 1 END) as graded_count,
+			COUNT(CASE WHEN status = 'submitted' THEN 1 END) as pending_count,
+			COALESCE(AVG(CASE WHEN grade IS NOT NULL THEN grade END), 0) as avg_grade,
+			MIN(CASE WHEN grade IS NOT NULL THEN grade END) as min_grade,
+			MAX(CASE WHEN grade IS NOT NULL THEN grade END) as max_grade
+		`).
+		Scan(&result).Error
 
-	// 实时统计已评分数量
-	var gradedCount int64
-	s.DB.Model(&models.Submission{}).
-		Where("homework_id = ? AND status = ?", homeworkID, models.SubmissionStatusGraded).
-		Count(&gradedCount)
-	stats["graded_count"] = gradedCount
+	if err != nil {
+		return nil, err
+	}
 
-	// 计算平均分
-	var avgGrade float64
-	s.DB.Model(&models.Submission{}).
-		Where("homework_id = ? AND grade IS NOT NULL", homeworkID).
-		Select("COALESCE(AVG(grade), 0)").
-		Scan(&avgGrade)
-	stats["average_grade"] = avgGrade
-
-	// 最高分和最低分
-	var minGrade, maxGrade *int
-	s.DB.Model(&models.Submission{}).
-		Where("homework_id = ? AND grade IS NOT NULL", homeworkID).
-		Select("MIN(grade) as min_grade, MAX(grade) as max_grade").
-		Scan(&map[string]interface{}{
-			"min_grade": &minGrade,
-			"max_grade": &maxGrade,
-		})
-	stats["min_grade"] = minGrade
-	stats["max_grade"] = maxGrade
-
-	// 待评分数量
-	var pendingCount int64
-	s.DB.Model(&models.Submission{}).
-		Where("homework_id = ? AND status = ?", homeworkID, models.SubmissionStatusSubmitted).
-		Count(&pendingCount)
-	stats["pending_count"] = pendingCount
+	stats["submission_count"] = result.TotalSubmissions
+	stats["graded_count"] = result.GradedCount
+	stats["pending_count"] = result.PendingCount
+	stats["average_grade"] = result.AvgGrade
+	stats["min_grade"] = result.MinGrade
+	stats["max_grade"] = result.MaxGrade
 
 	return stats, nil
 }

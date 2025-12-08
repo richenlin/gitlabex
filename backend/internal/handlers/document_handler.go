@@ -5,6 +5,7 @@ import (
 	"gitlabex/internal/models"
 	"gitlabex/internal/services"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -955,20 +956,43 @@ func (h *DocumentHandler) SyncProjectDocumentsToMinIO(c *gin.Context) {
 
 // CreateStandaloneDocument 创建独立文档
 func (h *DocumentHandler) CreateStandaloneDocument(c *gin.Context) {
+	// 🔍 调试：打印请求信息
+	log.Printf("[CreateStandaloneDocument] 开始处理上传请求")
+	log.Printf("[CreateStandaloneDocument] Content-Type: %s", c.Request.Header.Get("Content-Type"))
+	log.Printf("[CreateStandaloneDocument] Content-Length: %d", c.Request.ContentLength)
+
 	// 获取用户ID
 	gitlabUserID, exists := c.Get("gitlab_user_id")
 	if !exists {
+		log.Printf("[CreateStandaloneDocument] 错误: 用户未登录")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
 		return
 	}
+	log.Printf("[CreateStandaloneDocument] 用户ID: %v", gitlabUserID)
+
+	// ✅ 先解析 multipart 表单
+	log.Printf("[CreateStandaloneDocument] 尝试解析multipart表单...")
+	if err := c.Request.ParseMultipartForm(100 << 20); err != nil { // 100 MB
+		log.Printf("[CreateStandaloneDocument] 错误: 解析multipart表单失败: %v", err)
+		log.Printf("[CreateStandaloneDocument] 请求Method: %s", c.Request.Method)
+		log.Printf("[CreateStandaloneDocument] 请求Headers: %+v", c.Request.Header)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "解析multipart表单失败: " + err.Error()})
+		return
+	}
+	log.Printf("[CreateStandaloneDocument] 成功解析multipart表单")
+	log.Printf("[CreateStandaloneDocument] MultipartForm.File keys: %+v", c.Request.MultipartForm.File)
 
 	// 获取上传的文件
+	log.Printf("[CreateStandaloneDocument] 尝试获取FormFile('file')...")
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
+		log.Printf("[CreateStandaloneDocument] 错误: 获取上传文件失败: %v", err)
+		log.Printf("[CreateStandaloneDocument] 可用的文件字段: %+v", c.Request.MultipartForm.File)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "获取上传文件失败: " + err.Error()})
 		return
 	}
 	defer file.Close()
+	log.Printf("[CreateStandaloneDocument] 成功获取文件: %s, 大小: %d", header.Filename, header.Size)
 
 	// 验证文件类型和大小
 	if err := h.validateFile(header); err != nil {

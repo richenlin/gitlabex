@@ -661,13 +661,64 @@ func (h *HomeworkHandler) GetSubmissions(c *gin.Context) {
 		return
 	}
 
+	// 获取访问令牌以调用GitLab API
+	accessToken, exists := getStringFromContext(c, "gitlab_access_token")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少访问令牌"})
+		return
+	}
+
 	submissions, err := h.homeworkService.GetSubmissions(homeworkID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取提交失败"})
 		return
 	}
 
-	c.JSON(http.StatusOK, submissions)
+	// 补充学生信息
+	result := make([]map[string]interface{}, 0, len(submissions))
+	for _, submission := range submissions {
+		submissionData := map[string]interface{}{
+			"id":                submission.ID,
+			"homework_id":       submission.HomeworkID,
+			"student_id":        submission.StudentID,
+			"status":            submission.Status,
+			"content":           submission.Content,
+			"gitlab_commit_sha": submission.GitLabCommitSHA,
+			"gitlab_branch":     submission.GitLabBranch,
+			"submitted_at":      submission.SubmittedAt,
+			"grade":             submission.Grade,
+			"feedback":          submission.Feedback,
+			"graded_at":         submission.GradedAt,
+			"graded_by":         submission.GradedBy,
+			"created_at":        submission.CreatedAt,
+			"updated_at":        submission.UpdatedAt,
+		}
+
+		// 从GitLab获取学生信息
+		student, err := h.gitlabService.GetUserByID(accessToken, submission.StudentID)
+		if err == nil {
+			submissionData["student"] = map[string]interface{}{
+				"id":       student.ID,
+				"name":     student.Name,
+				"username": student.Username,
+				"email":    student.Email,
+				"avatar":   student.Avatar, // 对应 dto.GitLabAPIUser.Avatar (json:"avatar_url")
+			}
+		} else {
+			// 如果获取失败，提供基本信息
+			submissionData["student"] = map[string]interface{}{
+				"id":       submission.StudentID,
+				"name":     fmt.Sprintf("User_%d", submission.StudentID),
+				"username": fmt.Sprintf("user_%d", submission.StudentID),
+				"email":    "",
+				"avatar":   "",
+			}
+		}
+
+		result = append(result, submissionData)
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // GradeHomework 评分作业

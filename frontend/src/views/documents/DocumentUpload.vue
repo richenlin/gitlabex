@@ -16,11 +16,12 @@
           :rules="uploadRules"
           label-width="120px"
         >
-          <el-form-item label="关联课题" prop="project_id">
+          <el-form-item label="关联课题">
             <el-select 
               v-model="uploadForm.project_id" 
-              placeholder="选择课题"
+              placeholder="选择课题（可选，不选则创建独立文档）"
               style="width: 100%"
+              clearable
             >
               <el-option
                 v-for="project in projects"
@@ -29,6 +30,9 @@
                 :value="project.id"
               />
             </el-select>
+            <div class="form-tip">
+              不选择课题将创建独立文档，可在文档列表中查看
+            </div>
           </el-form-item>
           
           <el-form-item label="文档标题">
@@ -117,7 +121,7 @@ const uploadForm = ref({
 })
 
 const uploadRules = {
-  project_id: [{ required: true, message: '请选择课题', trigger: 'change' }]
+  // project_id 改为可选
 }
 
 // 方法

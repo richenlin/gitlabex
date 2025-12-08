@@ -73,6 +73,7 @@ func autoMigrate(db *gorm.DB) error {
 		&models.Submission{},
 		&models.Topic{},
 		&models.TopicLike{},
+		&models.TopicDislike{}, // 添加话题反对表
 		&models.Comment{},
 		&models.Notification{},
 		&models.Announcement{},
