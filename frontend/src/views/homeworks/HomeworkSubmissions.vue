@@ -211,7 +211,7 @@ const filteredSubmissions = computed(() => {
 // 方法
 const fetchHomework = async () => {
   try {
-    const data = await homeworkService.getHomework(homeworkId.value)
+    const data = await homeworkService.getHomework(homeworkId.value) as any
     
     if (data && data.homework) {
       homework.value = data.homework

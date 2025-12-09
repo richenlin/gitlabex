@@ -76,8 +76,15 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 	// 获取分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	// 支持两种参数名称：project_id（下划线）和 projectId（驼峰）
 	projectIDStr := c.Query("project_id")
-	statusFilter := c.Query("status") // ✅ 获取状态筛选参数
+	if projectIDStr == "" {
+		projectIDStr = c.Query("projectId")
+	}
+
+	statusFilter := c.Query("status") // 获取状态筛选参数
+	searchQuery := c.Query("search")  // 获取搜索参数
 
 	if page < 1 {
 		page = 1
@@ -121,7 +128,8 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 		}
 
 		if project.GitLabProjectID != nil {
-			topics, err := h.getProjectTopics(tokenToUse, project, page, limit, c)
+			// 获取项目话题时不应用分页，后续统一处理
+			topics, err := h.getProjectTopics(tokenToUse, project, 1, 1000, c)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
 					"error":   "获取话题失败",
@@ -141,7 +149,7 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 		}
 
 		// 2. 获取所有项目的话题（从GitLab）
-		projects, _, err := h.researchService.GetAllProjects(1000, 0, false, true) // 获取所有项目，包括私有项目
+		projects, _, err := h.researchService.GetAllProjects(1000, 0, false, true, "", "", "") // 获取所有项目，包括私有项目
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "获取项目列表失败",
@@ -207,7 +215,27 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 			return timeI.After(timeJ)
 		})
 
-		// ✅ 应用状态筛选
+		// 应用搜索筛选
+		if searchQuery != "" {
+			searchLower := strings.ToLower(searchQuery)
+			filteredTopics := make([]map[string]interface{}, 0)
+			for _, topic := range allTopics {
+				// 搜索标题
+				title, _ := topic["title"].(string)
+				titleMatch := strings.Contains(strings.ToLower(title), searchLower)
+
+				// 搜索内容
+				content, _ := topic["content"].(string)
+				contentMatch := strings.Contains(strings.ToLower(content), searchLower)
+
+				if titleMatch || contentMatch {
+					filteredTopics = append(filteredTopics, topic)
+				}
+			}
+			allTopics = filteredTopics
+		}
+
+		// 应用状态筛选
 		if statusFilter != "" {
 			filteredTopics := make([]map[string]interface{}, 0)
 			for _, topic := range allTopics {
@@ -225,17 +253,59 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 			}
 			allTopics = filteredTopics
 		}
+	}
 
-		// 应用分页
-		start := (page - 1) * limit
-		end := start + limit
-		if start >= len(allTopics) {
-			allTopics = []map[string]interface{}{}
-		} else if end > len(allTopics) {
-			allTopics = allTopics[start:]
-		} else {
-			allTopics = allTopics[start:end]
+	// 应用搜索筛选（统一处理，无论是否指定了projectId）
+	if searchQuery != "" {
+		searchLower := strings.ToLower(searchQuery)
+		filteredTopics := make([]map[string]interface{}, 0)
+		for _, topic := range allTopics {
+			// 搜索标题
+			title, _ := topic["title"].(string)
+			titleMatch := strings.Contains(strings.ToLower(title), searchLower)
+
+			// 搜索内容
+			content, _ := topic["content"].(string)
+			contentMatch := strings.Contains(strings.ToLower(content), searchLower)
+
+			if titleMatch || contentMatch {
+				filteredTopics = append(filteredTopics, topic)
+			}
 		}
+		allTopics = filteredTopics
+	}
+
+	// 应用状态筛选（统一处理，无论是否指定了projectId）
+	if statusFilter != "" {
+		filteredTopics := make([]map[string]interface{}, 0)
+		for _, topic := range allTopics {
+			topicStatus, ok := topic["status"].(string)
+			if !ok {
+				continue
+			}
+			// 匹配状态：open/opened -> opened 或 active（开放状态），closed -> closed
+			if (statusFilter == "open" && (topicStatus == "opened" || topicStatus == "active")) ||
+				(statusFilter == "opened" && (topicStatus == "opened" || topicStatus == "active")) ||
+				(statusFilter == "closed" && topicStatus == "closed") ||
+				(statusFilter == "active" && topicStatus == "active") {
+				filteredTopics = append(filteredTopics, topic)
+			}
+		}
+		allTopics = filteredTopics
+	}
+
+	// 计算总数（在分页前）
+	totalCount := len(allTopics)
+
+	// 应用分页（统一处理）
+	start := (page - 1) * limit
+	end := start + limit
+	if start >= len(allTopics) {
+		allTopics = []map[string]interface{}{}
+	} else if end > len(allTopics) {
+		allTopics = allTopics[start:]
+	} else {
+		allTopics = allTopics[start:end]
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -243,8 +313,8 @@ func (h *TopicHandler) GetTopics(c *gin.Context) {
 		"pagination": gin.H{
 			"page":  page,
 			"limit": limit,
-			"total": len(allTopics),
-			"pages": (len(allTopics) + limit - 1) / limit,
+			"total": totalCount,
+			"pages": (totalCount + limit - 1) / limit,
 		},
 	})
 }
@@ -1536,7 +1606,7 @@ func (h *TopicHandler) GetHotTopics(c *gin.Context) {
 	}
 
 	// 获取所有项目的话题并按热度排序
-	projects, _, err := h.researchService.GetAllProjects(100, 0, true, false) // 只获取公开项目
+	projects, _, err := h.researchService.GetAllProjects(100, 0, true, false, "", "", "") // 只获取公开项目
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "获取项目列表失败",

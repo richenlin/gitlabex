@@ -407,7 +407,8 @@ const fetchTopics = async () => {
       page: currentPage.value,
       pageSize: pageSize.value,
       search: searchQuery.value || undefined,
-      projectId: projectFilter.value || undefined
+      projectId: projectFilter.value || undefined,
+      status: statusFilter.value || undefined
     })
     
     // 处理响应数据结构（axios拦截器已经返回response.data）

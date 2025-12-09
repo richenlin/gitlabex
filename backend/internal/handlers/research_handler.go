@@ -149,6 +149,11 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 	includePrivate := c.Query("include_private") != "false"
 	ownerIDStr := c.Query("ownerId")
 
+	// 获取搜索和筛选参数
+	search := c.Query("search")
+	status := c.Query("status")
+	visibility := c.Query("visibility")
+
 	if page < 1 {
 		page = 1
 	}
@@ -164,13 +169,13 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 
 	// 如果是游客模式，只返回公开项目
 	if isGuest == true || gitlabUserID == nil {
-		projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false)
+		projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false, search, status, visibility)
 	} else {
 		// 安全地获取用户ID
 		gitlabUID, ok := getInt64FromContext(c, "gitlab_user_id")
 		if !ok {
 			// 如果无法获取用户ID，视为游客
-			projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false)
+			projects, total, err = h.researchService.GetAllProjects(limit, offset, true, false, search, status, visibility)
 		} else {
 			// 如果指定了ownerId参数，则按创建者过滤
 			if ownerIDStr != "" {
@@ -181,16 +186,16 @@ func (h *ResearchHandler) GetResearchProjects(c *gin.Context) {
 				}
 
 				// 根据创建者GitLab ID获取项目
-				projects, total, err = h.researchService.GetUserProjectsByGitLabID(ownerGitLabID, limit, offset)
+				projects, total, err = h.researchService.GetUserProjectsByGitLabID(ownerGitLabID, limit, offset, search, status, visibility)
 			} else {
 				// 检查用户权限 - 管理员可以看到所有项目，普通用户看到公开项目和自己创建的项目
 				isAdmin := getBoolFromContext(c, "is_admin")
 				if isAdmin {
 					// 管理员可以看到所有项目
-					projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate)
+					projects, total, err = h.researchService.GetAllProjects(limit, offset, isPublic, includePrivate, search, status, visibility)
 				} else {
 					// 普通用户只能看到公开项目和自己创建的项目
-					projects, total, err = h.researchService.GetUserAccessibleProjectsByGitLabID(gitlabUID, limit, offset)
+					projects, total, err = h.researchService.GetUserAccessibleProjectsByGitLabID(gitlabUID, limit, offset, search, status, visibility)
 				}
 			}
 		}

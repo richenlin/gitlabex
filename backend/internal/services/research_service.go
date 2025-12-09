@@ -44,16 +44,33 @@ func (s *ResearchService) GetResearchProjectByID(id uuid.UUID) (*models.Research
 }
 
 // GetAllProjects 获取所有项目
-func (s *ResearchService) GetAllProjects(limit, offset int, isPublic, includePrivate bool) ([]models.ResearchProject, int64, error) {
+func (s *ResearchService) GetAllProjects(limit, offset int, isPublic, includePrivate bool, search, status string, visibilityFilter string) ([]models.ResearchProject, int64, error) {
 	var projects []models.ResearchProject
 	var total int64
 
 	query := s.DB.Model(&models.ResearchProject{})
 
-	if !includePrivate {
+	// 根据visibility参数进行筛选
+	if visibilityFilter == "public" {
 		query = query.Where("is_public = ?", true)
-	} else if isPublic {
+	} else if visibilityFilter == "private" {
+		query = query.Where("is_public = ?", false)
+	} else if !includePrivate {
+		// 如果没有指定visibility且不包括私有，则只显示公开
 		query = query.Where("is_public = ?", true)
+	} else if isPublic && !includePrivate {
+		query = query.Where("is_public = ?", true)
+	}
+	// 如果visibilityFilter为空且includePrivate为true，则不添加is_public条件，显示全部
+
+	// 添加搜索条件
+	if search != "" {
+		query = query.Where("name LIKE ? OR description LIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// 添加状态筛选
+	if status != "" {
+		query = query.Where("status = ?", status)
 	}
 
 	err := query.Count(&total).Error
@@ -70,14 +87,33 @@ func (s *ResearchService) GetAllProjects(limit, offset int, isPublic, includePri
 }
 
 // GetUserAccessibleProjectsByGitLabID 获取用户可访问的项目 (使用GitLab用户ID)
-func (s *ResearchService) GetUserAccessibleProjectsByGitLabID(gitlabUserID int64, limit, offset int) ([]models.ResearchProject, int64, error) {
+func (s *ResearchService) GetUserAccessibleProjectsByGitLabID(gitlabUserID int64, limit, offset int, search, status string, visibilityFilter string) ([]models.ResearchProject, int64, error) {
 	var projects []models.ResearchProject
 	var total int64
 
 	// 注意：由于移除了本地成员管理，这里只返回公开项目和用户创建的项目
 	// 具体的项目访问权限由GitLab API控制
-	query := s.DB.Model(&models.ResearchProject{}).
-		Where("is_public = ? OR creator_id = ?", true, gitlabUserID)
+	query := s.DB.Model(&models.ResearchProject{})
+
+	// 根据visibility参数进行筛选
+	if visibilityFilter == "public" {
+		query = query.Where("is_public = ?", true)
+	} else if visibilityFilter == "private" {
+		query = query.Where("is_public = ? AND creator_id = ?", false, gitlabUserID)
+	} else {
+		// 没有指定visibility，返回公开项目和用户创建的项目
+		query = query.Where("is_public = ? OR creator_id = ?", true, gitlabUserID)
+	}
+
+	// 添加搜索条件
+	if search != "" {
+		query = query.Where("name LIKE ? OR description LIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// 添加状态筛选
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
 
 	err := query.Count(&total).Error
 	if err != nil {
@@ -93,19 +129,37 @@ func (s *ResearchService) GetUserAccessibleProjectsByGitLabID(gitlabUserID int64
 }
 
 // GetUserProjectsByGitLabID 获取用户创建的项目 (使用GitLab用户ID)
-func (s *ResearchService) GetUserProjectsByGitLabID(gitlabUserID int64, limit, offset int) ([]models.ResearchProject, int64, error) {
+func (s *ResearchService) GetUserProjectsByGitLabID(gitlabUserID int64, limit, offset int, search, status string, visibilityFilter string) ([]models.ResearchProject, int64, error) {
 	var projects []models.ResearchProject
 	var total int64
 
-	err := s.DB.Model(&models.ResearchProject{}).
-		Where("creator_id = ?", gitlabUserID).
-		Count(&total).Error
+	query := s.DB.Model(&models.ResearchProject{}).
+		Where("creator_id = ?", gitlabUserID)
+
+	// 根据visibility参数进行筛选
+	if visibilityFilter == "public" {
+		query = query.Where("is_public = ?", true)
+	} else if visibilityFilter == "private" {
+		query = query.Where("is_public = ?", false)
+	}
+	// 如果visibilityFilter为空，则不添加is_public条件，显示用户的全部项目
+
+	// 添加搜索条件
+	if search != "" {
+		query = query.Where("name LIKE ? OR description LIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+
+	// 添加状态筛选
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	err := query.Count(&total).Error
 	if err != nil {
 		return nil, 0, err
 	}
 
-	err = s.DB.Where("creator_id = ?", gitlabUserID).
-		Order("created_at DESC").
+	err = query.Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
 		Find(&projects).Error

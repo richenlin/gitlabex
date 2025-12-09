@@ -204,6 +204,7 @@ export const researchService = {
     pageSize?: number
     search?: string
     visibility?: string
+    status?: string
     ownerId?: string
   }) =>
     api.get('/research-projects', { params }),
@@ -265,6 +266,7 @@ export const topicService = {
     project_id?: string
     authorId?: string
     search?: string
+    status?: string
     labels?: string[]
   }) =>
     api.get('/topics', { params }),

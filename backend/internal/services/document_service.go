@@ -37,6 +37,13 @@ func (s *DocumentService) GetDocuments(limit, offset int, filters map[string]int
 
 	query := s.DB.Model(&models.Document{})
 
+	// 应用搜索条件
+	if search, ok := filters["search"]; ok {
+		searchStr := search.(string)
+		query = query.Where("title ILIKE ? OR description ILIKE ? OR file_path ILIKE ?",
+			"%"+searchStr+"%", "%"+searchStr+"%", "%"+searchStr+"%")
+	}
+
 	// 应用筛选条件
 	if projectID, ok := filters["project_id"]; ok {
 		query = query.Where("project_id = ?", projectID)

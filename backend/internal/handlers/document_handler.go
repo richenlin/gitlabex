@@ -87,9 +87,17 @@ func (h *DocumentHandler) GetDocuments(c *gin.Context) {
 
 	offset := (page - 1) * limit
 
+	// 获取搜索参数
+	searchQuery := c.Query("search")
+
 	// 获取筛选参数
 	filters := make(map[string]interface{})
-	if projectID := c.Query("project_id"); projectID != "" {
+	// 支持两种参数名称：project_id（下划线）和 projectId（驼峰）
+	projectID := c.Query("project_id")
+	if projectID == "" {
+		projectID = c.Query("projectId")
+	}
+	if projectID != "" {
 		if id, err := uuid.Parse(projectID); err == nil {
 			filters["project_id"] = id
 		}
@@ -105,6 +113,9 @@ func (h *DocumentHandler) GetDocuments(c *gin.Context) {
 	}
 	if uploaderID := c.Query("uploader_id"); uploaderID != "" {
 		filters["uploader_id"] = uploaderID
+	}
+	if searchQuery != "" {
+		filters["search"] = searchQuery
 	}
 
 	documents, total, err := h.documentService.GetDocuments(limit, offset, filters)

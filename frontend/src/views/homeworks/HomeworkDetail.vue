@@ -394,7 +394,7 @@ const fetchHomework = async () => {
   loading.value = true
   try {
     // 响应拦截器已经返回了 response.data，所以这里直接就是后端返回的数据
-    const data = await homeworkService.getHomework(homeworkId.value)
+    const data = await homeworkService.getHomework(homeworkId.value) as any
     
     console.log('从后端获取的原始数据:', data)
     
@@ -495,7 +495,7 @@ const openHomeworkEditor = async () => {
       homework_id: homeworkId.value,
       content: '',
       files: []
-    })
+    }) as any
     
     if (response.web_ide_url) {
       ElMessage.success('正在打开作业仓库...')
