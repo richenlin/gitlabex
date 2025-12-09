@@ -127,32 +127,6 @@
 
       <!-- 侧边栏 -->
       <div class="sidebar">
-        <!-- 热门话题 -->
-        <div class="hot-topics card">
-          <h3>热门话题</h3>
-          <div v-loading="topicsLoading" class="topics-list">
-            <div
-              v-for="topic in hotTopics"
-              :key="topic.id"
-              class="topic-item"
-              @click="viewTopic(topic.id)"
-            >
-              <div class="topic-header">
-                <h4 class="topic-title">{{ topic.title }}</h4>
-                <div class="topic-likes">
-                  <el-icon><Star /></el-icon>
-                  {{ topic.like_count }}
-                </div>
-              </div>
-              <p class="topic-summary">{{ topic.content.substring(0, 50) }}...</p>
-              <div class="topic-meta">
-                <span>用户{{ topic.author_id }}</span>
-                <span>{{ formatDate(topic.created_at) }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- 最近活动 -->
         <div class="recent-activities card">
           <h3>最近活动</h3>
@@ -187,6 +161,32 @@
             </div>
           </div>
         </div>
+        <!-- 热门话题 -->
+        <div class="hot-topics card">
+          <h3>热门话题</h3>
+          <div v-loading="topicsLoading" class="topics-list">
+            <div
+              v-for="topic in hotTopics"
+              :key="topic.id"
+              class="topic-item"
+              @click="viewTopic(topic.id)"
+            >
+              <div class="topic-header">
+                <h4 class="topic-title">{{ topic.title }}</h4>
+                <div class="topic-likes">
+                  <el-icon><Star /></el-icon>
+                  {{ topic.like_count }}
+                </div>
+              </div>
+              <p class="topic-summary">{{ topic.content.substring(0, 50) }}...</p>
+              <div class="topic-meta">
+                <span>用户{{ topic.author_id }}</span>
+                <span>{{ formatDate(topic.created_at) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
