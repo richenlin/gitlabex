@@ -385,32 +385,32 @@ func (s *UserService) GetUserPersonalStats(userID int64) (map[string]interface{}
 	stats := map[string]interface{}{}
 
 	// 获取用户创建的课题数量
-	var projectsCount int64
-	err := s.DB.Model(&models.ResearchProject{}).Where("creator_id = ?", userID).Count(&projectsCount).Error
+	var researchProject models.ResearchProject
+	projectsCount, err := researchProject.CountByCreator(s.DB, userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取课题统计失败: %w", err)
 	}
 	stats["projects_count"] = projectsCount
 
 	// 获取用户发布的话题数量
-	var topicsCount int64
-	err = s.DB.Model(&models.Topic{}).Where("author_id = ?", strconv.FormatInt(userID, 10)).Count(&topicsCount).Error
+	var topic models.Topic
+	topicsCount, err := topic.CountByAuthor(s.DB, userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取话题统计失败: %w", err)
 	}
 	stats["topics_count"] = topicsCount
 
 	// 获取用户上传的文档数量
-	var documentsCount int64
-	err = s.DB.Model(&models.Document{}).Where("uploader_id = ?", strconv.FormatInt(userID, 10)).Count(&documentsCount).Error
+	var document models.Document
+	documentsCount, err := document.CountByUploader(s.DB, userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取文档统计失败: %w", err)
 	}
 	stats["documents_count"] = documentsCount
 
 	// 获取用户提交的作业数量
-	var submissionsCount int64
-	err = s.DB.Model(&models.Submission{}).Where("student_id = ?", userID).Count(&submissionsCount).Error
+	var submission models.Submission
+	submissionsCount, err := submission.CountByStudent(s.DB, userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取作业提交统计失败: %w", err)
 	}
@@ -464,22 +464,22 @@ func (s *UserService) ChangePassword(accessToken string, currentPassword string,
 }
 
 // contains 检查字符串是否包含子字符串
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > len(substr) && (s[:len(substr)] == substr ||
-			s[len(s)-len(substr):] == substr ||
-			indexOf(s, substr) >= 0)))
-}
+// func contains(s, substr string) bool {
+// 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+// 		(len(s) > len(substr) && (s[:len(substr)] == substr ||
+// 			s[len(s)-len(substr):] == substr ||
+// 			indexOf(s, substr) >= 0)))
+// }
 
 // indexOf 查找子字符串在字符串中的位置
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
-}
+// func indexOf(s, substr string) int {
+// 	for i := 0; i <= len(s)-len(substr); i++ {
+// 		if s[i:i+len(substr)] == substr {
+// 			return i
+// 		}
+// 	}
+// 	return -1
+// }
 
 // GetNotifications 获取用户通知列表
 func (s *UserService) GetNotifications(accessToken string, page, perPage int) ([]map[string]interface{}, error) {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"gorm.io/gorm"
 )
 
 // ResearchProject 研究课题模型
@@ -50,6 +51,20 @@ type Topic struct {
 	Comments      []Comment      `gorm:"foreignKey:TopicID" json:"comments,omitempty"`
 	TopicLikes    []TopicLike    `gorm:"foreignKey:TopicID" json:"topic_likes,omitempty"`
 	TopicDislikes []TopicDislike `gorm:"foreignKey:TopicID" json:"topic_dislikes,omitempty"`
+}
+
+// CountByCreator 统计用户创建的课题数量
+func (p *ResearchProject) CountByCreator(db *gorm.DB, userID int64) (int64, error) {
+	var count int64
+	err := db.Model(&ResearchProject{}).Where("creator_id = ?", userID).Count(&count).Error
+	return count, err
+}
+
+// CountByAuthor 统计用户发布的话题数量
+func (t *Topic) CountByAuthor(db *gorm.DB, userID int64) (int64, error) {
+	var count int64
+	err := db.Model(&Topic{}).Where("author_id = ?", userID).Count(&count).Error
+	return count, err
 }
 
 // Comment 评论模型

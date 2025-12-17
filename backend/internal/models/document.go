@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"gorm.io/gorm"
 )
 
 // DocumentType 文档类型
@@ -59,6 +60,13 @@ type Document struct {
 	// 注意：Uploader关联已移除，上传者信息从GitLab API获取
 	Project *ResearchProject `gorm:"foreignKey:ProjectID" json:"project,omitempty"`
 	Reviews []DocumentReview `gorm:"foreignKey:DocumentID" json:"reviews,omitempty"`
+}
+
+// CountByUploader 统计用户上传的文档数量
+func (d *Document) CountByUploader(db *gorm.DB, userID int64) (int64, error) {
+	var count int64
+	err := db.Model(&Document{}).Where("uploader_id = ?", userID).Count(&count).Error
+	return count, err
 }
 
 // DocumentReview 文档审核模型

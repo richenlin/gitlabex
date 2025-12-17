@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"gitlabex/internal/dto"
 	"gitlabex/internal/services"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -10,6 +12,7 @@ import (
 
 // UserHandler 用户处理器
 type UserHandler struct {
+	HandlerHelper
 	userService *services.UserService
 }
 
@@ -22,19 +25,19 @@ func NewUserHandler(userService *services.UserService) *UserHandler {
 
 // GetCurrentUser 获取当前用户信息
 func (h *UserHandler) GetCurrentUser(c *gin.Context) {
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
-
-	user, err := h.userService.GetCurrentUser(accessToken.(string))
+	accessToken, err := h.GetGitLabToken(c)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "获取用户信息失败", "details": err.Error()})
+		h.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	user, err := h.userService.GetCurrentUser(accessToken)
+	if err != nil {
+		h.Error(c, http.StatusNotFound, fmt.Errorf("获取用户信息失败: %v", err))
+		return
+	}
+
+	h.Success(c, user)
 }
 
 // UpdateCurrentUser 更新当前用户信息 - 重定向到GitLab
@@ -49,54 +52,44 @@ func (h *UserHandler) UpdateCurrentUser(c *gin.Context) {
 
 // GetUsers 获取用户列表
 func (h *UserHandler) GetUsers(c *gin.Context) {
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+	accessToken, err := h.GetGitLabToken(c)
+	if err != nil {
+		h.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 
 	// 获取搜索参数
 	search := c.Query("search")
-	pageStr := c.DefaultQuery("page", "1")
-	pageSizeStr := c.DefaultQuery("page_size", "20")
-
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	pageSize, err := strconv.Atoi(pageSizeStr)
-	if err != nil || pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
+	page := h.GetQueryInt(c, "page", 1)
+	pageSize := h.GetQueryInt(c, "page_size", 20)
 
 	// 获取项目ID（如果提供）
 	projectIDStr := c.Query("project_id")
 	if projectIDStr != "" {
 		projectID, err := strconv.ParseInt(projectIDStr, 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+			h.Error(c, http.StatusBadRequest, fmt.Errorf("无效的项目ID"))
 			return
 		}
 
 		// 获取项目成员列表
-		users, err := h.userService.GetProjectMembers(accessToken.(string), projectID)
+		users, err := h.userService.GetProjectMembers(accessToken, projectID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取项目成员失败", "details": err.Error()})
+			h.Error(c, http.StatusInternalServerError, fmt.Errorf("获取项目成员失败: %v", err))
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"users": users})
+		h.Success(c, gin.H{"users": users})
 		return
 	}
 
 	// 如果有搜索条件，使用搜索API
 	if search != "" {
-		users, total, err := h.userService.SearchUsers(accessToken.(string), search, page, pageSize)
+		users, total, err := h.userService.SearchUsers(accessToken, search, page, pageSize)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索用户失败", "details": err.Error()})
+			h.Error(c, http.StatusInternalServerError, fmt.Errorf("搜索用户失败: %v", err))
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{
+		h.Success(c, gin.H{
 			"users":     users,
 			"total":     total,
 			"page":      page,
@@ -106,15 +99,15 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 	}
 
 	// 获取所有用户列表（需要管理员权限）
-	users, total, err := h.userService.GetAllUsers(accessToken.(string), page, pageSize, "")
+	users, total, err := h.userService.GetAllUsers(accessToken, page, pageSize, "")
 	if err != nil {
 		// 如果获取失败，返回当前用户信息
-		user, userErr := h.userService.GetCurrentUser(accessToken.(string))
+		user, userErr := h.userService.GetCurrentUser(accessToken)
 		if userErr != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "获取用户信息失败", "details": userErr.Error()})
+			h.Error(c, http.StatusInternalServerError, fmt.Errorf("获取用户信息失败: %v", userErr))
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{
+		h.Success(c, gin.H{
 			"users":     []interface{}{user},
 			"total":     1,
 			"page":      1,
@@ -124,7 +117,7 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	h.Success(c, gin.H{
 		"users":     users,
 		"total":     total,
 		"page":      page,
@@ -134,38 +127,28 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 
 // SearchUsers 搜索用户
 func (h *UserHandler) SearchUsers(c *gin.Context) {
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
+	accessToken, err := h.GetGitLabToken(c)
+	if err != nil {
+		h.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 
 	search := c.Query("search")
 	if search == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "搜索关键词不能为空"})
+		h.Error(c, http.StatusBadRequest, fmt.Errorf("搜索关键词不能为空"))
 		return
 	}
 
-	pageStr := c.DefaultQuery("page", "1")
-	pageSizeStr := c.DefaultQuery("page_size", "20")
+	page := h.GetQueryInt(c, "page", 1)
+	pageSize := h.GetQueryInt(c, "page_size", 20)
 
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	pageSize, err := strconv.Atoi(pageSizeStr)
-	if err != nil || pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
-
-	users, total, err := h.userService.SearchUsers(accessToken.(string), search, page, pageSize)
+	users, total, err := h.userService.SearchUsers(accessToken, search, page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "搜索用户失败", "details": err.Error()})
+		h.Error(c, http.StatusInternalServerError, fmt.Errorf("搜索用户失败: %v", err))
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	h.Success(c, gin.H{
 		"users":     users,
 		"total":     total,
 		"page":      page,
@@ -250,32 +233,25 @@ func (h *UserHandler) GetSSHKeys(c *gin.Context) {
 
 // AddSSHKey 添加SSH密钥
 func (h *UserHandler) AddSSHKey(c *gin.Context) {
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
-
-	var req struct {
-		Title string `json:"title" binding:"required"`
-		Key   string `json:"key" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
-		return
-	}
-
-	key, err := h.userService.AddSSHKey(accessToken.(string), req.Title, req.Key)
+	accessToken, err := h.GetGitLabToken(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "添加SSH密钥失败",
-			"details": err.Error(),
-		})
+		h.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, key)
+	var req dto.AddSSHKeyReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.Error(c, http.StatusBadRequest, fmt.Errorf("请求参数错误: %v", err))
+		return
+	}
+
+	key, err := h.userService.AddSSHKey(accessToken, req.Title, req.Key)
+	if err != nil {
+		h.Error(c, http.StatusInternalServerError, fmt.Errorf("添加SSH密钥失败: %v", err))
+		return
+	}
+
+	h.Success(c, key)
 }
 
 // DeleteSSHKey 删除SSH密钥
@@ -307,32 +283,25 @@ func (h *UserHandler) DeleteSSHKey(c *gin.Context) {
 
 // ChangePassword 修改密码
 func (h *UserHandler) ChangePassword(c *gin.Context) {
-	accessToken, exists := c.Get("gitlab_access_token")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未登录"})
-		return
-	}
-
-	var req struct {
-		CurrentPassword string `json:"currentPassword" binding:"required"`
-		NewPassword     string `json:"newPassword" binding:"required"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误", "details": err.Error()})
-		return
-	}
-
-	err := h.userService.ChangePassword(accessToken.(string), req.CurrentPassword, req.NewPassword)
+	accessToken, err := h.GetGitLabToken(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "修改密码失败",
-			"details": err.Error(),
-		})
+		h.Error(c, http.StatusUnauthorized, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
+	var req dto.ChangePasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.Error(c, http.StatusBadRequest, fmt.Errorf("请求参数错误: %v", err))
+		return
+	}
+
+	err = h.userService.ChangePassword(accessToken, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		h.Error(c, http.StatusInternalServerError, fmt.Errorf("修改密码失败: %v", err))
+		return
+	}
+
+	h.Success(c, gin.H{"message": "密码修改成功"})
 }
 
 // GetNotifications 获取用户通知列表

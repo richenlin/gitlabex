@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"gorm.io/gorm"
 )
 
 // HomeworkStatus 作业状态
@@ -68,6 +69,13 @@ type Submission struct {
 	// 关联关系
 	Homework Homework `gorm:"foreignKey:HomeworkID" json:"homework,omitempty"`
 	// 注意：Student和Grader关联已移除，用户信息从GitLab API获取
+}
+
+// CountByStudent 统计学生提交的作业数量
+func (s *Submission) CountByStudent(db *gorm.DB, userID int64) (int64, error) {
+	var count int64
+	err := db.Model(&Submission{}).Where("student_id = ?", userID).Count(&count).Error
+	return count, err
 }
 
 // GradeDistribution 成绩分布模型

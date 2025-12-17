@@ -187,6 +187,82 @@ func (s *GitLabService) SetupProjectBranchProtection(accessToken string, project
 	return nil
 }
 
+// ExchangeToken 交换授权码获取访问令牌
+func (s *GitLabService) ExchangeToken(code string) (*dto.GitLabOAuthResponse, error) {
+	data := url.Values{}
+	data.Set("client_id", s.Config.GitLab.ClientID)
+	data.Set("client_secret", s.Config.GitLab.ClientSecret)
+	data.Set("code", code)
+	data.Set("grant_type", "authorization_code")
+	data.Set("redirect_uri", s.Config.GitLab.RedirectURI)
+
+	apiURL := fmt.Sprintf("%s/oauth/token", s.Config.GitLab.URL)
+	var oauthResp dto.GitLabOAuthResponse
+
+	// OAuth endpoints expect form-urlencoded data
+	req, err := http.NewRequest("POST", apiURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	// Use internal HTTP client to execute request
+	client := s.HTTPClient.GetClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("OAuth token exchange failed with status: %s, response: %s", resp.Status, string(body))
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&oauthResp); err != nil {
+		return nil, err
+	}
+
+	return &oauthResp, nil
+}
+
+// RefreshGitLabToken 刷新GitLab访问令牌
+func (s *GitLabService) RefreshGitLabToken(refreshToken string) (*dto.GitLabOAuthResponse, error) {
+	data := url.Values{}
+	data.Set("client_id", s.Config.GitLab.ClientID)
+	data.Set("client_secret", s.Config.GitLab.ClientSecret)
+	data.Set("refresh_token", refreshToken)
+	data.Set("grant_type", "refresh_token")
+
+	apiURL := fmt.Sprintf("%s/oauth/token", s.Config.GitLab.URL)
+	var oauthResp dto.GitLabOAuthResponse
+
+	req, err := http.NewRequest("POST", apiURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	client := s.HTTPClient.GetClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("token refresh failed with status: %s", resp.Status)
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&oauthResp); err != nil {
+		return nil, err
+	}
+
+	return &oauthResp, nil
+}
+
 // GetUser 获取当前用户信息（带缓存）
 func (s *GitLabService) GetUser(accessToken string) (*dto.GitLabAPIUser, error) {
 	ctx := context.Background()

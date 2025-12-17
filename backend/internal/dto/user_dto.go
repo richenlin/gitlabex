@@ -28,3 +28,24 @@ type UpdateUserRolesData struct {
 		Role      string
 	}
 }
+
+// AddSSHKeyReq 添加SSH密钥请求
+type AddSSHKeyReq struct {
+	Title string `json:"title" binding:"required"`
+	Key   string `json:"key" binding:"required"`
+}
+
+// ChangePasswordReq 修改密码请求
+type ChangePasswordReq struct {
+	CurrentPassword string `json:"currentPassword" binding:"required"`
+	NewPassword     string `json:"newPassword" binding:"required"`
+}
+
+// UserListResponse 用户列表响应
+type UserListResponse struct {
+	Users    interface{} `json:"users"`
+	Total    int         `json:"total"`
+	Page     int         `json:"page"`
+	PageSize int         `json:"page_size"`
+	Message  string      `json:"message,omitempty"`
+}
