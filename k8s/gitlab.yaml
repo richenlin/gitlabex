@@ -1,0 +1,243 @@
+---
+# GitLab Config PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-config-pvc
+  namespace: gitlabex
+  labels:
+    app: gitlab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: local-path
+
+---
+# GitLab Logs PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-logs-pvc
+  namespace: gitlabex
+  labels:
+    app: gitlab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: local-path
+
+---
+# GitLab Data PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-data-pvc
+  namespace: gitlabex
+  labels:
+    app: gitlab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  # storageClassName: local-path
+
+---
+# GitLab OAuth Config PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-oauth-pvc
+  namespace: gitlabex
+  labels:
+    app: gitlab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: local-path
+
+---
+# GitLab ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitlab-config
+  namespace: gitlabex
+data:
+  GITLAB_OMNIBUS_CONFIG: |
+    external_url 'http://gitlab.example.com:8081'
+    gitlab_rails['gitlab_shell_ssh_port'] = 2222
+    gitlab_rails['initial_root_password'] = ENV['GITLAB_ROOT_PASSWORD']
+    gitlab_rails['gitlab_signup_enabled'] = true
+    nginx['listen_port'] = 80
+    nginx['redirect_http_to_https'] = false
+    
+    # 支持多机部署的网络配置
+    gitlab_rails['gitlab_host'] = 'gitlab.example.com'
+    gitlab_rails['gitlab_port'] = 8081
+    gitlab_rails['gitlab_https'] = false
+    
+    # 禁用内置PostgreSQL，使用外部PostgreSQL
+    postgresql['enable'] = false
+    gitlab_rails['db_adapter'] = 'postgresql'
+    gitlab_rails['db_encoding'] = 'utf8'
+    gitlab_rails['db_host'] = 'gitlabex-postgres'
+    gitlab_rails['db_port'] = 5432
+    gitlab_rails['db_username'] = 'gitlab'
+    gitlab_rails['db_password'] = ENV['POSTGRES_PASSWORD']
+    gitlab_rails['db_database'] = 'gitlab'
+    
+    # 禁用内置Redis，使用外部Redis
+    redis['enable'] = false
+    gitlab_rails['redis_host'] = 'gitlabex-redis'
+    gitlab_rails['redis_port'] = 6379
+    gitlab_rails['redis_password'] = ENV['REDIS_PASSWORD']
+
+---
+# GitLab Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitlab
+  namespace: gitlabex
+  labels:
+    app: gitlab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # GitLab需要Recreate策略避免多实例冲突
+  selector:
+    matchLabels:
+      app: gitlab
+  template:
+    metadata:
+      labels:
+        app: gitlab
+    spec:
+      hostname: gitlab
+      containers:
+      - name: gitlab
+        image: gitlab/gitlab-ce:15.11.13-ce.0
+        ports:
+        - containerPort: 80
+          name: http
+        - containerPort: 22
+          name: ssh
+        env:
+        - name: GITLAB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: gitlab-root-password
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: postgres-password
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: redis-password
+        - name: GITLAB_OMNIBUS_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: gitlab-config
+              key: GITLAB_OMNIBUS_CONFIG
+        volumeMounts:
+        - name: gitlab-config
+          mountPath: /etc/gitlab
+        - name: gitlab-logs
+          mountPath: /var/log/gitlab
+        - name: gitlab-data
+          mountPath: /var/opt/gitlab
+        - name: gitlab-oauth
+          mountPath: /shared
+        livenessProbe:
+          exec:
+            command:
+            - /opt/gitlab/bin/gitlab-ctl
+            - status
+          initialDelaySeconds: 300
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          exec:
+            command:
+            - /opt/gitlab/bin/gitlab-ctl
+            - status
+          initialDelaySeconds: 180
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+      volumes:
+      - name: gitlab-config
+        persistentVolumeClaim:
+          claimName: gitlab-config-pvc
+      - name: gitlab-logs
+        persistentVolumeClaim:
+          claimName: gitlab-logs-pvc
+      - name: gitlab-data
+        persistentVolumeClaim:
+          claimName: gitlab-data-pvc
+      - name: gitlab-oauth
+        persistentVolumeClaim:
+          claimName: gitlab-oauth-pvc
+
+---
+# GitLab Service (HTTP)
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlabex-gitlab
+  namespace: gitlabex
+  labels:
+    app: gitlab
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+    nodePort: 30081  # 映射到外部8081端口,可根据需要调整
+  selector:
+    app: gitlab
+
+---
+# GitLab Service (SSH)
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlabex-gitlab-ssh
+  namespace: gitlabex
+  labels:
+    app: gitlab
+spec:
+  type: NodePort
+  ports:
+  - port: 22
+    targetPort: 22
+    protocol: TCP
+    name: ssh
+    nodePort: 30222  # 映射到外部2222端口,可根据需要调整
+  selector:
+    app: gitlab

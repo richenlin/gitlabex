@@ -1,0 +1,53 @@
+# Kustomization 配置文件
+# 用于管理 Kubernetes 资源的组织和部署
+# 
+# 使用方法:
+#   kubectl apply -k .
+#   或
+#   kustomize build . | kubectl apply -f -
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 命名空间
+namespace: gitlabex
+
+# 资源列表
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - postgres.yaml
+  - redis.yaml
+  - minio.yaml
+  - gitlab.yaml
+  - backend.yaml
+  - frontend.yaml
+  # - ingress.yaml  # 可选，如需使用 Ingress 请取消注释
+
+# 通用标签
+commonLabels:
+  app.kubernetes.io/name: gitlabex
+  app.kubernetes.io/managed-by: kustomize
+
+# 通用注解
+commonAnnotations:
+  documentation: "https://github.com/your-org/gitlabex"
+
+# 镜像标签管理（可选）
+# images:
+#   - name: gitlabex-backend
+#     newTag: v1.0.0
+#   - name: gitlabex-frontend
+#     newTag: v1.0.0
+
+# ConfigMap 生成器（可选）
+# configMapGenerator:
+#   - name: backend-config
+#     files:
+#       - config.yml=../config/config.prod.yml
+
+# Secret 生成器（可选）
+# secretGenerator:
+#   - name: gitlabex-secrets
+#     envs:
+#       - secrets.env

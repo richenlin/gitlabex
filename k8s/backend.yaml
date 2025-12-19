@@ -1,0 +1,221 @@
+---
+# Backend PersistentVolumeClaim - Uploads
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-uploads-pvc
+  namespace: gitlabex
+  labels:
+    app: backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  # storageClassName: local-path
+
+---
+# Backend PersistentVolumeClaim - Logs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-logs-pvc
+  namespace: gitlabex
+  labels:
+    app: backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: local-path
+
+---
+# Backend ConfigMap (config.prod.yml)
+# 注意: 实际部署时需要从 config/config.prod.yml 创建
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: gitlabex
+data:
+  config.yml: |
+    # 此处应该包含 config.prod.yml 的完整内容
+    # 请在部署前使用实际的配置文件内容替换
+    # 敏感信息应该使用 Secret 而不是 ConfigMap
+    server:
+      port: 8080
+      mode: release
+    
+    database:
+      host: gitlabex-postgres
+      port: 5432
+      user: gitlab
+      # password 通过环境变量注入
+      dbname: gitlabex
+      sslmode: disable
+      max_open_conns: 25
+      max_idle_conns: 5
+    
+    redis:
+      host: gitlabex-redis
+      port: 6379
+      # password 通过环境变量注入
+      db: 0
+    
+    minio:
+      endpoint: gitlabex-minio:9000
+      access_key: admin
+      # secret_key 通过环境变量注入
+      use_ssl: false
+      buckets:
+        documents: documents
+        avatars: avatars
+        temp: temp
+    
+    gitlab:
+      base_url: http://gitlabex-gitlab
+      oauth_callback_url: http://gitlab.example.com:3000/auth/callback
+      # client_id, client_secret, system_token 通过环境变量注入
+    
+    # 其他配置...
+
+---
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: gitlabex
+  labels:
+    app: backend
+spec:
+  replicas: 2  # 可以根据负载调整副本数
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: gitlabex-backend:latest
+        imagePullPolicy: IfNotPresent  # 生产环境建议使用私有镜像仓库
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: metrics
+        env:
+        - name: APP_ENV
+          value: "production"
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: postgres-password
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: redis-password
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: jwt-secret
+        - name: GITLAB_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: gitlab-client-id
+        - name: GITLAB_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: gitlab-client-secret
+        - name: GITLAB_SYSTEM_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: gitlab-system-token
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: minio-root-password
+        - name: THIRD_PARTY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gitlabex-secrets
+              key: third-party-api-key
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: uploads
+          mountPath: /app/uploads
+        - name: logs
+          mountPath: /app/logs
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+      volumes:
+      - name: config
+        configMap:
+          name: backend-config
+      - name: uploads
+        persistentVolumeClaim:
+          claimName: backend-uploads-pvc
+      - name: logs
+        persistentVolumeClaim:
+          claimName: backend-logs-pvc
+
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlabex-backend
+  namespace: gitlabex
+  labels:
+    app: backend
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+    nodePort: 30080  # 可选: 指定NodePort端口
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+    nodePort: 30090  # 可选: 指定metrics端口
+  selector:
+    app: backend

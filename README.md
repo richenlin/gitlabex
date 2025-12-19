@@ -155,6 +155,8 @@ vim config/config.prod.yml
 
 ### 生产环境部署
 
+#### Docker Compose 部署
+
 ```bash
 # 构建镜像
 ./scripts/build-images.sh
@@ -181,6 +183,40 @@ docker-compose  -f docker-compose.prod.yml up -d postgres redis minio gitlab
 # 启动后端/前端服务
 docker-compose -f docker-compose.prod.yml up -d backend frontend
 ```
+
+#### Kubernetes 部署
+
+如果需要在 Kubernetes 集群上部署，请查看详细的 [Kubernetes 部署指南](k8s/README.md)。
+
+快速开始：
+
+```bash
+# 进入 k8s 目录
+cd k8s
+
+# 1. 准备配置文件
+cp secrets.yaml.example secrets.yaml
+vim secrets.yaml  # 修改所有密码和密钥
+
+# 2. 执行一键部署
+./deploy.sh
+
+# 3. 配置 OAuth（GitLab 启动后）
+./configure-oauth-k8s.sh
+```
+
+Kubernetes 部署特性：
+- **高可用性**: 支持多副本部署，自动故障恢复
+- **弹性伸缩**: 支持 HPA 自动扩缩容
+- **滚动更新**: 零停机时间的应用更新
+- **持久化存储**: 使用 PersistentVolume 持久化数据
+- **服务发现**: 内置服务发现和负载均衡
+- **资源隔离**: 命名空间级别的资源隔离
+
+更多信息：
+- [完整部署文档](k8s/README.md)
+- [快速参考指南](k8s/QUICK_REFERENCE.md)
+- [部署检查清单](k8s/DEPLOY_CHECKLIST.md)
 
 ## API文档
 

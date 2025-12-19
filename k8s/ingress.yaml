@@ -1,0 +1,106 @@
+---
+# Ingress 配置 (可选)
+# 
+# 此文件提供了使用 Ingress 进行统一入口管理的配置示例
+# 使用 Ingress 可以提供更好的路由管理、SSL终止、负载均衡等功能
+# 
+# 前提条件:
+# 1. 集群中已安装 Ingress Controller (如 nginx-ingress, traefik 等)
+# 2. 配置 DNS 或 /etc/hosts 将域名解析到 Ingress Controller 的 IP
+# 
+# 使用 NodePort 方式时，可以不使用此配置
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gitlabex-ingress
+  namespace: gitlabex
+  annotations:
+    # nginx ingress 配置示例
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    # 如需启用 SSL，取消以下注释并配置证书
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx  # 根据实际的 Ingress Controller 调整
+  rules:
+  # 前端服务
+  - host: gitlabex.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gitlabex-frontend
+            port:
+              number: 80
+  
+  # 后端API服务
+  - host: api.gitlabex.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gitlabex-backend
+            port:
+              number: 8080
+  
+  # GitLab服务
+  - host: gitlab.gitlabex.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gitlabex-gitlab
+            port:
+              number: 80
+  
+  # MinIO Console
+  - host: minio.gitlabex.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gitlabex-minio-console
+            port:
+              number: 9001
+  
+  # 如需启用 TLS，取消以下注释
+  # tls:
+  # - hosts:
+  #   - gitlabex.example.com
+  #   - api.gitlabex.example.com
+  #   - gitlab.gitlabex.example.com
+  #   - minio.gitlabex.example.com
+  #   secretName: gitlabex-tls-cert
+
+---
+# TLS Certificate Secret 示例 (如果使用自签名证书)
+# 
+# 生成自签名证书命令:
+# openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#   -keyout tls.key -out tls.crt \
+#   -subj "/CN=gitlabex.example.com/O=GitLabEx"
+# 
+# 创建 Secret:
+# kubectl create secret tls gitlabex-tls-cert \
+#   --key tls.key --cert tls.crt -n gitlabex
+
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: gitlabex-tls-cert
+#   namespace: gitlabex
+# type: kubernetes.io/tls
+# data:
+#   tls.crt: <base64-encoded-cert>
+#   tls.key: <base64-encoded-key>

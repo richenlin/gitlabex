@@ -1,0 +1,74 @@
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: gitlabex
+  labels:
+    app: frontend
+spec:
+  replicas: 2  # 可以根据负载调整副本数
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: gitlabex-frontend:latest
+        imagePullPolicy: IfNotPresent  # 生产环境建议使用私有镜像仓库
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: BACKEND_URL
+          value: "http://backend.example.com:8080"  # 替换为实际的后端地址
+        - name: VITE_GITLAB_URL
+          value: "http://gitlab.example.com:8081"   # 替换为实际的GitLab地址
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlabex-frontend
+  namespace: gitlabex
+  labels:
+    app: frontend
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+    nodePort: 30000  # 映射到外部3000端口,可根据需要调整
+  selector:
+    app: frontend

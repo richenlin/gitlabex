@@ -1,0 +1,25 @@
+# 忽略实际的 secrets 文件
+secrets.yaml
+
+# 忽略临时文件
+*.tmp
+*.bak
+*~
+
+# 忽略备份文件
+*.backup
+backup-*
+
+# 忽略 kustomize 构建输出
+kustomization-output.yaml
+
+# 忽略编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# 忽略测试和调试文件
+test-*.yaml
+debug-*.yaml
