@@ -24,11 +24,46 @@ metadata:
   namespace: gitlabex
 data:
   init-postgres.sql: |
+    -- PostgreSQL 初始化脚本
+    -- 为GitLabEx应用创建额外的数据库和用户
+    
     -- 创建gitlabex数据库
     CREATE DATABASE gitlabex;
     
-    -- 授予权限
+    -- 创建gitlabex用户（使用与Secret中相同的密码）
+    -- 注意：这里使用占位符，实际密码通过环境变量或Secret管理
+    -- 如果需要独立的gitlabex用户，取消下面的注释并修改密码
+    -- CREATE USER gitlabex WITH ENCRYPTED PASSWORD 'your-password-here';
+    -- GRANT ALL PRIVILEGES ON DATABASE gitlabex TO gitlabex;
+    
+    -- 方案1：使用gitlab用户访问gitlabex数据库（推荐，简化权限管理）
     GRANT ALL PRIVILEGES ON DATABASE gitlabex TO gitlab;
+    
+    -- 切换到gitlabex数据库进行进一步配置
+    \c gitlabex;
+    
+    -- 授予gitlab用户schema权限
+    GRANT ALL ON SCHEMA public TO gitlab;
+    
+    -- 授予现有表和序列的权限
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO gitlab;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO gitlab;
+    
+    -- 授予将来创建的表和序列的默认权限（重要！）
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO gitlab;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO gitlab;
+    
+    -- 确保gitlab用户可以在public schema中创建对象
+    GRANT CREATE ON SCHEMA public TO gitlab;
+    
+    -- 方案2：如果使用独立的gitlabex用户，取消下面的注释
+    -- \c gitlabex;
+    -- GRANT ALL ON SCHEMA public TO gitlabex;
+    -- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO gitlabex;
+    -- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO gitlabex;
+    -- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO gitlabex;
+    -- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO gitlabex;
+    -- GRANT CREATE ON SCHEMA public TO gitlabex;
 
 ---
 # PostgreSQL Deployment

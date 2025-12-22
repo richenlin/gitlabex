@@ -15,6 +15,7 @@
 ```
 k8s/
 ├── README.md                    # 本文档 - 详细的部署指南
+├── DEPLOYMENT_COMPARISON.md     # Docker Compose vs K8s 对比文档
 ├── namespace.yaml               # 命名空间定义 - 资源隔离
 ├── secrets.yaml.example         # Secret 配置示例 - 敏感信息存储
 ├── postgres.yaml                # PostgreSQL 数据库部署
@@ -28,6 +29,9 @@ k8s/
 ├── undeploy.sh                  # 一键卸载脚本（高级用户）
 └── configure-oauth-k8s.sh       # OAuth 配置脚本（高级用户）
 ```
+
+**重要文档**：
+- 📖 [Docker Compose vs Kubernetes 部署对比](DEPLOYMENT_COMPARISON.md) - 详细对比两种部署方式的配置差异
 
 ## 🎓 Kubernetes 基础概念
 
@@ -513,6 +517,18 @@ cat postgres.yaml
 3. **Deployment**: 定义如何运行 PostgreSQL Pod
 4. **Service**: 提供稳定的网络访问入口
 
+**数据库初始化说明**:
+
+PostgreSQL 容器在首次启动时会自动执行 `/docker-entrypoint-initdb.d/` 目录下的 SQL 脚本。我们的配置：
+
+- 创建两个数据库：
+  - `gitlab` - 给 GitLab 使用（主数据库，由环境变量 POSTGRES_DB 指定）
+  - `gitlabex` - 给 GitLabEx 后端应用使用（通过初始化脚本创建）
+- 使用 `gitlab` 用户管理两个数据库（简化权限管理）
+- 设置完整的 schema 权限和默认权限（确保应用可以创建表和序列）
+
+**注意**: 初始化脚本只在数据库第一次创建时执行。如果 PVC 中已有数据，脚本不会再次执行。
+
 #### 3.2 修改存储类（如果需要）
 
 ```bash
@@ -626,6 +642,66 @@ kubectl run -it --rm pg-test --image=postgres:15 --restart=Never -n gitlabex -- 
 
 # 需要输入密码（在 secrets.yaml 中设置的密码）
 ```
+
+#### 3.8 验证数据库初始化
+
+```bash
+# 1. 进入 PostgreSQL Pod
+kubectl exec -it -n gitlabex $(kubectl get pod -n gitlabex -l app=postgres -o jsonpath='{.items[0].metadata.name}') -- bash
+
+# 2. 连接到 PostgreSQL
+psql -U gitlab
+
+# 3. 列出所有数据库（应该看到 gitlab 和 gitlabex）
+\l
+
+# 期望输出:
+#    Name    | Owner  | Encoding | Collate | Ctype | Access privileges
+# -----------+--------+----------+---------+-------+-------------------
+#  gitlab    | gitlab | UTF8     | ...     | ...   | 
+#  gitlabex  | gitlab | UTF8     | ...     | ...   | =Tc/gitlab       +
+#            |        |          |         |       | gitlab=CTc/gitlab
+#  postgres  | gitlab | UTF8     | ...     | ...   | 
+
+# 4. 连接到 gitlabex 数据库
+\c gitlabex
+
+# 5. 查看 schema 权限
+\dn+
+
+# 6. 测试创建表（验证权限）
+CREATE TABLE test_table (id INT);
+DROP TABLE test_table;
+
+# 如果成功，说明权限配置正确 ✅
+
+# 7. 退出
+\q
+exit
+```
+
+**如果初始化失败**:
+
+如果数据库没有正确初始化（例如缺少 gitlabex 数据库），可能的原因：
+
+1. **PVC 中已有旧数据**: 初始化脚本只在首次创建时执行
+   ```bash
+   # 解决方法：删除 PVC 重新创建
+   kubectl delete -f postgres.yaml
+   kubectl delete pvc postgres-pvc -n gitlabex
+   kubectl apply -f postgres.yaml
+   ```
+
+2. **ConfigMap 未正确挂载**: 检查 Pod 配置
+   ```bash
+   kubectl describe pod -n gitlabex -l app=postgres
+   # 查看 Mounts 部分是否有 /docker-entrypoint-initdb.d
+   ```
+
+3. **初始化脚本执行失败**: 查看 Pod 日志
+   ```bash
+   kubectl logs -n gitlabex -l app=postgres | grep -i "init\|error\|failed"
+   ```
 
 ### 部署步骤 4: 部署 Redis 缓存
 
@@ -966,6 +1042,36 @@ kubectl apply -f secrets.yaml
 
 # 输出: secret/gitlabex-secrets configured
 ```
+
+**重要提示：使配置生效**
+
+⚠️ **Secret 更新后，必须重启相关服务才能生效！**
+
+Kubernetes 通过环境变量注入 Secret 时，容器启动后环境变量不会自动更新。因此需要重启服务：
+
+```bash
+# 滚动重启后端服务（推荐，无服务中断）
+kubectl rollout restart deployment/backend -n gitlabex
+
+# 查看重启状态
+kubectl rollout status deployment/backend -n gitlabex
+
+# 输出: deployment "backend" successfully rolled out
+
+# 验证新配置已加载
+kubectl logs -f -n gitlabex -l app=backend --tail=50
+```
+
+**为什么需要重启？**
+
+1. 容器启动时从 Secret 读取环境变量
+2. 运行中的容器不会重新读取更新后的 Secret
+3. 只有重启容器才能加载新的配置值
+
+**替代方案**（如果将来需要无重启更新）：
+- 使用 Volume 方式挂载 Secret（文件会自动更新，但有延迟）
+- 使用配置热加载工具（如 Reloader）
+- 应用内实现配置动态加载机制
 
 ### 部署步骤 8: 部署后端服务
 
@@ -2300,10 +2406,15 @@ resources:
 
 ### 相关项目文档
 
-- [GitLabEx 项目 README](../README.md)
-- [Docker Compose 部署文档](../docker-compose.prod.yml)
-- [第三方系统集成文档](../docs/SYNC_USER.md)
-- [快速参考指南](QUICK_REFERENCE.md)
+- [GitLabEx 项目 README](../README.md) - 项目总览
+- [Docker Compose 部署文档](../docker-compose.prod.yml) - Docker Compose 生产环境配置
+- [第三方系统集成文档](../docs/SYNC_USER.md) - 外部系统对接说明
+
+### Kubernetes 专属文档
+
+- [快速参考指南](QUICK_REFERENCE.md) - 常用命令速查
+- [部署对比文档](DEPLOYMENT_COMPARISON.md) - Docker Compose vs K8s 详细对比
+- [修复总结](FIXES_SUMMARY.md) - 配置检查和修复记录
 
 ---
 
