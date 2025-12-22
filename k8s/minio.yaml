@@ -1,4 +1,37 @@
 ---
+# ============================================================================
+# MinIO 对象存储 - 旧版本配置 (RELEASE.2020-12-29T23-29-29Z)
+# ============================================================================
+#
+# 版本说明:
+#   本配置使用 MinIO 旧版本 (2020-12-29)，与 Docker Compose 部署保持一致
+#
+# 旧版本 vs 新版本差异:
+#   - 旧版本 (2020): 使用 MINIO_ACCESS_KEY / MINIO_SECRET_KEY
+#   - 新版本 (2024): 使用 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD
+#
+# 对应的 Docker 启动命令:
+#   docker run -d -p 9000:9000 -p 9001:9001 --name minio \
+#     -e MINIO_ACCESS_KEY=admin \
+#     -e MINIO_SECRET_KEY=password123 \
+#     -v /data:/data \
+#     minio/minio:RELEASE.2020-12-29T23-29-29Z server /data
+#
+# 注意事项:
+#   1. 旧版本也支持分离的 API (9000) 和控制台 (9001) 端口
+#   2. Buckets 不会自动创建，需要通过后端代码或手动创建
+#   3. 访问 API: http://<NODE_IP>:30900
+#   4. 访问 Web 控制台: http://<NODE_IP>:30901
+#   5. 健康检查使用 TCP 探测而非 HTTP (旧版本无标准 /health 端点)
+#
+# 升级建议:
+#   如果需要新功能（独立控制台端口、更好的性能），可升级到新版本：
+#   - 镜像: minio/minio:RELEASE.2024-03-07T00-43-48Z
+#   - 环境变量改为: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD
+#   - 启动命令: minio server /data --console-address ":9001"
+# ============================================================================
+
+---
 # MinIO PersistentVolumeClaim
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -36,49 +69,50 @@ spec:
     spec:
       containers:
       - name: minio
-        image: minio/minio:RELEASE.2024-03-07T00-43-48Z
+        # 使用旧版本 MinIO (2020-12-29)
+        image: minio/minio:RELEASE.2020-12-29T23-29-29Z
         command:
-        - minio
-        - server
-        - /data
-        - --console-address
-        - ":9001"
+        - /bin/sh
+        - -c
+        args:
+        - minio server /data
         ports:
         - containerPort: 9000
           name: api
         - containerPort: 9001
           name: console
         env:
-        - name: MINIO_ROOT_USER
+        # 旧版本使用 MINIO_ACCESS_KEY 和 MINIO_SECRET_KEY
+        - name: MINIO_ACCESS_KEY
           valueFrom:
             secretKeyRef:
               name: gitlabex-secrets
               key: minio-root-user
-        - name: MINIO_ROOT_PASSWORD
+        - name: MINIO_SECRET_KEY
           valueFrom:
             secretKeyRef:
               name: gitlabex-secrets
               key: minio-root-password
-        - name: MINIO_DEFAULT_BUCKETS
-          value: "documents,avatars,temp"
+        # 注意: MINIO_DEFAULT_BUCKETS 不是官方支持的环境变量
+        # Buckets 需要通过后端代码或初始化脚本创建
         volumeMounts:
         - name: minio-storage
           mountPath: /data
         livenessProbe:
-          httpGet:
-            path: /minio/health/live
-            port: 9000
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /minio/health/ready
+          # 旧版本使用简单的 TCP 探测
+          tcpSocket:
             port: 9000
           initialDelaySeconds: 30
-          periodSeconds: 10
+          periodSeconds: 30
           timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          # 旧版本使用简单的 TCP 探测
+          tcpSocket:
+            port: 9000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
           failureThreshold: 3
         resources:
           requests:
@@ -93,7 +127,7 @@ spec:
           claimName: minio-pvc
 
 ---
-# MinIO Service (API)
+# MinIO Service (API) - ClusterIP for internal access
 apiVersion: v1
 kind: Service
 metadata:
@@ -112,7 +146,27 @@ spec:
     app: minio
 
 ---
-# MinIO Service (Console) - NodePort for external access
+# MinIO Service (API) - NodePort for external access (optional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlabex-minio-api
+  namespace: gitlabex
+  labels:
+    app: minio
+spec:
+  type: NodePort
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: api
+    nodePort: 30900  # 通过此端口外部访问 MinIO API
+  selector:
+    app: minio
+
+---
+# MinIO Service (Web Console) - NodePort for external access
 apiVersion: v1
 kind: Service
 metadata:
@@ -127,6 +181,6 @@ spec:
     targetPort: 9001
     protocol: TCP
     name: console
-    nodePort: 30901  # 可选: 指定NodePort端口,范围30000-32767
+    nodePort: 30901  # 通过此端口访问 MinIO Web 控制台
   selector:
     app: minio
